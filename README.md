@@ -6,13 +6,24 @@ An AI-free ebook library manager that works with existing calibre libraries.
 
 | Crate | What it is |
 |---|---|
-| [`app`](crates/app) | The desktop app (Tauri 2). Currently a read-only cover grid with search and a details panel |
+| [`app`](crates/app) | The desktop app: Tauri 2, with a Solid + TypeScript UI in [`crates/app/ui`](crates/app/ui). Currently a read-only cover grid with search and a details panel |
 | [`calibre-compat`](crates/calibre-compat) | Read-only access to calibre libraries (`metadata.db` + book folders), plus a CLI to inspect them |
+
+## Setup
+
+Needs Rust, Node with [pnpm](https://pnpm.io), and the Tauri CLI:
+
+```bash
+cargo install tauri-cli --version "^2" --locked
+pnpm --dir crates/app/ui install
+```
 
 ## Running
 
 ```bash
-cargo run -p magnitide
+cd crates/app
+cargo tauri dev                  # live reload: UI changes appear on save, Rust changes rebuild
+cargo tauri build --bundles app  # release Magnitide.app in target/release/bundle/macos/
 ```
 
 It opens the library calibre last used, falling back to `~/Calibre Library`.
@@ -24,7 +35,26 @@ Keys: `/` or ⌘F search · arrows move · Enter opens details · double-click o
 In the details panel, click a format to open that specific file.
 Search accepts `author:`, `tag:`, `series:`, `title:`, `#custom:`, quotes and `-` to exclude.
 
+## Development
+
 ```bash
-cargo test                      # all crates
-cargo run -p calibre-compat -- info   # CLI against the default library
+cargo test                             # all crates; also regenerates the UI's TypeScript bindings
+pnpm --dir crates/app/ui typecheck
+cargo run -p calibre-compat -- info    # CLI against the default library
 ```
+
+The types the UI uses for Rust commands (`crates/app/ui/src/bindings/`) are
+generated from the Rust structs by [ts-rs](https://github.com/Aleph-Alpha/ts-rs)
+when tests run. After changing a command's types, run `cargo test` and commit
+the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
+
+## Roadmap
+
+- [x] Read calibre libraries natively (`calibre-compat`)
+- [x] Cover grid, search, sort, details panel, open in default app
+- [x] Solid + TypeScript UI with types generated from Rust
+- [ ] UI build-out: toolbar, table view
+- [ ] Drag and drop to add books (needs the write path: calibre's SQL functions, schema upgrades)
+- [ ] Metadata editing
+- [ ] Plugin host for DeDRM (embedded Python)
+- [ ] Built-in reader

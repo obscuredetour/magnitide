@@ -6,12 +6,14 @@ use std::time::Instant;
 use calibre_compat::{Book, Library, Query, SortKey, locate, sort_books};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
+use ts_rs::TS;
 
 use crate::{AppState, Loaded};
 
 type CmdResult<T> = Result<T, String>;
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct LibraryInfo {
     path: String,
@@ -58,7 +60,8 @@ pub async fn open_library(app: AppHandle, state: State<'_, AppState>, path: Opti
 }
 
 /// One tile in the grid; deliberately small so 50k of them serialize quickly.
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct GridItem {
     id: i64,
@@ -90,7 +93,8 @@ pub async fn list_books(state: State<'_, AppState>, query: String, sort: SortKey
         .collect())
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct BookDetails {
     id: i64,
@@ -111,7 +115,8 @@ pub struct BookDetails {
     folder: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
+#[ts(export)]
 pub struct FormatInfo {
     format: String,
     size: u64,
