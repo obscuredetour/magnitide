@@ -10,6 +10,7 @@ use crate::model::Book;
 /// Text keys compare case-insensitively. calibre uses ICU collation, so
 /// accented and non-Latin titles may order slightly differently.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum SortKey {
     #[default]
