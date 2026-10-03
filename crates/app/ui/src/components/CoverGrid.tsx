@@ -115,10 +115,16 @@ export function CoverGrid(props: Props) {
   onCleanup(() => cancelAnimationFrame(frame));
 
   return (
-    <section class="grid" ref={el} tabIndex={0} aria-label="Books" onScroll={onScroll}>
-      <div class="grid-spacer" style={{ height: `${contentHeight()}px` }} />
+    <section
+      class="relative min-w-0 flex-1 overflow-x-hidden overflow-y-auto outline-none"
+      ref={el}
+      tabIndex={0}
+      aria-label="Books"
+      onScroll={onScroll}
+    >
+      <div class="w-px" style={{ height: `${contentHeight()}px` }} />
       <Show when={props.items.length === 0}>
-        <p class="grid-message">{props.emptyMessage}</p>
+        <p class="absolute inset-x-0 top-[30%] text-center text-sm text-muted">{props.emptyMessage}</p>
       </Show>
       <For each={visible()}>
         {(item, i) => {
@@ -131,8 +137,8 @@ export function CoverGrid(props: Props) {
           };
           return (
             <div
-              class="tile"
-              classList={{ selected: item.id === props.selectedId }}
+              class="group absolute top-0 left-0 flex cursor-default flex-col gap-2 [contain:layout_style]"
+              data-selected={item.id === props.selectedId || undefined}
               style={{ width: `${metrics().tileW}px`, transform: position() }}
               title={[item.title, item.authors, item.series && `${item.series} #${item.seriesIndex}`]
                 .filter(Boolean)
@@ -140,12 +146,12 @@ export function CoverGrid(props: Props) {
               onClick={() => props.onSelect(item.id)}
               onDblClick={() => props.onOpen(item.id)}
             >
-              <div class="cover">
+              <div class="relative aspect-[2/3] w-full overflow-hidden rounded-md bg-surface-2 shadow-card transition duration-[180ms] ease-out group-hover:-translate-y-[3px] group-hover:shadow-lift group-data-selected:outline-3 group-data-selected:outline-offset-3 group-data-selected:outline-accent">
                 <Cover id={item.id} title={item.title} authors={item.authors} hasCover={item.hasCover} size="thumb" />
-                <Show when={item.seriesIndex}>{(n) => <span class="series-badge">#{n()}</span>}</Show>
+                <Show when={item.seriesIndex}>{(n) => <span class="absolute right-1.5 bottom-1.5 rounded-full bg-black/60 px-[7px] py-px text-[11px] font-semibold text-white tabular-nums backdrop-blur-sm">#{n()}</span>}</Show>
               </div>
-              <p class="tile-title">{item.title}</p>
-              <p class="tile-author">{item.authors}</p>
+              <p class="truncate text-[12.5px] font-semibold">{item.title}</p>
+              <p class="-mt-1.5 truncate text-xs text-muted">{item.authors}</p>
             </div>
           );
         }}

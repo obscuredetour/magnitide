@@ -97,7 +97,7 @@ export function App() {
       <TopBar searchRef={(el) => (searchInput = el)} onLeaveSearch={leaveSearch} />
       <Switch>
         <Match when={status().kind === 'ready'}>
-          <main class="content">
+          <main class="fixed inset-x-0 top-[52px] bottom-0 flex">
             <CoverGrid
               ref={(h) => (grid = h)}
               items={items()}

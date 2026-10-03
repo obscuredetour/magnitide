@@ -43,6 +43,13 @@ pnpm --dir crates/app/ui typecheck
 cargo run -p calibre-compat -- info    # CLI against the default library
 ```
 
+Styling is [Tailwind v4](https://tailwindcss.com) utilities in the components. Colours
+and shadows come only from the theme (`crates/app/ui/src/themes.css`): each theme
+is a block of CSS variables, and `theme.ts` switches between them at runtime by
+setting `data-theme` on `<html>`. Built in: light, dark, sepia, and "system"
+(follows the OS). To add a theme, copy a block in `themes.css` and register it in
+`THEMES` in `theme.ts`.
+
 The types the UI uses for Rust commands (`crates/app/ui/src/bindings/`) are
 generated from the Rust structs by [ts-rs](https://github.com/Aleph-Alpha/ts-rs)
 when tests run. After changing a command's types, run `cargo test` and commit
