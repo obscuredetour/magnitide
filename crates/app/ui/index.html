@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Magnitide</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar" data-tauri-drag-region>
+    <button class="library-button" id="library-button" title="Open another library…">
+      <span class="library-name" id="library-name">Magnitide</span>
+      <span class="library-count" id="library-count"></span>
+    </button>
+    <div class="search" data-tauri-drag-region>
+      <svg class="search-icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg>
+      <input id="search" type="search" placeholder="Search title, author, tag:fantasy, series:&quot;…&quot;" autocomplete="off" spellcheck="false">
+      <kbd class="search-hint">/</kbd>
+    </div>
+    <label class="sort">
+      <span class="visually-hidden">Sort by</span>
+      <select id="sort">
+        <option value="title">Title</option>
+        <option value="author">Author</option>
+        <option value="added">Recently added</option>
+        <option value="published">Recently published</option>
+        <option value="series">Series</option>
+        <option value="rating">Rating</option>
+      </select>
+    </label>
+  </header>
+
+  <main class="content">
+    <section class="grid" id="grid" tabindex="0" aria-label="Books">
+      <div class="grid-spacer" id="grid-spacer"></div>
+      <p class="grid-message" id="grid-message" hidden></p>
+    </section>
+
+    <aside class="details" id="details" aria-label="Book details" hidden>
+      <button class="details-close" id="details-close" title="Close (Esc)">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg>
+      </button>
+      <div class="details-body" id="details-body"></div>
+    </aside>
+  </main>
+
+  <div class="empty" id="empty" hidden>
+    <img src="icon.png" alt="" width="88" height="88">
+    <h1>Open your calibre library</h1>
+    <p id="empty-message">Choose the folder that contains <code>metadata.db</code>. Magnitide only reads it and never changes your library.</p>
+    <button class="primary" id="choose-library">Choose library folder…</button>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

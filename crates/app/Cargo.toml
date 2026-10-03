@@ -1,0 +1,19 @@
+[package]
+name = "magnitide"
+version = "0.1.0"
+edition = "2024"
+description = "An AI-free ebook library manager for calibre libraries"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+ammonia = "4.2.1"
+anyhow = "1.0.104"
+calibre-compat = { version = "0.1.0", path = "../calibre-compat" }
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tauri = "2"
+tauri-plugin-dialog = "2"
+
+[build-dependencies]
+tauri-build = "2"
