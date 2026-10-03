@@ -15,7 +15,15 @@ export function Toast() {
   return (
     <Show when={current()}>
       {(t) => (
-        <div class="toast" classList={{ error: t().error }} role="status" aria-live="polite">
+        <div
+          class="fixed bottom-6 left-1/2 z-20 max-w-[min(560px,calc(100%-32px))] -translate-x-1/2 animate-toast-in rounded-[10px] px-4 py-[9px] text-white shadow-lift select-text"
+          classList={{
+            'bg-[rgb(30_30_33/0.92)]': !t().error,
+            'bg-[color-mix(in_srgb,var(--danger)_88%,black)]': t().error,
+          }}
+          role="status"
+          aria-live="polite"
+        >
           {t().message}
         </div>
       )}

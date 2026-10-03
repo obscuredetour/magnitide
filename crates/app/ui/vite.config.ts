@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite';
+import tailwindcss from '@tailwindcss/vite';
 import solid from 'vite-plugin-solid';
 
 // Tauri loads the dev server in development and `dist/` in release builds.
 export default defineConfig({
-  plugins: [solid()],
+  plugins: [solid(), tailwindcss()],
   clearScreen: false,
   server: {
     port: 1420,

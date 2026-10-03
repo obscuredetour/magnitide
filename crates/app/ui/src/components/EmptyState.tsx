@@ -2,15 +2,18 @@ import { chooseLibrary } from '../library';
 
 export function EmptyState(props: { message: string }) {
   return (
-    <div class="empty">
+    <div class="fixed inset-x-0 top-[52px] bottom-0 flex flex-col items-center justify-center bg-bg p-6 text-center">
       <img src="/icon.png" alt="" width="88" height="88" />
-      <h1>Open your calibre library</h1>
-      <p>{props.message}</p>
-      <p class="empty-note">
-        Choose the folder that contains <code>metadata.db</code>. Magnitide only reads it and never changes your
-        library.
+      <h1 class="mt-[18px] mb-2 font-serif text-2xl font-semibold">Open your calibre library</h1>
+      <p class="mb-2 max-w-[420px] text-sm text-muted">{props.message}</p>
+      <p class="mb-[22px] max-w-[420px] text-sm text-muted">
+        Choose the folder that contains <code class="text-[12.5px]">metadata.db</code>. Magnitide only reads it and
+        never changes your library.
       </p>
-      <button class="primary" onClick={() => void chooseLibrary()}>
+      <button
+        class="cursor-pointer rounded-lg bg-accent px-[18px] py-2 font-semibold text-white hover:brightness-110"
+        onClick={() => void chooseLibrary()}
+      >
         Choose library folder…
       </button>
     </div>
