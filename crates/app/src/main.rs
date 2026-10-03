@@ -40,7 +40,12 @@ fn main() {
             let path = request.uri().path().to_owned();
             tauri::async_runtime::spawn_blocking(move || responder.respond(covers::respond(&app, &path)));
         })
-        .invoke_handler(tauri::generate_handler![commands::open_library, commands::list_books, commands::book_details])
+        .invoke_handler(tauri::generate_handler![
+            commands::open_library,
+            commands::list_books,
+            commands::book_details,
+            commands::open_book
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Magnitide");
 }
