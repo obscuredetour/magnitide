@@ -149,6 +149,70 @@ pub async fn book_details(state: State<'_, AppState>, id: i64) -> CmdResult<Book
     })
 }
 
+/// Formats most likely to have a default reader app, best first. KEPUB is
+/// near the end because only Kobo devices and apps understand the extension.
+const OPEN_PREFERENCE: &[&str] =
+    &["EPUB", "PDF", "AZW3", "MOBI", "AZW", "CBZ", "CBR", "FB2", "DOCX", "RTF", "TXT", "HTML", "KEPUB"];
+
+/// `available` reordered by `OPEN_PREFERENCE`; unknown formats go last.
+fn by_preference<'a>(available: &[&'a str]) -> Vec<&'a str> {
+    let rank = |f: &str| OPEN_PREFERENCE.iter().position(|p| p.eq_ignore_ascii_case(f)).unwrap_or(usize::MAX);
+    let mut v = available.to_vec();
+    v.sort_by_key(|f| rank(f));
+    v
+}
+
+/// Open a book's file in the system's default app for that format.
+///
+/// With `format`, only that file is tried. Otherwise each present format is
+/// tried in preference order until one has an app to open it (on macOS, for
+/// example, Books opens EPUB but nothing opens MOBI by default). Returns the
+/// format that was opened.
+#[tauri::command]
+pub async fn open_book(state: State<'_, AppState>, id: i64, format: Option<String>) -> CmdResult<String> {
+    let lib = state.current().ok_or("No library is open")?;
+    let b = lib.snap.get(id).ok_or_else(|| format!("No book with id {id}"))?;
+    // Only paths derived from the database are opened; the UI just names a book and format.
+    let present: Vec<_> = b.formats.iter().filter(|f| b.format_path(&lib.root, f).is_file()).collect();
+    let names: Vec<&str> = present.iter().map(|f| f.format.as_str()).collect();
+    let candidates = match &format {
+        Some(want) => names.iter().copied().filter(|n| n.eq_ignore_ascii_case(want)).collect(),
+        None => by_preference(&names),
+    };
+    if candidates.is_empty() {
+        return Err(match &format {
+            Some(want) => format!("“{}” has no {want} file in the library folder.", b.title),
+            None => format!("“{}” has no book files in the library folder.", b.title),
+        });
+    }
+
+    let attempts: Vec<(String, PathBuf)> = candidates
+        .iter()
+        .map(|fmt| {
+            let f = present.iter().find(|f| f.format == *fmt).expect("candidates come from present formats");
+            ((*fmt).to_owned(), b.format_path(&lib.root, f))
+        })
+        .collect();
+    let tried = candidates.join(", ");
+
+    // `open::that` waits for the launcher (`open`, `xdg-open`, `start`) to report
+    // success, unlike the detached variant, so a format with no app falls
+    // through to the next one instead of failing silently.
+    let opened = tauri::async_runtime::spawn_blocking(move || {
+        attempts.into_iter().find_map(|(fmt, path)| open::that(&path).is_ok().then_some(fmt))
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    if let Some(fmt) = opened {
+        return Ok(fmt);
+    }
+    Err(if candidates.len() == 1 {
+        format!("No app on this computer opens {tried} files.")
+    } else {
+        format!("No app on this computer opens this book’s formats ({tried}).")
+    })
+}
+
 /// Comments are HTML from arbitrary sources (metadata downloads, publishers).
 /// Anything that could run script or load remote content is stripped.
 fn sanitize(html: &str) -> String {
@@ -162,6 +226,13 @@ fn fmt_index(i: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn orders_formats_by_readability() {
+        assert_eq!(by_preference(&["KEPUB", "MOBI", "EPUB"]), ["EPUB", "MOBI", "KEPUB"]);
+        assert_eq!(by_preference(&["ODT", "KEPUB"]), ["KEPUB", "ODT"]);
+        assert!(by_preference(&[]).is_empty());
+    }
 
     #[test]
     fn sanitizes_comments() {

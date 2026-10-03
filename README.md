@@ -20,7 +20,8 @@ Click the library name in the top-left to open a different one. The library
 is only ever read; cover thumbnails are cached in the app's cache folder
 (`~/Library/Caches/dev.magnitide.app` on macOS).
 
-Keys: `/` or ⌘F search · arrows move · Enter opens details · Esc closes.
+Keys: `/` or ⌘F search · arrows move · Enter opens details · double-click or ⌘O opens the book in its default app · Esc closes.
+In the details panel, click a format to open that specific file.
 Search accepts `author:`, `tag:`, `series:`, `title:`, `#custom:`, quotes and `-` to exclude.
 
 ```bash

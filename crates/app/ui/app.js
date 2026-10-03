@@ -9,6 +9,7 @@ const els = {
   libraryButton: $('library-button'), libraryName: $('library-name'), libraryCount: $('library-count'),
   details: $('details'), detailsBody: $('details-body'), detailsClose: $('details-close'),
   empty: $('empty'), emptyMessage: $('empty-message'), chooseLibrary: $('choose-library'),
+  toast: $('toast'),
 };
 
 const isMac = /Mac/.test(navigator.userAgent);
@@ -231,6 +232,25 @@ async function chooseLibrary() {
   if (path) await openLibrary(path);
 }
 
+// ---------- Opening books ----------
+let toastTimer;
+function toast(message, { error = false } = {}) {
+  clearTimeout(toastTimer);
+  els.toast.textContent = message;
+  els.toast.classList.toggle('error', error);
+  els.toast.hidden = false;
+  toastTimer = setTimeout(() => { els.toast.hidden = true; }, error ? 6000 : 1800);
+}
+
+async function openBook(id, format = null) {
+  try {
+    const opened = await invoke('open_book', { id, format });
+    toast(`Opening ${opened}…`);
+  } catch (err) {
+    toast(String(err), { error: true });
+  }
+}
+
 // ---------- Selection & details ----------
 function select(id, { open = true, reveal = false } = {}) {
   state.live.get(state.selectedId)?.classList.remove('selected');
@@ -346,10 +366,11 @@ function renderDetails(b) {
 
   if (b.formats.length) {
     frag.append(h('div', { class: 'section-label' }, 'Formats'));
-    frag.append(h('div', { class: 'chips' }, ...b.formats.map((f) => h('span', {
-      class: `chip static${f.present ? '' : ' missing'}`,
-      title: f.present ? '' : 'File missing from the library folder',
-    }, `${f.format} · ${formatSize(f.size)}`))));
+    frag.append(h('div', { class: 'chips' }, ...b.formats.map((f) => (f.present
+      ? h('button', { class: 'chip', title: `Open the ${f.format} in its default app`, onclick: () => openBook(b.id, f.format) },
+        `${f.format} · ${formatSize(f.size)}`)
+      : h('span', { class: 'chip static missing', title: 'File missing from the library folder' },
+        `${f.format} · ${formatSize(f.size)}`)))));
   }
 
   if (b.commentsHtml) {
@@ -367,6 +388,11 @@ function renderDetails(b) {
 els.grid.addEventListener('click', (e) => {
   const tile = e.target.closest('.tile');
   if (tile) select(Number(tile.dataset.id));
+});
+
+els.grid.addEventListener('dblclick', (e) => {
+  const tile = e.target.closest('.tile');
+  if (tile) openBook(Number(tile.dataset.id));
 });
 
 els.detailsClose.addEventListener('click', closeDetails);
@@ -410,6 +436,11 @@ document.addEventListener('keydown', (e) => {
   }
   if (inField) return;
   if (e.key === 'Escape') { closeDetails(); return; }
+  if (e.key === 'o' && (e.metaKey || e.ctrlKey) && state.selectedId != null) {
+    e.preventDefault();
+    openBook(state.selectedId);
+    return;
+  }
 
   const moves = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -state.cols, ArrowDown: state.cols };
   if (e.key in moves && state.items.length) {
