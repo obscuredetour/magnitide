@@ -3,8 +3,9 @@ import { createSignal, For, Match, onMount, Show, Switch } from 'solid-js';
 import { dismissImport, importState } from '../importer';
 import { library, openLibrary } from '../library';
 
-const primary = 'cursor-pointer rounded-lg bg-accent px-4 py-1.5 font-semibold text-on-accent hover:brightness-110';
-const secondary = 'cursor-pointer rounded-lg border border-line bg-element px-4 py-1.5 font-medium hover:bg-hover';
+const primary =
+  'cursor-pointer rounded-control bg-accent px-4 py-1.5 font-semibold text-on-accent hover:brightness-110';
+const secondary = 'cursor-pointer rounded-control border border-line bg-element px-4 py-1.5 font-medium hover:bg-hover';
 
 function formatBytes(n: number): string {
   if (n >= 1e9) return `${(n / 1e9).toFixed(1)} GB`;
@@ -34,7 +35,7 @@ export function ImportDialog() {
     <dialog
       ref={dialog}
       aria-label="Import calibre library"
-      class="m-auto w-[min(520px,calc(100vw-48px))] animate-menu-in rounded-2xl border border-line bg-popover p-6 text-fg shadow-lift"
+      class="m-auto w-[min(520px,calc(100vw-48px))] animate-menu-in rounded-dialog border border-line bg-popover p-6 text-fg shadow-lift"
       onCancel={(e) => {
         e.preventDefault();
         dismissImport(); // ignored while running
@@ -63,14 +64,14 @@ export function ImportDialog() {
                   <span>{pct()}%</span>
                 </div>
                 <div
-                  class="h-2 overflow-hidden rounded-full bg-element"
+                  class="h-2 overflow-hidden rounded-chip bg-element"
                   role="progressbar"
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-valuenow={pct()}
                 >
                   <div
-                    class="h-full rounded-full bg-accent transition-[width] duration-150"
+                    class="h-full rounded-chip bg-accent transition-[width] duration-150"
                     style={{ width: `${pct()}%` }}
                   />
                 </div>
@@ -112,7 +113,7 @@ export function ImportDialog() {
                     {showDetails() ? 'Hide' : 'Show'} {problems().length} {problems().length === 1 ? 'note' : 'notes'}
                   </button>
                   <Show when={showDetails()}>
-                    <ul class="mb-4 max-h-40 space-y-1 overflow-y-auto rounded-lg bg-bg p-3 text-xs text-muted select-text">
+                    <ul class="mb-4 max-h-40 space-y-1 overflow-y-auto rounded-card bg-bg p-3 text-xs text-muted select-text">
                       <For each={problems()}>{(p) => <li>{p}</li>}</For>
                     </ul>
                   </Show>

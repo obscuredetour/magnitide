@@ -67,6 +67,12 @@
   --color-star: var(--star);
   --color-inverse: var(--inverse);
   --color-on-inverse: var(--on-inverse);
+  --radius-inset: var(--inset-radius);
+  --radius-control: var(--control-radius);
+  --radius-card: var(--card-radius);
+  --radius-menu: var(--menu-radius);
+  --radius-dialog: var(--dialog-radius);
+  --radius-chip: var(--chip-radius);
   --shadow-card: var(--card-shadow);
   --shadow-lift: var(--lift-shadow);
 }

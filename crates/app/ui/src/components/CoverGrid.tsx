@@ -183,7 +183,7 @@ export function CoverGrid(props: Props) {
                 </Show>
                 <Show when={item.seriesIndex}>
                   {(n) => (
-                    <span class="absolute right-1.5 bottom-1.5 rounded-full bg-black/60 px-[7px] py-px text-[11px] font-semibold text-white tabular-nums backdrop-blur-sm">
+                    <span class="absolute right-1.5 bottom-1.5 rounded-chip bg-black/60 px-[7px] py-px text-[11px] font-semibold text-white tabular-nums backdrop-blur-sm">
                       #{n()}
                     </span>
                   )}

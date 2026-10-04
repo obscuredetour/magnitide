@@ -17,9 +17,9 @@ import { Icon } from './Icon';
 const MenuContext = createContext<{ close(): void }>();
 
 const ITEMS = '[role^="menuitem"]:not([disabled])';
-const PANEL = 'z-30 min-w-56 animate-menu-in rounded-xl border border-line bg-popover p-1.5 text-fg shadow-lift';
+const PANEL = 'z-30 min-w-56 animate-menu-in rounded-menu border border-line bg-popover p-1.5 text-fg shadow-lift';
 const ITEM_BASE =
-  'flex w-full cursor-default items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left outline-none disabled:opacity-45 disabled:hover:bg-transparent';
+  'flex w-full cursor-default items-center gap-2.5 rounded-control px-2.5 py-1.5 text-left outline-none disabled:opacity-45 disabled:hover:bg-transparent';
 const ITEM = `${ITEM_BASE} hover:bg-highlight focus:bg-highlight`;
 const DANGER_ITEM = `${ITEM_BASE} text-danger hover:bg-danger/15 focus:bg-danger/15`;
 

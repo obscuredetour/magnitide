@@ -44,7 +44,7 @@ const SECTIONS: { id: Section; label: string }[] = [
 ];
 
 const button =
-  'cursor-pointer rounded-md border border-line bg-element px-3 py-1 text-xs font-medium hover:bg-hover disabled:cursor-default disabled:opacity-50';
+  'cursor-pointer rounded-control border border-line bg-element px-3 py-1 text-xs font-medium hover:bg-hover disabled:cursor-default disabled:opacity-50';
 
 /** The settings window (⌘,). Mount it to open; `onClose` unmounts it. */
 export function SettingsDialog(props: { onClose(): void }) {
@@ -57,7 +57,7 @@ export function SettingsDialog(props: { onClose(): void }) {
     <dialog
       ref={dialog}
       aria-label="Settings"
-      class="m-auto h-[min(560px,calc(100vh-80px))] w-[min(760px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-2xl border border-line bg-popover p-0 text-fg shadow-lift"
+      class="m-auto h-[min(560px,calc(100vh-80px))] w-[min(760px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-dialog border border-line bg-popover p-0 text-fg shadow-lift"
       onCancel={(e) => {
         // Esc: let Solid unmount the dialog instead of the browser closing it.
         e.preventDefault();
@@ -75,7 +75,7 @@ export function SettingsDialog(props: { onClose(): void }) {
           <For each={SECTIONS}>
             {(s) => (
               <button
-                class="rounded-md px-2.5 py-1.5 text-left hover:bg-hover aria-[current=page]:bg-highlight aria-[current=page]:text-accent"
+                class="rounded-control px-2.5 py-1.5 text-left hover:bg-hover aria-[current=page]:bg-highlight aria-[current=page]:text-accent"
                 aria-current={section() === s.id ? 'page' : undefined}
                 onClick={() => setSection(s.id)}
               >
@@ -161,7 +161,7 @@ function ThemeCard(props: ParentProps<{ selected: boolean; label: string; onSele
       aria-checked={props.selected}
       onClick={() => props.onSelect()}
     >
-      <div class="h-[68px] w-full overflow-hidden rounded-lg border border-line group-aria-checked:outline-2 group-aria-checked:outline-offset-2 group-aria-checked:outline-accent">
+      <div class="h-[68px] w-full overflow-hidden rounded-card border border-line group-aria-checked:outline-2 group-aria-checked:outline-offset-2 group-aria-checked:outline-accent">
         {props.children}
       </div>
       <span class="text-xs group-aria-checked:font-semibold">{props.label}</span>
@@ -249,7 +249,7 @@ function Appearance() {
       <ThemeAddonsSection />
 
       <Row label="View" description="Also ⌘1 and ⌘2.">
-        <div class="flex rounded-lg bg-element p-0.5" role="group" aria-label="View">
+        <div class="flex rounded-control bg-element p-0.5" role="group" aria-label="View">
           <For
             each={
               [
@@ -260,7 +260,7 @@ function Appearance() {
           >
             {([mode, label]) => (
               <button
-                class="rounded-md px-3 py-1 text-xs font-medium text-muted aria-pressed:bg-popover aria-pressed:text-fg aria-pressed:shadow-card"
+                class="rounded-inset px-3 py-1 text-xs font-medium text-muted aria-pressed:bg-popover aria-pressed:text-fg aria-pressed:shadow-card"
                 aria-pressed={viewMode() === mode}
                 onClick={() => setViewMode(mode)}
               >
@@ -455,7 +455,7 @@ function LibraryName() {
     <Row label="Name" description="Shown in the library menu and recent libraries. The folder keeps its name.">
       <input
         type="text"
-        class="h-7 w-48 rounded-md border border-line bg-field px-2 outline-none select-text focus:border-focus focus:ring-3 focus:ring-focus/20"
+        class="h-7 w-48 rounded-control border border-line bg-field px-2 outline-none select-text focus:border-focus focus:ring-3 focus:ring-focus/20"
         aria-label="Library name"
         value={draft()}
         onInput={(e) => setDraft(e.currentTarget.value)}
@@ -516,7 +516,7 @@ function TidyNames() {
         </button>
       </Row>
       <Show when={missing().length}>
-        <div class="mb-2 rounded-lg bg-bg p-3 text-xs">
+        <div class="mb-2 rounded-card bg-bg p-3 text-xs">
           <div class="mb-1 font-medium text-danger">Missing from disk</div>
           <ul class="max-h-32 space-y-0.5 overflow-y-auto text-muted select-text">
             <For each={missing()}>{(m) => <li class="break-all">{m}</li>}</For>
@@ -578,7 +578,7 @@ function WriteBack() {
         </Show>
       </Row>
       <Show when={confirming()}>
-        <p class="mb-2 rounded-lg bg-bg p-3 text-xs text-muted">
+        <p class="mb-2 rounded-card bg-bg p-3 text-xs text-muted">
           Files are rewritten in place. Apps that track reading progress by a file’s fingerprint (KOReader sync, for
           one) may treat a rewritten book as new.
         </p>
@@ -658,7 +658,7 @@ function SourceSettings() {
                   spellcheck={false}
                   aria-label={`${s.name} API key`}
                   placeholder={s.hasKey ? 'Key saved · enter a new one to replace it' : 'API key'}
-                  class="h-7 min-w-0 flex-1 rounded-md border border-line bg-field px-2 text-xs outline-none focus:border-focus"
+                  class="h-7 min-w-0 flex-1 rounded-control border border-line bg-field px-2 text-xs outline-none focus:border-focus"
                   value={keyDraft()}
                   onInput={(e) => setKeyDraft(e.currentTarget.value)}
                   onKeyDown={(e) => e.key === 'Enter' && keyDraft().trim() && void update(s, s.enabled, keyDraft())}
@@ -702,7 +702,7 @@ function DeviceSettings() {
             description={`Reads ${DEVICE_FORMATS[kind].slice(0, 4).join(', ')}${kind === 'kindle' ? ' (not EPUB over USB)' : ''}…`}
           >
             <select
-              class="h-7 rounded-md border border-line bg-field px-2 text-xs"
+              class="h-7 rounded-control border border-line bg-field px-2 text-xs"
               aria-label={`Format to send to ${DEVICE_KIND_NAMES[kind]}`}
               value={preferredFormat(kind) ?? ''}
               onChange={(e) => setPreferredFormat(kind, e.currentTarget.value || null)}

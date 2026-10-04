@@ -31,7 +31,7 @@ export function DeviceMenu() {
         label="Devices"
         title={`${label()}: ${onCount().toLocaleString()} books from this library`}
         class="min-w-0 flex-none"
-        buttonClass="flex min-w-0 items-center gap-1.5 rounded-[7px] px-2 py-[5px] text-sm hover:bg-hover aria-expanded:bg-hover"
+        buttonClass="flex min-w-0 items-center gap-1.5 rounded-control px-2 py-[5px] text-sm hover:bg-hover aria-expanded:bg-hover"
         panelClass="w-80"
         button={
           <>
@@ -43,7 +43,7 @@ export function DeviceMenu() {
               {onCount().toLocaleString()}
             </span>
             <Show when={deviceFilter() !== 'all'}>
-              <span class="rounded-full bg-accent/15 px-1.5 text-[11px] font-medium text-accent max-[1080px]:hidden">
+              <span class="rounded-chip bg-accent/15 px-1.5 text-[11px] font-medium text-accent max-[1080px]:hidden">
                 filtered
               </span>
             </Show>
