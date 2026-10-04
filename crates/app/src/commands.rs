@@ -113,6 +113,55 @@ pub async fn add_books(
     .await
 }
 
+/// How many books "Tidy file names" would rename.
+#[tauri::command]
+pub async fn tidy_preview(state: State<'_, AppState>) -> CmdResult<magnitide_core::tidy::TidyPreview> {
+    let native = native(&state)?;
+    tauri::async_runtime::spawn_blocking(move || native.lock().unwrap_or_else(|e| e.into_inner()).tidy_preview())
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+/// Rename books whose folder or file names don't match their metadata.
+#[tauri::command]
+pub async fn tidy_file_names(state: State<'_, AppState>) -> CmdResult<magnitide_core::tidy::TidyReport> {
+    write_library(&state, |lib| lib.tidy_file_names(|_, _| {})).await
+}
+
+/// Names already used in the library, for autocomplete in the edit form.
+#[derive(Serialize, TS)]
+#[ts(export)]
+pub struct NameLists {
+    authors: Vec<String>,
+    tags: Vec<String>,
+    series: Vec<String>,
+    publishers: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn name_lists(state: State<'_, AppState>) -> CmdResult<NameLists> {
+    let lib = state.current().ok_or("No library is open")?;
+    let sorted = |names: std::collections::BTreeMap<String, String>| names.into_values().collect::<Vec<_>>();
+    // Keyed case-insensitively, keeping the first spelling seen.
+    let (mut authors, mut tags, mut series, mut publishers) = Default::default();
+    let add = |map: &mut std::collections::BTreeMap<String, String>, name: &str| {
+        map.entry(name.to_lowercase()).or_insert_with(|| name.to_owned());
+    };
+    for b in &lib.catalog.books {
+        b.authors.iter().for_each(|a| add(&mut authors, a));
+        b.tags.iter().for_each(|t| add(&mut tags, t));
+        b.series.iter().for_each(|s| add(&mut series, s));
+        b.publisher.iter().for_each(|p| add(&mut publishers, p));
+    }
+    Ok(NameLists {
+        authors: sorted(authors),
+        tags: sorted(tags),
+        series: sorted(series),
+        publishers: sorted(publishers),
+    })
+}
+
 /// A book's editable fields, for the edit form.
 #[tauri::command]
 pub async fn book_edit(state: State<'_, AppState>, id: i64) -> CmdResult<magnitide_core::BookEdit> {

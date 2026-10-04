@@ -11,7 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use chrono::NaiveDate;
-use rusqlite::{Transaction, params};
+use rusqlite::{Connection, Transaction, params};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
@@ -87,66 +87,10 @@ impl Library {
                 e => e.into(),
             })?;
 
+        debug_assert!(!old_path.is_empty());
         write_metadata(&tx, id, &clean)?;
-
         // Folder and file names follow the (new) title and first author.
-        let new_path = paths::book_dir(&clean.authors[0], &clean.title, id);
-        let file_rows: Vec<(String, String)> = {
-            let mut stmt = tx.prepare("SELECT format, filename FROM files WHERE book_id = ?")?;
-            stmt.query_map([id], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?
-        };
-        let old_dir = dir_for(&root, &old_path);
-        let new_dir = dir_for(&root, &new_path);
-
-        let mut plan = Vec::new();
-        for (format, filename) in &file_rows {
-            let wanted = paths::book_file(&clean.title, &clean.authors[0], format);
-            if *filename != wanted {
-                plan.push((old_dir.join(filename), old_dir.join(&wanted)));
-                tx.execute(
-                    "UPDATE files SET filename = ? WHERE book_id = ? AND format = ?",
-                    params![wanted, id, format],
-                )?;
-            }
-        }
-        let renamed_files = plan.len();
-        let moved = old_path != new_path;
-        if moved {
-            tx.execute("UPDATE books SET path = ? WHERE id = ?", params![new_path, id])?;
-        }
-
-        // Only touch the disk if the book's folder is there (files may be missing).
-        let mut done = Renames::default();
-        if old_dir.is_dir() {
-            let disk = (|| -> Result<()> {
-                for (from, to) in &plan {
-                    if from.exists() {
-                        done.rename(from, to)?;
-                    }
-                }
-                if moved {
-                    if let Some(parent) = new_dir.parent() {
-                        fs::create_dir_all(parent)?;
-                    }
-                    done.rename(&old_dir, &new_dir)?;
-                }
-                Ok(())
-            })();
-            if let Err(e) = disk {
-                done.undo();
-                return Err(e);
-            }
-        }
-
-        if let Err(e) = tx.commit() {
-            done.undo();
-            return Err(e.into());
-        }
-        // Tidy an author folder the book has left, if it's now empty.
-        if moved && let Some(old_parent) = old_dir.parent().filter(|p| *p != root) {
-            let _ = fs::remove_dir(old_parent);
-        }
-        Ok(EditOutcome { moved, renamed_files })
+        sync_names(&tx, &root, id, &clean.title, &clean.authors[0])?.commit(tx, &root)
     }
 
     /// Replace a book's cover with an image (any common format; stored as JPEG).
@@ -307,6 +251,116 @@ fn write_metadata(tx: &Transaction<'_>, id: BookId, c: &Clean) -> Result<()> {
          DELETE FROM publishers WHERE id NOT IN (SELECT publisher_id FROM books WHERE publisher_id IS NOT NULL);",
     )?;
     Ok(())
+}
+
+/// Book `id`'s folder and file names after [`sync_names`]: renamed in `tx` and
+/// on disk, waiting for the caller to commit (or drop, which rolls back the
+/// transaction; the renames are undone too, see [`Synced::commit`]).
+pub(crate) struct Synced {
+    renames: Renames,
+    outcome: EditOutcome,
+    /// The folder the book moved out of, to remove if now empty.
+    left: Option<PathBuf>,
+    /// Files the database lists that aren't on disk.
+    pub missing: Vec<String>,
+}
+
+impl Synced {
+    /// Commit `tx`. If that fails, put the renamed files back.
+    pub(crate) fn commit(self, tx: Transaction<'_>, root: &Path) -> Result<EditOutcome> {
+        if let Err(e) = tx.commit() {
+            self.renames.undo();
+            return Err(e.into());
+        }
+        if let Some(old_parent) = self.left.as_deref().and_then(Path::parent).filter(|p| *p != root) {
+            let _ = fs::remove_dir(old_parent); // only succeeds if now empty
+        }
+        Ok(self.outcome)
+    }
+}
+
+/// A book file's name now, and the name its metadata calls for.
+pub(crate) struct FileName {
+    pub format: String,
+    pub current: String,
+    pub wanted: String,
+}
+
+/// The folder (relative path) and file names book `id` should have for
+/// `title` and `first_author`.
+pub(crate) fn expected_names(
+    tx: &Connection,
+    id: BookId,
+    title: &str,
+    first_author: &str,
+) -> Result<(String, Vec<FileName>)> {
+    let mut stmt = tx.prepare_cached("SELECT format, filename FROM files WHERE book_id = ?")?;
+    let files = stmt
+        .query_map([id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+        .map(|row| {
+            row.map(|(format, current)| {
+                let wanted = paths::book_file(title, first_author, &format);
+                FileName { format, current, wanted }
+            })
+        })
+        .collect::<rusqlite::Result<_>>()?;
+    Ok((paths::book_dir(first_author, title, id), files))
+}
+
+/// Rename book `id`'s folder and files to match `title` and `first_author`,
+/// in `tx` and on disk. Disk renames are undone if any of them fails.
+pub(crate) fn sync_names(
+    tx: &Transaction<'_>,
+    root: &Path,
+    id: BookId,
+    title: &str,
+    first_author: &str,
+) -> Result<Synced> {
+    let old_path: String = tx.query_row("SELECT path FROM books WHERE id = ?", [id], |r| r.get(0))?;
+    let (new_path, files) = expected_names(tx, id, title, first_author)?;
+    let old_dir = dir_for(root, &old_path);
+    let new_dir = dir_for(root, &new_path);
+
+    let mut plan = Vec::new();
+    let mut missing = Vec::new();
+    for FileName { format, current, wanted } in &files {
+        if !old_dir.join(current).is_file() {
+            missing.push(format!("{old_path}/{current}"));
+        }
+        if current != wanted {
+            plan.push((old_dir.join(current), old_dir.join(wanted)));
+            tx.execute("UPDATE files SET filename = ? WHERE book_id = ? AND format = ?", params![wanted, id, format])?;
+        }
+    }
+    let moved = old_path != new_path;
+    if moved {
+        tx.execute("UPDATE books SET path = ? WHERE id = ?", params![new_path, id])?;
+    }
+    let outcome = EditOutcome { moved, renamed_files: plan.len() };
+
+    // Only touch the disk if the book's folder is there (files may be missing).
+    let mut renames = Renames::default();
+    if old_dir.is_dir() {
+        let disk = (|| -> Result<()> {
+            for (from, to) in &plan {
+                if from.exists() {
+                    renames.rename(from, to)?;
+                }
+            }
+            if moved {
+                if let Some(parent) = new_dir.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                renames.rename(&old_dir, &new_dir)?;
+            }
+            Ok(())
+        })();
+        if let Err(e) = disk {
+            renames.undo();
+            return Err(e);
+        }
+    }
+    Ok(Synced { renames, outcome, left: moved.then_some(old_dir), missing })
 }
 
 fn dir_for(root: &Path, rel: &str) -> PathBuf {

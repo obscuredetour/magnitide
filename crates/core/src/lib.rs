@@ -15,6 +15,7 @@ pub mod lock;
 pub mod metadata;
 pub mod names;
 pub mod paths;
+pub mod tidy;
 
 pub use edit::{BookEdit, EditOutcome};
 pub use error::{Error, Result};

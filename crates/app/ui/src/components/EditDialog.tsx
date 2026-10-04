@@ -1,7 +1,8 @@
-import { createSignal, For, type JSX, onMount, type ParentProps, Show } from 'solid-js';
+import { createResource, createSignal, For, type JSX, onMount, type ParentProps, Show } from 'solid-js';
 import { createStore, unwrap } from 'solid-js/store';
 
-import type { BookEdit } from '../api';
+import { api, type BookEdit } from '../api';
+import { Autocomplete } from './Autocomplete';
 import { changeCover, closeEditor, type Editing, saveEdit } from '../editor';
 import { items } from '../library';
 import { Cover } from './Cover';
@@ -56,6 +57,8 @@ export function EditDialog(props: { editing: Editing }) {
   const [saving, setSaving] = createSignal(false);
 
   const row = () => items().find((b) => b.id === id);
+  // Existing names for autocomplete; the form works without them.
+  const [names] = createResource(() => api.nameLists().catch(() => null));
 
   onMount(() => {
     description.innerHTML = form.descriptionHtml ?? '';
@@ -155,13 +158,20 @@ export function EditDialog(props: { editing: Editing }) {
               />
             </Field>
             <Field label="Authors" hint="Separate several with “&”, in order.">
-              <input class={input} value={authors()} onInput={(e) => setAuthors(e.currentTarget.value)} />
+              <Autocomplete
+                class={input}
+                separator="&"
+                options={names()?.authors ?? []}
+                value={authors()}
+                onInput={setAuthors}
+              />
             </Field>
             <Field label="Series">
-              <input
+              <Autocomplete
                 class={input}
+                options={names()?.series ?? []}
                 value={form.series ?? ''}
-                onInput={(e) => setForm('series', e.currentTarget.value || null)}
+                onInput={(v) => setForm('series', v || null)}
               />
             </Field>
             <Field label="Number in series">
@@ -176,10 +186,11 @@ export function EditDialog(props: { editing: Editing }) {
               />
             </Field>
             <Field label="Publisher">
-              <input
+              <Autocomplete
                 class={input}
+                options={names()?.publishers ?? []}
                 value={form.publisher ?? ''}
-                onInput={(e) => setForm('publisher', e.currentTarget.value || null)}
+                onInput={(v) => setForm('publisher', v || null)}
               />
             </Field>
             <Field label="Published">
@@ -224,7 +235,13 @@ export function EditDialog(props: { editing: Editing }) {
             </Field>
             <div class="col-span-2">
               <Field label="Tags" hint="Comma-separated.">
-                <input class={input} value={tags()} onInput={(e) => setTags(e.currentTarget.value)} />
+                <Autocomplete
+                  class={input}
+                  separator=","
+                  options={names()?.tags ?? []}
+                  value={tags()}
+                  onInput={setTags}
+                />
               </Field>
             </div>
             <div class="col-span-2">

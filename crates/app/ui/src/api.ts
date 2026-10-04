@@ -14,6 +14,9 @@ import type { BookRow } from './bindings/BookRow';
 import type { BookEdit } from './bindings/BookEdit';
 import type { CacheInfo } from './bindings/CacheInfo';
 import type { EditOutcome } from './bindings/EditOutcome';
+import type { NameLists } from './bindings/NameLists';
+import type { TidyPreview } from './bindings/TidyPreview';
+import type { TidyReport } from './bindings/TidyReport';
 import type { ImportProgress } from './bindings/ImportProgress';
 import type { ImportReport } from './bindings/ImportReport';
 import type { LibraryKind } from './bindings/LibraryKind';
@@ -32,8 +35,11 @@ export type {
   ImportReport,
   LibraryInfo,
   LibraryKind,
+  NameLists,
   SortDir,
   SortKey,
+  TidyPreview,
+  TidyReport,
 };
 export type { FormatInfo } from './bindings/FormatInfo';
 
@@ -95,6 +101,15 @@ export const api = {
   setCoverFromFile: (id: number, path: string) => invoke<void>('set_cover_from_file', { id, path }),
 
   removeCover: (id: number) => invoke<void>('remove_cover', { id }),
+
+  /** How many books "Tidy file names" would rename (changes nothing). */
+  tidyPreview: () => invoke<TidyPreview>('tidy_preview'),
+
+  /** Rename books whose folder or file names don't match their metadata. */
+  tidyFileNames: () => invoke<TidyReport>('tidy_file_names'),
+
+  /** Names already in the library (authors, tags, series, publishers), for autocomplete. */
+  nameLists: () => invoke<NameLists>('name_lists'),
 
   /** Pick an image for a cover; null when cancelled. */
   async chooseImageFile(): Promise<string | null> {
