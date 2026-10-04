@@ -3,8 +3,8 @@ import { createSignal, For, Match, onMount, Show, Switch } from 'solid-js';
 import { dismissImport, importState } from '../importer';
 import { library, openLibrary } from '../library';
 
-const primary = 'cursor-pointer rounded-lg bg-accent px-4 py-1.5 font-semibold text-white hover:brightness-110';
-const secondary = 'cursor-pointer rounded-lg border border-line bg-surface-2 px-4 py-1.5 font-medium hover:bg-line';
+const primary = 'cursor-pointer rounded-lg bg-accent px-4 py-1.5 font-semibold text-on-accent hover:brightness-110';
+const secondary = 'cursor-pointer rounded-lg border border-line bg-element px-4 py-1.5 font-medium hover:bg-hover';
 
 function formatBytes(n: number): string {
   if (n >= 1e9) return `${(n / 1e9).toFixed(1)} GB`;
@@ -34,7 +34,7 @@ export function ImportDialog() {
     <dialog
       ref={dialog}
       aria-label="Import calibre library"
-      class="m-auto w-[min(520px,calc(100vw-48px))] animate-menu-in rounded-2xl border border-line bg-surface p-6 text-fg shadow-lift"
+      class="m-auto w-[min(520px,calc(100vw-48px))] animate-menu-in rounded-2xl border border-line bg-popover p-6 text-fg shadow-lift"
       onCancel={(e) => {
         e.preventDefault();
         dismissImport(); // ignored while running
@@ -63,7 +63,7 @@ export function ImportDialog() {
                   <span>{pct()}%</span>
                 </div>
                 <div
-                  class="h-2 overflow-hidden rounded-full bg-surface-2"
+                  class="h-2 overflow-hidden rounded-full bg-element"
                   role="progressbar"
                   aria-valuemin={0}
                   aria-valuemax={100}
@@ -106,7 +106,7 @@ export function ImportDialog() {
                 </ul>
                 <Show when={problems().length}>
                   <button
-                    class="mb-2 cursor-pointer text-xs text-accent hover:underline"
+                    class="mb-2 cursor-pointer text-xs text-link hover:underline"
                     onClick={() => setShowDetails(!showDetails())}
                   >
                     {showDetails() ? 'Hide' : 'Show'} {problems().length} {problems().length === 1 ? 'note' : 'notes'}

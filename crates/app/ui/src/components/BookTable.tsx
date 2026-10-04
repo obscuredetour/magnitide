@@ -72,7 +72,7 @@ const columns: ColumnDef<typeof features, BookRow, any>[] = [
       const b = info.row.original;
       return (
         <span class="flex min-w-0 items-center gap-2.5">
-          <span class="relative h-[30px] w-5 flex-none overflow-hidden rounded-[3px] bg-surface-2 shadow-card">
+          <span class="relative h-[30px] w-5 flex-none overflow-hidden rounded-[3px] bg-element shadow-card">
             <Cover id={b.id} title={b.title} authors={b.authors} hasCover={b.hasCover} size="thumb" compact />
           </span>
           <span class="truncate font-medium">{b.title}</span>
@@ -142,7 +142,7 @@ const columns: ColumnDef<typeof features, BookRow, any>[] = [
     cell: (info) => (
       <span class="flex gap-1">
         <For each={info.getValue()}>
-          {(f) => <span class="rounded bg-surface-2 px-1.5 text-[11px] font-medium text-muted">{f}</span>}
+          {(f) => <span class="rounded bg-element px-1.5 text-[11px] font-medium text-muted">{f}</span>}
         </For>
       </span>
     ),
@@ -294,9 +294,9 @@ export function BookTable(props: Props) {
                   <div
                     role="row"
                     aria-rowindex={v.index + 2}
-                    class="absolute top-0 left-0 flex w-full cursor-default items-center border-b border-line/50 hover:bg-line data-selected:bg-accent/20"
+                    class="absolute top-0 left-0 flex w-full cursor-default items-center border-b border-line/50 hover:bg-hover data-selected:bg-selection"
                     // TODO(Jamie): stripe colour is inconsistent across themes (see README roadmap).
-                    classList={{ 'bg-surface-2/40': zebraRows() && v.index % 2 === 1 }}
+                    classList={{ 'bg-stripe': zebraRows() && v.index % 2 === 1 }}
                     data-selected={props.selectedIds.has(r().original.id) || undefined}
                     data-book-id={r().original.id}
                     style={{ height: `${ROW_H}px`, transform: `translateY(${v.start}px)` }}
@@ -375,7 +375,7 @@ function ColumnPicker(props: { table: ReturnType<typeof createTable<typeof featu
       label="Columns"
       iconOnly
       align="end"
-      buttonClass="grid size-6 place-items-center rounded-md hover:bg-line aria-expanded:bg-line"
+      buttonClass="grid size-6 place-items-center rounded-md hover:bg-hover aria-expanded:bg-hover"
       button={
         <svg class="size-3.5 fill-muted" viewBox="0 0 16 16" aria-hidden="true">
           <circle cx="3" cy="8" r="1.5" />

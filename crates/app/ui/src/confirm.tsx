@@ -40,7 +40,7 @@ function ConfirmDialog(props: { request: Request }) {
     <dialog
       ref={dialog}
       aria-label={props.request.title}
-      class="m-auto w-[min(440px,calc(100vw-48px))] animate-menu-in rounded-2xl border border-line bg-surface p-0 text-fg shadow-lift"
+      class="m-auto w-[min(440px,calc(100vw-48px))] animate-menu-in rounded-2xl border border-line bg-popover p-0 text-fg shadow-lift"
       onCancel={(e) => {
         e.preventDefault();
         done(false);
@@ -52,14 +52,14 @@ function ConfirmDialog(props: { request: Request }) {
       </div>
       <div class="flex justify-end gap-2 border-t border-line px-6 py-3">
         <button
-          class="cursor-pointer rounded-md border border-line bg-surface-2 px-4 py-1.5 text-sm font-medium hover:bg-line"
+          class="cursor-pointer rounded-md border border-line bg-element px-4 py-1.5 text-sm font-medium hover:bg-hover"
           onClick={() => done(false)}
         >
           Cancel
         </button>
         <button
           ref={confirmButton}
-          class="cursor-pointer rounded-lg px-4 py-1.5 text-sm font-semibold text-white hover:brightness-110"
+          class="cursor-pointer rounded-lg px-4 py-1.5 text-sm font-semibold text-on-accent hover:brightness-110"
           classList={{ 'bg-danger': props.request.danger, 'bg-accent': !props.request.danger }}
           onClick={() => done(true)}
         >

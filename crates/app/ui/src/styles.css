@@ -9,7 +9,6 @@
   --color-*: initial;
   --color-white: #fff;
   --color-black: #000;
-  --color-star: #e0a526;
 
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
   --font-serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
@@ -42,15 +41,30 @@
    change at runtime when data-theme changes. */
 @theme inline {
   --color-bg: var(--bg);
-  --color-surface: var(--surface);
-  --color-surface-2: var(--surface-2);
+  --color-panel: var(--panel);
+  --color-popover: var(--popover);
+  --color-field: var(--field);
+  --color-element: var(--element);
+  --color-element-hover: var(--element-hover);
   --color-fg: var(--fg);
-  --color-muted: var(--muted);
-  --color-faint: var(--faint);
-  --color-line: var(--line);
+  --color-muted: var(--fg-muted);
+  --color-faint: var(--fg-faint);
+  --color-link: var(--link);
+  --color-line: var(--border);
   --color-accent: var(--accent);
-  --color-danger: var(--danger);
+  --color-on-accent: var(--on-accent);
+  --color-focus: var(--focus);
+  --color-hover: var(--hover);
+  --color-stripe: var(--row-stripe);
+  --color-selection: var(--selection);
+  --color-highlight: var(--highlight);
   --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --color-star: var(--star);
+  --color-inverse: var(--inverse);
+  --color-on-inverse: var(--on-inverse);
   --shadow-card: var(--card-shadow);
   --shadow-lift: var(--lift-shadow);
 }
@@ -63,6 +77,9 @@
   }
   body {
     @apply h-full overflow-hidden font-sans text-[13px]/[1.4] text-fg antialiased select-none;
+  }
+  ::selection {
+    background: var(--selection);
   }
 }
 
@@ -77,7 +94,7 @@
     margin-bottom: 0.8em;
   }
   & a {
-    color: var(--accent);
+    color: var(--link);
   }
   & ul {
     list-style: disc;
@@ -97,26 +114,20 @@
     margin: 1em 0 0.4em;
   }
   & blockquote {
-    border-left: 2px solid var(--line);
+    border-left: 2px solid var(--border);
     padding-left: 0.8em;
-    color: var(--muted);
+    color: var(--fg-muted);
   }
 }
 
 /* Every modal dialog dims and blurs the app behind it, so the dialog stands
-   out and stays readable. Literal colours: ::backdrop can't rely on
-   inheriting theme variables in every webview. */
+   out and stays readable. ::backdrop inherits the theme's variables in
+   current webviews; the fallback covers older ones. */
 dialog::backdrop {
-  background: rgb(0 0 0 / 0.38);
+  background: var(--scrim, rgb(0 0 0 / 0.38));
   -webkit-backdrop-filter: blur(8px) saturate(120%);
   backdrop-filter: blur(8px) saturate(120%);
   animation: backdrop-in 0.18s ease-out;
-}
-[data-theme='light'] dialog::backdrop {
-  background: rgb(24 24 28 / 0.2);
-}
-[data-theme='sepia'] dialog::backdrop {
-  background: rgb(60 40 20 / 0.2);
 }
 @keyframes backdrop-in {
   from {

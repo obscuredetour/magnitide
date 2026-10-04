@@ -49,11 +49,18 @@ cargo run -p calibre-compat -- info    # CLI against the default library
 ```
 
 Styling is [Tailwind v4](https://tailwindcss.com) utilities in the components. Colours
-and shadows come only from the theme (`crates/app/ui/src/themes.css`): each theme
-is a block of CSS variables, and `theme.ts` switches between them at runtime by
-setting `data-theme` on `<html>`. Built in: light, dark, sepia, and "system"
-(follows the OS). To add a theme, copy a block in `themes.css` and register it in
-`THEMES` in `theme.ts`.
+and shadows come only from the theme (`crates/app/ui/src/themes.css`), in two layers:
+a palette named after [Catppuccin's](https://github.com/catppuccin/catppuccin/blob/main/docs/style-guide.md)
+(crust, mantle, base, surface 0–2, overlay 0–2, subtext 0–1, text, and the accents),
+and roles the UI paints with (`--bg`, `--panel`, `--popover`, `--field`, `--element`,
+`--fg`, `--link`, `--accent`, `--hover`, `--selection`, `--highlight`, `--row-stripe`,
+`--focus`, status colours, `--inverse`, `--scrim`…), derived from the palette following
+the Catppuccin and [Dracula](https://draculatheme.com/spec) role tables. A theme is a
+palette plus any role overrides; `theme.ts` switches between them at runtime by setting
+`data-theme` on `<html>`. Built in: light, dark, sepia, the four Catppuccin flavours,
+Dracula and Alucard, and "system" (follows the OS). To add a theme, add a block in
+`themes.css` (a Catppuccin port pastes its palette as is) and register it in `THEMES` in
+`theme.ts`.
 
 The types the UI uses for Rust commands (`crates/app/ui/src/bindings/`) are
 generated from the Rust structs by [ts-rs](https://github.com/Aleph-Alpha/ts-rs)
@@ -68,7 +75,7 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Toolbar (library menu, cover size, theme picker) and table view (sortable, resizable, choosable columns)
 - [x] Settings panel (⌘,): appearance, library, list columns, thumbnail cache, about
 - [x] List view zebra stripes (setting, on by default)
-- [ ] (Jamie) Tweak zebra stripe colours: inconsistent across themes. The stripe is `bg-surface-2/40` in `crates/app/ui/src/components/BookTable.tsx`; a per-theme `--row-stripe` variable in `themes.css` would let each theme set its own
+- [x] Theme roles: zebra stripes, hover, selection and highlight are theme variables (`--row-stripe`, `--hover`, `--selection`, `--highlight`), consistent across themes; Catppuccin (all four flavours), Dracula and Alucard built in
 - [ ] Add clear search button
 - [ ] Table sidebar allow resizing of width by dragging its edge, but let's set a min-width to prevent it from collapsing too much
 - [x] Add slight app blur behind dialogs (every dialog dims and blurs the app behind it, tinted per theme)

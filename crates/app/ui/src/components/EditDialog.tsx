@@ -9,9 +9,9 @@ import { Cover } from './Cover';
 import { type Applied, MatchDialog } from './MatchDialog';
 
 const input =
-  'h-8 w-full rounded-md border border-line bg-surface px-2.5 outline-none select-text focus:border-accent focus:ring-3 focus:ring-accent/15 disabled:opacity-50';
+  'h-8 w-full rounded-md border border-line bg-field px-2.5 outline-none select-text focus:border-focus focus:ring-3 focus:ring-focus/20 disabled:opacity-50';
 const smallButton =
-  'cursor-pointer rounded-md border border-line bg-surface-2 px-2.5 py-1 text-xs font-medium hover:bg-line disabled:cursor-default disabled:opacity-50';
+  'cursor-pointer rounded-md border border-line bg-element px-2.5 py-1 text-xs font-medium hover:bg-hover disabled:cursor-default disabled:opacity-50';
 
 // Lists are edited as text, the way calibre does it.
 const joinAuthors = (a: string[]) => a.join(' & ');
@@ -141,7 +141,7 @@ export function EditDialog(props: { editing: Editing }) {
     <dialog
       ref={dialog}
       aria-label="Edit book"
-      class="m-auto max-h-[calc(100vh-48px)] w-[min(820px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-2xl border border-line bg-surface p-0 text-fg shadow-lift"
+      class="m-auto max-h-[calc(100vh-48px)] w-[min(820px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-2xl border border-line bg-popover p-0 text-fg shadow-lift"
       onCancel={(e) => {
         e.preventDefault();
         closeEditor();
@@ -176,7 +176,7 @@ export function EditDialog(props: { editing: Editing }) {
         <div class="flex min-h-0 flex-1 gap-6 overflow-y-auto px-6 py-5">
           {/* Cover */}
           <div class="w-40 flex-none">
-            <div class="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-surface-2 shadow-card">
+            <div class="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-element shadow-card">
               <Cover id={id} title={form.title} authors={authors()} hasCover={row()?.hasCover ?? false} size="full" />
             </div>
             <div class="mt-2 flex flex-wrap gap-1.5">
@@ -231,7 +231,7 @@ export function EditDialog(props: { editing: Editing }) {
                       </span>
                       <button
                         type="button"
-                        class="flex-none cursor-pointer text-accent hover:underline"
+                        class="flex-none cursor-pointer text-link hover:underline"
                         onClick={() => setEditingSorts((v) => !v)}
                       >
                         {editingSorts() ? 'Done' : 'Change'}
@@ -322,7 +322,7 @@ export function EditDialog(props: { editing: Editing }) {
                       />
                       <button
                         type="button"
-                        class="grid size-7 cursor-pointer place-items-center rounded-md text-muted hover:bg-line hover:text-fg"
+                        class="grid size-7 cursor-pointer place-items-center rounded-md text-muted hover:bg-hover hover:text-fg"
                         aria-label="Remove this series"
                         onClick={() => setForm('moreSeries', (list) => list.filter((_, j) => j !== i()))}
                       >
@@ -333,7 +333,7 @@ export function EditDialog(props: { editing: Editing }) {
                 </For>
                 <button
                   type="button"
-                  class="cursor-pointer text-xs text-accent hover:underline"
+                  class="cursor-pointer text-xs text-link hover:underline"
                   onClick={() => setForm('moreSeries', (list) => [...list, { name: '', index: 1, end: null }])}
                 >
                   + Another series
@@ -425,7 +425,7 @@ export function EditDialog(props: { editing: Editing }) {
                 role="textbox"
                 aria-multiline="true"
                 aria-label="Description"
-                class="comments-html min-h-28 rounded-md border border-line bg-surface px-3 py-2 font-serif text-sm/[1.6] outline-none select-text focus:border-accent focus:ring-3 focus:ring-accent/15"
+                class="comments-html min-h-28 rounded-md border border-line bg-field px-3 py-2 font-serif text-sm/[1.6] outline-none select-text focus:border-focus focus:ring-3 focus:ring-focus/20"
               />
             </div>
           </div>
@@ -472,7 +472,7 @@ export function EditDialog(props: { editing: Editing }) {
           <button
             type="submit"
             disabled={saving()}
-            class="cursor-pointer rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-60"
+            class="cursor-pointer rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-on-accent hover:brightness-110 disabled:opacity-60"
           >
             {saving() ? 'Saving…' : 'Save'}
           </button>
@@ -509,7 +509,7 @@ function NumberRange(props: {
   onChange(start: number, end: number | null): void;
 }) {
   const num =
-    'h-8 w-20 rounded-md border border-line bg-surface px-2.5 tabular-nums outline-none focus:border-accent focus:ring-3 focus:ring-accent/15 disabled:opacity-50';
+    'h-8 w-20 rounded-md border border-line bg-field px-2.5 tabular-nums outline-none focus:border-focus focus:ring-3 focus:ring-focus/20 disabled:opacity-50';
   return (
     <div class="flex items-center gap-2" classList={{ 'opacity-50': props.disabled }}>
       <input
@@ -601,11 +601,11 @@ function Collects(props: {
       <div class="flex flex-wrap gap-1.5">
         <For each={props.ids}>
           {(bookId) => (
-            <span class="flex items-center gap-1 rounded-full bg-surface-2 py-[3px] pr-1 pl-2.5 text-xs">
+            <span class="flex items-center gap-1 rounded-full bg-element py-[3px] pr-1 pl-2.5 text-xs">
               {titles[bookId] ?? `Book ${bookId}`}
               <button
                 type="button"
-                class="grid size-4 cursor-pointer place-items-center rounded-full text-muted hover:bg-line hover:text-fg"
+                class="grid size-4 cursor-pointer place-items-center rounded-full text-muted hover:bg-hover hover:text-fg"
                 aria-label={`Unlink ${titles[bookId] ?? 'book'}`}
                 onClick={() => props.onChange(props.ids.filter((i) => i !== bookId))}
               >
@@ -630,13 +630,13 @@ function Collects(props: {
           onInput={(e) => setQuery(e.currentTarget.value)}
         />
         <Show when={results()?.length}>
-          <ul class="mt-1 rounded-md border border-line bg-surface p-1">
+          <ul class="mt-1 rounded-md border border-line bg-popover p-1">
             <For each={results()}>
               {(r) => (
                 <li>
                   <button
                     type="button"
-                    class="w-full cursor-pointer truncate rounded px-2 py-1 text-left text-xs hover:bg-accent/15"
+                    class="w-full cursor-pointer truncate rounded px-2 py-1 text-left text-xs hover:bg-highlight"
                     onClick={() => {
                       add([r]);
                       setQuery('');
