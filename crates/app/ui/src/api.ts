@@ -28,6 +28,7 @@ import type { SourceRecord } from './bindings/SourceRecord';
 import type { SourceStatus } from './bindings/SourceStatus';
 import type { AddReport } from './bindings/AddReport';
 import type { BookRow } from './bindings/BookRow';
+import type { AuthorSort } from './bindings/AuthorSort';
 import type { BookEdit } from './bindings/BookEdit';
 import type { CacheInfo } from './bindings/CacheInfo';
 import type { EditOutcome } from './bindings/EditOutcome';
@@ -46,6 +47,7 @@ import type { SortKey } from './bindings/SortKey';
 
 export type {
   AddReport,
+  AuthorSort,
   BookDetails,
   BookEdit,
   ConversionInfo,
@@ -133,6 +135,9 @@ export const api = {
 
   /** A book's editable fields (Magnitide libraries only). */
   bookEdit: (id: number) => invoke<BookEdit>('book_edit', { id }),
+
+  /** How these authors sort: saved sort names, or the automatic ones for new authors. */
+  authorSorts: (names: string[]) => invoke<AuthorSort[]>('author_sorts', { names }),
 
   /** Save an edit; renames the book's folder and files if its title or first author changed. */
   saveBookEdit: (id: number, edit: BookEdit) => invoke<EditOutcome>('save_book_edit', { id, edit }),

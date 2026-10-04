@@ -73,6 +73,7 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [ ] Table sidebar allow resizing of width by dragging its edge, but let's set a min-width to prevent it from collapsing too much
 - [ ] Add slight app blur behind dialogs
 - [ ] Covers view should keep selected book in view after sidebar opens & grid resize
+- [ ] Make "Send to device" & "Convert" actions more discoverable/prominent (they currently look like the format badges)
 - [ ] Implement table column reordering
 - [ ] Implement right click context menu for books
 - [x] Native Magnitide library (schema v1) and calibre import, in the app with progress (also `cargo run --release -p magnitide-core --example import_calibre -- <calibre> <dest>`)
@@ -82,6 +83,7 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Adding a new format of a book already in the library (same title and first author) adds it to that book instead of creating another
 - [x] Metadata editing (⌘E): all built-in fields, rich-text description, cover change/remove; folder and file names follow title and first author (all-or-nothing with the database)
 - [x] Autocomplete for authors, tags, series and publishers in the edit form
+- [x] Author sort names: "Sorted as …" under Authors in the edit form, with per-author overrides ("Le Guin, Ursula K.") that apply to all of that author's books
 - [ ] Editing custom fields
 - [x] File name clean-up: names follow edits, and Settings → Library → "Tidy file names" fixes drifted books and reports files missing from disk
 - [x] Write metadata and covers back into EPUB/KEPUB files (details panel "Write to file", Settings → Library for every book, optional write on save); only files that differ are rewritten

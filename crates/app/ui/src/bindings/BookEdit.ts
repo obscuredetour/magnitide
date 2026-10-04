@@ -11,7 +11,13 @@ titleSort: string,
 /**
  * In display order; empty means "Unknown".
  */
-authors: Array<string>, series: string | null, seriesIndex: number, publisher: string | null, 
+authors: Array<string>, 
+/**
+ * Sort names to set, by author name ("Le Guin, Ursula K."); an empty
+ * value goes back to the automatic one. An author's sort name is shared
+ * by all their books. Authors not listed keep theirs.
+ */
+authorSorts: { [key in string]: string }, series: string | null, seriesIndex: number, publisher: string | null, 
 /**
  * ISO date, "YYYY-MM-DD".
  */

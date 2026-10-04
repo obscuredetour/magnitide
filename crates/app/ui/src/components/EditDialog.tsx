@@ -1,7 +1,7 @@
 import { createResource, createSignal, For, type JSX, onMount, type ParentProps, Show } from 'solid-js';
 import { createStore, unwrap } from 'solid-js/store';
 
-import { api, type BookEdit } from '../api';
+import { api, type AuthorSort, type BookEdit } from '../api';
 import { Autocomplete } from './Autocomplete';
 import { changeCover, closeEditor, type Editing, saveEdit } from '../editor';
 import { items } from '../library';
@@ -11,7 +11,7 @@ import { type Applied, MatchDialog } from './MatchDialog';
 const input =
   'h-8 w-full rounded-md border border-line bg-surface px-2.5 outline-none select-text focus:border-accent focus:ring-3 focus:ring-accent/15 disabled:opacity-50';
 const smallButton =
-  'cursor-pointer rounded-md border border-line bg-surface-2 px-2.5 py-1 text-xs font-medium hover:bg-line';
+  'cursor-pointer rounded-md border border-line bg-surface-2 px-2.5 py-1 text-xs font-medium hover:bg-line disabled:cursor-default disabled:opacity-50';
 
 // Lists are edited as text, the way calibre does it.
 const joinAuthors = (a: string[]) => a.join(' & ');
@@ -59,6 +59,25 @@ export function EditDialog(props: { editing: Editing }) {
 
   const [matching, setMatching] = createSignal(false);
 
+  // Author sort names: shown as one line, changed per author (it's the author's,
+  // shared by all their books). Overrides by name; "" means back to automatic.
+  const authorNames = () => splitAuthors(authors()).filter(Boolean);
+  const [sorts] = createResource(
+    () => authorNames().join('\n'),
+    (key) => api.authorSorts(key ? key.split('\n') : []).catch(() => [] as AuthorSort[]),
+  );
+  const [sortOverrides, setSortOverrides] = createStore<Record<string, string>>({});
+  const [editingSorts, setEditingSorts] = createSignal(false);
+  const known = (name: string) => sorts()?.find((s) => s.name === name);
+  const sortOf = (name: string) => {
+    const o = sortOverrides[name];
+    return o === undefined ? (known(name)?.sort ?? '') : o || (known(name)?.automatic ?? '');
+  };
+  const isCustom = (name: string) => {
+    const k = known(name);
+    return k !== undefined && sortOf(name) !== k.automatic;
+  };
+
   const row = () => items().find((b) => b.id === id);
 
   /** Take what was chosen in Find Metadata into the form (saved with Save). */
@@ -91,6 +110,7 @@ export function EditDialog(props: { editing: Editing }) {
     const edit: BookEdit = {
       ...unwrap(form),
       authors: splitAuthors(authors()),
+      authorSorts: Object.fromEntries(Object.entries(sortOverrides).filter(([n]) => authorNames().includes(n))),
       tags: splitList(tags()),
       languages: splitList(languages()),
       identifiers: splitIds(identifiers()),
@@ -184,7 +204,28 @@ export function EditDialog(props: { editing: Editing }) {
                 }}
               />
             </Field>
-            <Field label="Authors" hint="Separate several with “&”, in order.">
+            <Field
+              label="Authors"
+              hint={
+                <>
+                  Separate several with “&”, in order.
+                  <Show when={authorNames().length && sorts()}>
+                    <span class="mt-0.5 flex items-baseline gap-1.5">
+                      <span class="min-w-0 truncate" title="How these authors sort in lists">
+                        Sorted as <span class="text-muted">{authorNames().map(sortOf).join(' & ')}</span>
+                      </span>
+                      <button
+                        type="button"
+                        class="flex-none cursor-pointer text-accent hover:underline"
+                        onClick={() => setEditingSorts((v) => !v)}
+                      >
+                        {editingSorts() ? 'Done' : 'Change'}
+                      </button>
+                    </span>
+                  </Show>
+                </>
+              }
+            >
               <Autocomplete
                 class={input}
                 separator="&"
@@ -193,6 +234,38 @@ export function EditDialog(props: { editing: Editing }) {
                 onInput={setAuthors}
               />
             </Field>
+            <Show when={editingSorts()}>
+              <div class="col-span-2 -mt-1 rounded-lg bg-bg p-3">
+                <div class="mb-2 text-xs text-muted">
+                  Sort names decide where authors appear in lists sorted by author. Changing one applies to all of that
+                  author's books.
+                </div>
+                <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto] items-center gap-x-3 gap-y-1.5">
+                  <For each={authorNames()}>
+                    {(name) => (
+                      <>
+                        <span class="truncate text-xs">{name}</span>
+                        <input
+                          class={input + ' h-7 text-xs'}
+                          aria-label={`Sort name for ${name}`}
+                          value={sortOf(name)}
+                          onInput={(e) => setSortOverrides(name, e.currentTarget.value)}
+                        />
+                        <button
+                          type="button"
+                          class={smallButton}
+                          disabled={!isCustom(name)}
+                          title={`Automatic: ${known(name)?.automatic ?? ''}`}
+                          onClick={() => setSortOverrides(name, '')}
+                        >
+                          Automatic
+                        </button>
+                      </>
+                    )}
+                  </For>
+                </div>
+              </div>
+            </Show>
             <Field label="Series">
               <Autocomplete
                 class={input}
