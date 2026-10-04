@@ -1,15 +1,16 @@
 //! Native, read-only access to calibre libraries (`metadata.db` + book folders).
+//!
+//! Libraries load into the shared [`magnitide_catalog::Catalog`]; the model,
+//! search and sort are re-exported from there.
 
 pub mod dates;
 pub mod library;
 pub mod locate;
-pub mod model;
-pub mod search;
-pub mod sort;
 pub mod sqlfuncs;
 pub mod synth;
 
 pub use library::{Library, Snapshot};
-pub use model::{Book, CustomColumn, CustomValue, Datatype, Format};
-pub use search::Query;
-pub use sort::{SortDir, SortKey, sort_books};
+pub use magnitide_catalog::{
+    Book, BookId, Catalog, CustomColumn, CustomValue, Datatype, Format, Query, SortDir, SortKey, model, search, sort,
+    sort_books,
+};

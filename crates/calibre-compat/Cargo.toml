@@ -9,10 +9,10 @@ license = "GPL-3.0-or-later"
 anyhow = "1.0.104"
 chrono = { version = "0.4.45", default-features = false, features = ["std", "clock", "serde"] }
 clap = { version = "4.6.7", features = ["derive", "env"] }
+magnitide-catalog = { version = "0.1.0", path = "../catalog" }
 rusqlite = { version = "0.40.2", features = ["bundled", "functions"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
-ts-rs = { version = "12.0.1", optional = true }
 uuid = { version = "1.27.0", features = ["v4"] }
 
 [dev-dependencies]
@@ -21,7 +21,4 @@ tempfile = "3.27.0"
 
 [target."cfg(unix)".dependencies]
 libc = "0.2.190"
-
-[features]
-ts = ["dep:ts-rs"]
 

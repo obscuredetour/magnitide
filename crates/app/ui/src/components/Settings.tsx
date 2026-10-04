@@ -2,10 +2,19 @@ import { getVersion } from '@tauri-apps/api/app';
 import { createResource, createSignal, For, type JSX, Match, onMount, type ParentProps, Show, Switch } from 'solid-js';
 
 import { api, errorMessage, fileManagerName } from '../api';
-import { chooseLibrary, forgetRecentLibrary, library, openLibrary, recentLibraries } from '../library';
+import { chooseLibrary, forgetRecentLibrary, library, openLibrary, recentLibraries, renameLibrary } from '../library';
+import { startImport } from '../importer';
 import { setTheme, THEMES, themeChoice } from '../theme';
 import { toast } from '../toast';
-import { isColumnVisible, resetColumnSizing, setColumnVisible, setViewMode, viewMode } from '../view';
+import {
+  isColumnVisible,
+  resetColumnSizing,
+  setColumnVisible,
+  setViewMode,
+  setZebraRows,
+  viewMode,
+  zebraRows,
+} from '../view';
 import { TABLE_COLUMNS } from './BookTable';
 import { CoverSizeSlider } from './CoverSizeSlider';
 
@@ -225,7 +234,8 @@ function LibrarySettings() {
               <>
                 <span class="break-all">{lib().path}</span>
                 <br />
-                {lib().bookCount.toLocaleString()} books · opened read-only
+                {lib().bookCount.toLocaleString()} books ·{' '}
+                {lib().kind === 'magnitide' ? 'Magnitide library' : 'calibre library, opened read-only'}
               </>
             }
           >
@@ -235,7 +245,20 @@ function LibrarySettings() {
           </Row>
         )}
       </Show>
-      <Row label="Open another library" description="Any folder containing a calibre metadata.db.">
+      <Show when={library()?.kind === 'magnitide'}>
+        <LibraryName />
+      </Show>
+      <Show when={library()?.kind === 'calibre'}>
+        <Row
+          label="Import into a Magnitide library"
+          description="Copies books into a new library you can edit. Files are cloned where the disk supports it, using no extra space. This calibre library stays exactly as it is."
+        >
+          <button class={button} onClick={() => void startImport()}>
+            Import…
+          </button>
+        </Row>
+      </Show>
+      <Row label="Open another library" description="A Magnitide library, or a calibre library (opened read-only).">
         <button class={button} onClick={() => void chooseLibrary()}>
           Choose…
         </button>
@@ -311,6 +334,15 @@ function ListSettings() {
           )}
         </For>
       </div>
+      <Row label="Alternating row colours" description="Shade every other row to make long lists easier to follow.">
+        <input
+          type="checkbox"
+          class="size-4 accent-accent"
+          aria-label="Alternating row colours"
+          checked={zebraRows()}
+          onChange={(e) => setZebraRows(e.currentTarget.checked)}
+        />
+      </Row>
       <Row label="Column widths" description="Drag a column's edge to resize it; double-click to reset one.">
         <button class={button} onClick={() => resetColumnSizing()}>
           Reset All
@@ -328,9 +360,34 @@ function About() {
       <h3 class="mt-4 font-serif text-2xl font-semibold">Magnitide</h3>
       <Show when={version()}>{(v) => <div class="mt-1 text-xs text-muted">Version {v()}</div>}</Show>
       <p class="mt-4 max-w-sm text-sm text-muted">
-        An AI-free ebook library manager for calibre libraries. Your library is opened read-only and never changed.
+        An AI-free ebook library manager. Opens calibre libraries read-only, and imports them into Magnitide libraries
+        without changing them.
       </p>
       <p class="mt-4 text-xs text-faint">Licensed under the GNU GPL v3 or later.</p>
     </div>
+  );
+}
+
+/** Rename the open Magnitide library. */
+function LibraryName() {
+  const [draft, setDraft] = createSignal(library()?.name ?? '');
+  const changed = () => draft().trim() !== '' && draft().trim() !== library()?.name;
+  const save = async () => {
+    if (changed() && (await renameLibrary(draft()))) toast('Library renamed');
+  };
+  return (
+    <Row label="Name" description="Shown in the library menu and recent libraries. The folder keeps its name.">
+      <input
+        type="text"
+        class="h-7 w-48 rounded-md border border-line bg-surface px-2 outline-none select-text focus:border-accent focus:ring-3 focus:ring-accent/15"
+        aria-label="Library name"
+        value={draft()}
+        onInput={(e) => setDraft(e.currentTarget.value)}
+        onKeyDown={(e) => e.key === 'Enter' && void save()}
+      />
+      <button class={button} disabled={!changed()} onClick={() => void save()}>
+        Save
+      </button>
+    </Row>
   );
 }

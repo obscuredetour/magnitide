@@ -2,6 +2,7 @@ import { For, Show } from 'solid-js';
 
 import { api, errorMessage, fileManagerName } from '../api';
 import { chooseLibrary, items, library, openLibrary, recentLibraries } from '../library';
+import { startImport } from '../importer';
 import { toast } from '../toast';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from './Menu';
 
@@ -50,16 +51,35 @@ export function LibraryMenu() {
         {(lib) => (
           <>
             <div class="px-2.5 pt-1 pb-2">
-              <div class="truncate font-semibold" title={lib().path}>
-                {lib().name}
+              <div class="flex items-center justify-between gap-3">
+                <span class="truncate font-semibold" title={lib().path}>
+                  {lib().name}
+                </span>
+                <span
+                  class="flex-none rounded-full px-2 py-px text-[11px] font-medium"
+                  classList={{
+                    'bg-accent/15 text-accent': lib().kind === 'magnitide',
+                    'bg-surface-2 text-muted': lib().kind === 'calibre',
+                  }}
+                  title={
+                    lib().kind === 'magnitide'
+                      ? 'A Magnitide library'
+                      : 'A calibre library, opened read-only. Import it to make changes.'
+                  }
+                >
+                  {lib().kind === 'magnitide' ? 'Magnitide' : 'calibre · read-only'}
+                </span>
               </div>
               <div class="truncate text-xs text-muted" title={lib().path}>
                 {lib().path}
               </div>
               <div class="mt-0.5 text-xs text-faint">
-                {lib().bookCount.toLocaleString()} books · loaded in {lib().loadMs} ms · read-only
+                {lib().bookCount.toLocaleString()} books · loaded in {lib().loadMs} ms
               </div>
             </div>
+            <Show when={lib().kind === 'calibre'}>
+              <MenuItem onSelect={() => void startImport()}>Import into a Magnitide Library…</MenuItem>
+            </Show>
             <MenuItem onSelect={() => void showFolder()}>Show in {fileManagerName}</MenuItem>
             <MenuSeparator />
           </>

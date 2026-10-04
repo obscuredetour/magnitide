@@ -50,7 +50,7 @@ fn serve(app: &AppHandle, path: &str) -> Result<Option<Vec<u8>>> {
 
     let Some(lib) = app.state::<AppState>().current() else { return Ok(None) };
     // Only paths derived from the database are ever read; the request just picks a book id.
-    let Some(src) = lib.snap.get(id).and_then(|b| b.cover_path(&lib.root)) else { return Ok(None) };
+    let Some(src) = lib.catalog.get(id).and_then(|b| b.cover_path(&lib.root)) else { return Ok(None) };
     if !src.is_file() {
         return Ok(None);
     }

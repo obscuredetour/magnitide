@@ -450,11 +450,11 @@ dependencies = [
  "chrono",
  "clap",
  "libc",
+ "magnitide-catalog",
  "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
- "ts-rs",
  "uuid",
 ]
 
@@ -2217,6 +2217,8 @@ dependencies = [
  "calibre-compat",
  "chrono",
  "image",
+ "magnitide-catalog",
+ "magnitide-core",
  "open",
  "serde",
  "serde_json",
@@ -2228,18 +2230,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "magnitide-catalog"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "serde",
+ "serde_json",
+ "ts-rs",
+]
+
+[[package]]
 name = "magnitide-core"
 version = "0.1.0"
 dependencies = [
  "ammonia",
  "calibre-compat",
  "chrono",
+ "magnitide-catalog",
  "reflink-copy",
  "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
+ "ts-rs",
  "uuid",
 ]
 

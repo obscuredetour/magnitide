@@ -15,7 +15,7 @@ import { createEffect, For, Index, on, onMount, Show } from 'solid-js';
 
 import type { BookRow, SortKey } from '../api';
 import { sort, sortDir, toggleSort } from '../library';
-import { columnSizing, effectiveColumnVisibility, setColumnSizing, setColumnVisibility } from '../view';
+import { columnSizing, effectiveColumnVisibility, setColumnSizing, setColumnVisibility, zebraRows } from '../view';
 import { Cover } from './Cover';
 import { Menu, MenuItem, MenuLabel } from './Menu';
 import type { ViewHandle } from './CoverGrid';
@@ -256,6 +256,7 @@ export function BookTable(props: Props) {
                     role="row"
                     aria-rowindex={v.index + 2}
                     class="absolute top-0 left-0 flex w-full cursor-default items-center border-b border-line/50 hover:bg-line data-selected:bg-accent/20"
+                    classList={{ 'bg-surface-2/60': zebraRows() && v.index % 2 === 1 }}
                     data-selected={r().original.id === props.selectedId || undefined}
                     style={{ height: `${ROW_H}px`, transform: `translateY(${v.start}px)` }}
                     onClick={() => props.onSelect(r().original.id)}

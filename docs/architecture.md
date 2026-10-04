@@ -21,6 +21,8 @@ when you do.
 
 ```
 crates/
+  catalog          magnitide-catalog: the in-memory book model, search and sort. Every kind of
+                   library loads into a Catalog, so views work the same for all of them.
   calibre-compat   Read-only access to calibre libraries (metadata.db + folders). No writes.
   core             magnitide-core: the native library (schema, migrations, queries, edits,
                    import pipeline). No Tauri dependency.
