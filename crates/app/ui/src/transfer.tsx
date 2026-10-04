@@ -5,6 +5,7 @@ import { createSignal, For, Show } from 'solid-js';
 import {
   api,
   type BookRow,
+  coverChanged,
   type DeviceInfo,
   errorMessage,
   onConvertProgress,
@@ -12,7 +13,7 @@ import {
   trashName,
 } from './api';
 import { confirm } from './confirm';
-import { booksOn, DEVICE_KIND_NAMES, preferredFormat, setPreferredFormat } from './devices';
+import { booksOn, DEVICE_KIND_NAMES, preferredFormat, setPreferredFormat, shownItems } from './devices';
 import { items, library, refresh, setEditRevision, setLibrary, setSelectedId } from './library';
 import { toast } from './toast';
 import { plural } from './writeback';
@@ -250,7 +251,7 @@ export async function mergeBooks(a: BookRow, b: BookRow): Promise<void> {
 }
 
 /** Remove one format from a book, after asking; its file goes to the Trash. */
-export async function removeFormat(book: { id: number; title: string; formats: { format: string }[] }, format: string) {
+export async function removeFormat(book: { id: number; title: string; formats: readonly unknown[] }, format: string) {
   const last = book.formats.length === 1;
   const ok = await confirm({
     title: `Remove the ${format}?`,
@@ -275,6 +276,72 @@ export async function removeFormat(book: { id: number; title: string; formats: {
     await refresh();
     setEditRevision((n) => n + 1);
     toast(`Removed the ${format} · it's in the ${trashName}`);
+  } catch (err) {
+    toast(errorMessage(err), { error: true });
+  }
+}
+
+/** Delete books, after asking; their folders go to the Trash. */
+export async function deleteBooks(ids: number[]): Promise<void> {
+  if (library()?.kind !== 'magnitide' || !ids.length) return;
+  const chosen = new Set(ids);
+  const list = shownItems();
+  const books = list.filter((b) => chosen.has(b.id));
+  const one = books.length === 1 ? books[0] : undefined;
+  const ok = await confirm({
+    title: one
+      ? `Move “${one.title}” to the ${trashName}?`
+      : `Move ${plural(ids.length, 'book', 'books')} to the ${trashName}?`,
+    message: () => (
+      <>
+        <Show when={!one}>
+          <ul class="mb-3 max-h-40 list-inside list-disc overflow-y-auto text-fg">
+            <For each={books.slice(0, 50)}>{(b) => <li class="truncate">{b.title}</li>}</For>
+            <Show when={books.length > 50}>
+              <li class="list-none text-muted">and {(books.length - 50).toLocaleString()} more</li>
+            </Show>
+          </ul>
+        </Show>
+        <p>
+          {one ? 'Its folder' : 'Their folders'} (every format, the cover and anything else in {one ? 'it' : 'them'}){' '}
+          {one ? 'moves' : 'move'} to the {trashName}, and {one ? 'it leaves' : 'they leave'} the library.
+        </p>
+        <p class="mt-2 text-xs">
+          Putting files back from the {trashName} doesn't restore the details edited here; add them again to get the
+          books back. Copies on devices aren't touched.
+        </p>
+      </>
+    ),
+    confirm: `Move to ${trashName}`,
+    danger: true,
+  });
+  if (!ok) return;
+  // Afterwards, select the book that followed the first one deleted.
+  const first = list.findIndex((b) => chosen.has(b.id));
+  const next =
+    list.slice(first).find((b) => !chosen.has(b.id)) ??
+    list
+      .slice(0, first)
+      .reverse()
+      .find((b) => !chosen.has(b.id));
+  try {
+    const r = await api.deleteBooks(ids);
+    // Ids can be reused by books added later; drop their cached covers.
+    for (const id of r.deleted) coverChanged(id);
+    await refresh();
+    const lib = library();
+    if (lib) setLibrary({ ...lib, bookCount: lib.bookCount - r.deleted.length });
+    if (r.deleted.length) setSelectedId(next?.id ?? null);
+    setEditRevision((n) => n + 1);
+    for (const line of r.failed) console.info(line);
+    if (r.failed.length) {
+      toast(
+        `Moved ${plural(r.deleted.length, 'book', 'books')} to the ${trashName} · ${r.failed.length} couldn't be: ${r.failed[0]}`,
+        { error: true },
+      );
+    } else {
+      toast(`Moved ${plural(r.deleted.length, 'book', 'books')} to the ${trashName}`);
+    }
   } catch (err) {
     toast(errorMessage(err), { error: true });
   }

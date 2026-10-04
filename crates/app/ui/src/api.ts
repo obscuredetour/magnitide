@@ -16,6 +16,7 @@ import type { DeviceHit } from './bindings/DeviceHit';
 import type { DeviceInfo } from './bindings/DeviceInfo';
 import type { DeviceKind } from './bindings/DeviceKind';
 import type { MatchedBy } from './bindings/MatchedBy';
+import type { DeleteReport } from './bindings/DeleteReport';
 import type { MergeOutcome } from './bindings/MergeOutcome';
 import type { RemoveReport } from './bindings/RemoveReport';
 import type { SendReport } from './bindings/SendReport';
@@ -65,6 +66,7 @@ export type {
   DeviceKind,
   Lookup,
   MatchedBy,
+  DeleteReport,
   MergeOutcome,
   RemoveReport,
   SendReport,
@@ -163,6 +165,9 @@ export const api = {
   setCoverFromFile: (id: number, path: string) => invoke<void>('set_cover_from_file', { id, path }),
 
   removeCover: (id: number) => invoke<void>('remove_cover', { id }),
+
+  /** Delete books; their folders go to the Trash. */
+  deleteBooks: (ids: number[]) => invoke<DeleteReport>('delete_books', { ids }),
 
   /** Remove one format from a book; its file goes to the Trash. */
   removeFormat: (id: number, format: string) => invoke<void>('remove_format', { id, format }),

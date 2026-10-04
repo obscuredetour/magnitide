@@ -346,6 +346,16 @@ pub async fn remove_cover(state: State<'_, AppState>, id: i64) -> CmdResult<()> 
     write_library(&state, move |lib| lib.remove_cover(id)).await
 }
 
+/// Delete books, moving their folders to the Trash.
+#[tauri::command]
+pub async fn delete_books(
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+) -> CmdResult<magnitide_core::delete::DeleteReport> {
+    write_library(&state, move |lib| lib.delete_books(&ids, |path| trash::delete(path).map_err(std::io::Error::other)))
+        .await
+}
+
 /// Remove one format from a book, moving its file to the Trash.
 #[tauri::command]
 pub async fn remove_format(state: State<'_, AppState>, id: i64, format: String) -> CmdResult<()> {
