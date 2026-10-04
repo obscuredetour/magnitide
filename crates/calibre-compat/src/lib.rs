@@ -12,4 +12,4 @@ pub mod synth;
 pub use library::{Library, Snapshot};
 pub use model::{Book, CustomColumn, CustomValue, Datatype, Format};
 pub use search::Query;
-pub use sort::{SortKey, sort_books};
+pub use sort::{SortDir, SortKey, sort_books};

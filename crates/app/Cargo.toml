@@ -9,6 +9,7 @@ license = "GPL-3.0-or-later"
 ammonia = "4.2.1"
 anyhow = "1.0.104"
 calibre-compat = { version = "0.1.0", path = "../calibre-compat", features = ["ts"] }
+chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
 open = "5"
 serde = { version = "1.0.229", features = ["derive"] }

@@ -26,7 +26,7 @@ enum Cmd {
         /// e.g. 'author:"le guin" tag:fantasy -#read:yes'
         #[arg(short, long)]
         search: Option<String>,
-        /// title, author, added, published, rating or series
+        /// title, author, series, rating, added, published, publisher or size
         #[arg(long, default_value = "title")]
         sort: SortKey,
         #[arg(short = 'n', long)]
@@ -149,7 +149,7 @@ fn info(lib: &Library, snap: &Snapshot, load_time: Duration) -> Result<()> {
 fn list(snap: &Snapshot, search: Option<&str>, sort: SortKey, limit: Option<usize>) -> Result<()> {
     let query = search.map(Query::parse).transpose()?;
     let mut books: Vec<&Book> = snap.books.iter().filter(|b| query.as_ref().is_none_or(|q| q.matches(b))).collect();
-    sort_books(&mut books, sort);
+    sort_books(&mut books, sort, sort.natural_dir());
     let total = books.len();
     books.truncate(limit.unwrap_or(usize::MAX));
 

@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::time::Instant;
 
-use calibre_compat::{Book, Library, Query, SortKey, locate, sort_books};
+use calibre_compat::{Book, Library, Query, SortDir, SortKey, locate, sort_books};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 use ts_rs::TS;
@@ -59,11 +59,12 @@ pub async fn open_library(app: AppHandle, state: State<'_, AppState>, path: Opti
     Ok(info)
 }
 
-/// One tile in the grid; deliberately small so 50k of them serialize quickly.
+/// One book in the grid or table. Flat and display-ready, because every
+/// search sends the whole result set across IPC.
 #[derive(Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
-pub struct GridItem {
+pub struct BookRow {
     id: i64,
     title: String,
     authors: String,
@@ -71,26 +72,56 @@ pub struct GridItem {
     /// Formatted for display, e.g. "3" or "2.5".
     series_index: Option<String>,
     has_cover: bool,
+    /// 0–10 (half stars), as calibre stores it.
+    rating: Option<u8>,
+    publisher: Option<String>,
+    /// ISO date (`YYYY-MM-DD`); the UI formats it for the user's locale.
+    published: Option<String>,
+    /// ISO date (`YYYY-MM-DD`) the book was added to the library.
+    added: Option<String>,
+    /// Comma-separated.
+    tags: String,
+    formats: Vec<String>,
+    /// Bytes of the largest format.
+    size: Option<u64>,
 }
 
-#[tauri::command]
-pub async fn list_books(state: State<'_, AppState>, query: String, sort: SortKey) -> CmdResult<Vec<GridItem>> {
-    let lib = state.current().ok_or("No library is open")?;
-    let query = query.trim();
-    let query = (!query.is_empty()).then(|| Query::parse(query)).transpose().map_err(|e| e.to_string())?;
-    let mut books: Vec<&Book> = lib.snap.books.iter().filter(|b| query.as_ref().is_none_or(|q| q.matches(b))).collect();
-    sort_books(&mut books, sort);
-    Ok(books
-        .into_iter()
-        .map(|b| GridItem {
+impl From<&Book> for BookRow {
+    fn from(b: &Book) -> Self {
+        let date = |d: Option<chrono::DateTime<chrono::Utc>>| d.map(|d| d.format("%Y-%m-%d").to_string());
+        Self {
             id: b.id,
             title: b.title.clone(),
             authors: b.authors.join(" & "),
             series: b.series.clone(),
             series_index: b.series.as_ref().map(|_| fmt_index(b.series_index)),
             has_cover: b.has_cover,
-        })
-        .collect())
+            rating: b.rating,
+            publisher: b.publisher.clone(),
+            published: date(b.pubdate),
+            added: date(b.timestamp),
+            tags: b.tags.join(", "),
+            formats: b.formats.iter().map(|f| f.format.clone()).collect(),
+            size: b.formats.iter().map(|f| f.size).max(),
+        }
+    }
+}
+
+/// Books matching `query`, sorted by `sort` (in `dir`, or the key's natural
+/// direction when omitted).
+#[tauri::command]
+pub async fn list_books(
+    state: State<'_, AppState>,
+    query: String,
+    sort: SortKey,
+    dir: Option<SortDir>,
+) -> CmdResult<Vec<BookRow>> {
+    let lib = state.current().ok_or("No library is open")?;
+    let query = query.trim();
+    let query = (!query.is_empty()).then(|| Query::parse(query)).transpose().map_err(|e| e.to_string())?;
+    let mut books: Vec<&Book> = lib.snap.books.iter().filter(|b| query.as_ref().is_none_or(|q| q.matches(b))).collect();
+    sort_books(&mut books, sort, dir.unwrap_or(sort.natural_dir()));
+    Ok(books.into_iter().map(BookRow::from).collect())
 }
 
 #[derive(Serialize, TS)]
@@ -283,5 +314,33 @@ mod tests {
     fn formats_series_index() {
         assert_eq!(fmt_index(3.0), "3");
         assert_eq!(fmt_index(2.5), "2.5");
+    }
+}
+
+/// Serialization cost of a full `list_books` result, which every search pays.
+/// Run with: MAGNITIDE_BENCH_LIBRARY=/path/to/library cargo test -p magnitide --release -- --ignored --nocapture
+#[cfg(test)]
+mod bench {
+    use std::time::Instant;
+
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn list_payload_size() {
+        let path = std::env::var("MAGNITIDE_BENCH_LIBRARY").expect("set MAGNITIDE_BENCH_LIBRARY");
+        let snap = Library::open(path).unwrap().load().unwrap();
+        let t = Instant::now();
+        let mut books: Vec<&Book> = snap.books.iter().collect();
+        sort_books(&mut books, SortKey::Title, SortDir::Asc);
+        let sorted = t.elapsed();
+        let rows: Vec<BookRow> = books.into_iter().map(BookRow::from).collect();
+        let json = serde_json::to_vec(&rows).unwrap();
+        println!(
+            "{} books: sort {sorted:.1?}, rows+json {:.1?}, {:.1} MB",
+            rows.len(),
+            t.elapsed() - sorted,
+            json.len() as f64 / 1e6
+        );
     }
 }

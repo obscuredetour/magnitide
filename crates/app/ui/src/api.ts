@@ -6,11 +6,12 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 
 import type { BookDetails } from './bindings/BookDetails';
-import type { GridItem } from './bindings/GridItem';
+import type { BookRow } from './bindings/BookRow';
 import type { LibraryInfo } from './bindings/LibraryInfo';
+import type { SortDir } from './bindings/SortDir';
 import type { SortKey } from './bindings/SortKey';
 
-export type { BookDetails, GridItem, LibraryInfo, SortKey };
+export type { BookDetails, BookRow, LibraryInfo, SortDir, SortKey };
 export type { FormatInfo } from './bindings/FormatInfo';
 
 export const api = {
@@ -18,7 +19,7 @@ export const api = {
   openLibrary: (path: string | null) => invoke<LibraryInfo>('open_library', { path }),
 
   /** Books matching `query` (calibre-style search subset), in `sort` order. */
-  listBooks: (query: string, sort: SortKey) => invoke<GridItem[]>('list_books', { query, sort }),
+  listBooks: (query: string, sort: SortKey, dir: SortDir) => invoke<BookRow[]>('list_books', { query, sort, dir }),
 
   bookDetails: (id: number) => invoke<BookDetails>('book_details', { id }),
 

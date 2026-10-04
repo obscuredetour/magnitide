@@ -18,3 +18,37 @@ export function setCoverSize(n: number): void {
   setCoverSizeSignal(size);
   storage.set('coverSize', String(size));
 }
+
+export type ViewMode = 'grid' | 'table';
+const storedMode = storage.get('viewMode');
+const [viewMode, setViewModeSignal] = createSignal<ViewMode>(storedMode === 'table' ? 'table' : 'grid');
+export { viewMode };
+
+export function setViewMode(mode: ViewMode): void {
+  setViewModeSignal(mode);
+  storage.set('viewMode', mode);
+}
+
+/** Table column widths (px) and visibility, keyed by column id. */
+function storedRecord<T>(key: string): Record<string, T> {
+  try {
+    const parsed: unknown = JSON.parse(storage.get(key) ?? '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, T>) : {};
+  } catch {
+    return {};
+  }
+}
+
+const [columnSizing, setColumnSizingSignal] = createSignal(storedRecord<number>('tableColumnSizing'));
+const [columnVisibility, setColumnVisibilitySignal] = createSignal(storedRecord<boolean>('tableColumnVisibility'));
+export { columnSizing, columnVisibility };
+
+export function setColumnSizing(sizing: Record<string, number>): void {
+  setColumnSizingSignal(sizing);
+  storage.set('tableColumnSizing', JSON.stringify(sizing));
+}
+
+export function setColumnVisibility(visibility: Record<string, boolean>): void {
+  setColumnVisibilitySignal(visibility);
+  storage.set('tableColumnVisibility', JSON.stringify(visibility));
+}
