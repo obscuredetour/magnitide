@@ -225,7 +225,7 @@ function Details(props: { book: BookDetails }) {
                 </Show>
                 <Show when={library()?.kind === 'magnitide'}>
                   <button
-                    class="absolute -top-1.5 -right-1.5 grid size-[18px] cursor-pointer place-items-center rounded-full bg-popover text-xs leading-none text-muted opacity-0 shadow-sm ring-1 ring-line group-hover/format:opacity-100 hover:bg-danger hover:text-on-accent hover:ring-danger focus-visible:opacity-100"
+                    class="absolute -top-1.5 -right-1.5 grid size-[18px] cursor-pointer place-items-center rounded-full bg-popover text-xs leading-none text-muted opacity-0 shadow-sm ring-1 ring-line group-hover/format:opacity-100 hover:bg-danger hover:text-on-status hover:ring-danger focus-visible:opacity-100"
                     title={`Remove the ${f.format}`}
                     aria-label={`Remove the ${f.format}`}
                     onClick={() => void removeFormat(b(), f.format)}

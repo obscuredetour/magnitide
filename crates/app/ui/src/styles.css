@@ -1,5 +1,5 @@
 @import 'tailwindcss';
-@import './themes.css';
+@import './themes/index.css';
 
 /* `mac:` applies only on macOS, e.g. to clear the traffic-light buttons. */
 @custom-variant mac (&:where(.is-mac, .is-mac *));
@@ -53,10 +53,12 @@
   --color-line: var(--border);
   --color-accent: var(--accent);
   --color-on-accent: var(--on-accent);
+  --color-on-status: var(--on-status);
   --color-focus: var(--focus);
   --color-hover: var(--hover);
   --color-stripe: var(--row-stripe);
   --color-selection: var(--selection);
+  --color-on-selection: var(--on-selection);
   --color-highlight: var(--highlight);
   --color-success: var(--success);
   --color-warning: var(--warning);
@@ -79,7 +81,17 @@
     @apply h-full overflow-hidden font-sans text-[13px]/[1.4] text-fg antialiased select-none;
   }
   ::selection {
-    background: var(--selection);
+    background: var(--text-selection);
+  }
+  /* The webview's own focus ring, caret and form controls follow the system
+     accent; follow the theme instead. */
+  :root {
+    accent-color: var(--accent);
+    caret-color: var(--caret);
+  }
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
   }
 }
 

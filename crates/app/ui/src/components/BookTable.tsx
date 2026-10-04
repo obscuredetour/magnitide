@@ -142,7 +142,11 @@ const columns: ColumnDef<typeof features, BookRow, any>[] = [
     cell: (info) => (
       <span class="flex gap-1">
         <For each={info.getValue()}>
-          {(f) => <span class="rounded bg-element px-1.5 text-[11px] font-medium text-muted">{f}</span>}
+          {(f) => (
+            <span class="rounded bg-element px-1.5 text-[11px] font-medium text-muted in-data-selected:bg-on-selection/20">
+              {f}
+            </span>
+          )}
         </For>
       </span>
     ),
@@ -294,9 +298,12 @@ export function BookTable(props: Props) {
                   <div
                     role="row"
                     aria-rowindex={v.index + 2}
-                    class="absolute top-0 left-0 flex w-full cursor-default items-center border-b border-line/50 hover:bg-hover data-selected:bg-selection"
-                    // TODO(Jamie): stripe colour is inconsistent across themes (see README roadmap).
-                    classList={{ 'bg-stripe': zebraRows() && v.index % 2 === 1 }}
+                    class="absolute top-0 left-0 flex w-full cursor-default items-center not-data-selected:hover:bg-hover data-selected:bg-selection data-selected:text-on-selection data-selected:**:text-on-selection"
+                    // With stripes, a hairline between rows too; without, nothing.
+                    classList={{
+                      'bg-stripe': zebraRows() && v.index % 2 === 1,
+                      'border-b border-line/75': !zebraRows(),
+                    }}
                     data-selected={props.selectedIds.has(r().original.id) || undefined}
                     data-book-id={r().original.id}
                     style={{ height: `${ROW_H}px`, transform: `translateY(${v.start}px)` }}

@@ -59,8 +59,11 @@ function ConfirmDialog(props: { request: Request }) {
         </button>
         <button
           ref={confirmButton}
-          class="cursor-pointer rounded-lg px-4 py-1.5 text-sm font-semibold text-on-accent hover:brightness-110"
-          classList={{ 'bg-danger': props.request.danger, 'bg-accent': !props.request.danger }}
+          class="cursor-pointer rounded-lg px-4 py-1.5 text-sm font-semibold hover:brightness-110"
+          classList={{
+            'bg-danger text-on-status': props.request.danger,
+            'bg-accent text-on-accent': !props.request.danger,
+          }}
           onClick={() => done(true)}
         >
           {props.request.confirm}

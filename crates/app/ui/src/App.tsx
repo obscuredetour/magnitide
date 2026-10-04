@@ -34,6 +34,7 @@ import { bulkIds, editBooks, editingBook } from './editor';
 import { importState } from './importer';
 import { Toast } from './toast';
 import { deleteBooks } from './transfer';
+import { loadThemeAddons } from './theme';
 import { coverSize, setViewMode, viewMode } from './view';
 
 export function App() {
@@ -166,6 +167,7 @@ export function App() {
     onCleanup(() => void unlisten.then((off) => off()));
     void openInitialLibrary();
     watchDevices();
+    void loadThemeAddons().catch(() => {}); // the cached copy already applies
   });
   onCleanup(() => document.removeEventListener('keydown', onKeyDown));
 

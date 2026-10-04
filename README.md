@@ -49,7 +49,7 @@ cargo run -p calibre-compat -- info    # CLI against the default library
 ```
 
 Styling is [Tailwind v4](https://tailwindcss.com) utilities in the components. Colours
-and shadows come only from the theme (`crates/app/ui/src/themes.css`), in two layers:
+and shadows come only from the theme (`crates/app/ui/src/themes/`, starting at `index.css`), in two layers:
 a palette named after [Catppuccin's](https://github.com/catppuccin/catppuccin/blob/main/docs/style-guide.md)
 (crust, mantle, base, surface 0–2, overlay 0–2, subtext 0–1, text, and the accents),
 and roles the UI paints with (`--bg`, `--panel`, `--popover`, `--field`, `--element`,
@@ -57,10 +57,15 @@ and roles the UI paints with (`--bg`, `--panel`, `--popover`, `--field`, `--elem
 `--focus`, status colours, `--inverse`, `--scrim`…), derived from the palette following
 the Catppuccin and [Dracula](https://draculatheme.com/spec) role tables. A theme is a
 palette plus any role overrides; `theme.ts` switches between them at runtime by setting
-`data-theme` on `<html>`. Built in: light, dark, sepia, the four Catppuccin flavours,
-Dracula and Alucard, and "system" (follows the OS). To add a theme, add a block in
-`themes.css` (a Catppuccin port pastes its palette as is) and register it in `THEMES` in
-`theme.ts`.
+`data-theme` (and `data-appearance`) on `<html>`. Built in: light, dark, sepia, the four
+Catppuccin flavours, Dracula and Alucard, and "system" (follows the OS). An accent picker
+(theme menu, Settings → Appearance) swaps in any of the theme's palette accents, as
+Catppuccin's ports do. The webview's focus ring, text cursor and form controls follow the
+theme too. To add a theme, add a block in a `themes/` family file (a Catppuccin port pastes
+its palette as is) and register it in `BUILTIN_THEMES` in `theme.ts` with its appearance and
+accents. Add-on themes are JSON theme files (palette plus role overrides, checked in Rust,
+never raw CSS) in the app's themes folder, or a Catppuccin-style `palette.json`; see
+[docs/themes.md](docs/themes.md).
 
 The types the UI uses for Rust commands (`crates/app/ui/src/bindings/`) are
 generated from the Rust structs by [ts-rs](https://github.com/Aleph-Alpha/ts-rs)

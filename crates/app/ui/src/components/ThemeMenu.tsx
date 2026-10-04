@@ -1,7 +1,8 @@
 import { For } from 'solid-js';
 
-import { setTheme, THEMES, themeChoice } from '../theme';
-import { Menu, MenuItem, MenuLabel } from './Menu';
+import { setTheme, themeAttrs, themeChoice, themes } from '../theme';
+import { AccentPicker } from './AccentPicker';
+import { Menu, MenuItem, MenuLabel, MenuSeparator } from './Menu';
 
 /**
  * A theme's colours, rendered by scoping `data-theme` to the swatch itself;
@@ -10,7 +11,7 @@ import { Menu, MenuItem, MenuLabel } from './Menu';
 function Swatch(props: { theme: string }) {
   return (
     <span
-      data-theme={props.theme}
+      {...themeAttrs(props.theme)}
       class="relative size-5 flex-none overflow-hidden rounded-full border border-line bg-bg"
       aria-hidden="true"
     >
@@ -37,12 +38,12 @@ export function ThemeMenu() {
       <MenuLabel>Theme</MenuLabel>
       <MenuItem checked={themeChoice() === 'system'} onSelect={() => setTheme('system')}>
         <span class="relative size-5 flex-none overflow-hidden rounded-full border border-line" aria-hidden="true">
-          <span data-theme="light" class="absolute inset-y-0 left-0 w-1/2 bg-bg" />
-          <span data-theme="dark" class="absolute inset-y-0 right-0 w-1/2 bg-bg" />
+          <span {...themeAttrs('light')} class="absolute inset-y-0 left-0 w-1/2 bg-bg" />
+          <span {...themeAttrs('dark')} class="absolute inset-y-0 right-0 w-1/2 bg-bg" />
         </span>
         Match System
       </MenuItem>
-      <For each={THEMES}>
+      <For each={themes()}>
         {(t) => (
           <MenuItem checked={themeChoice() === t.id} onSelect={() => setTheme(t.id)}>
             <Swatch theme={t.id} />
@@ -50,6 +51,9 @@ export function ThemeMenu() {
           </MenuItem>
         )}
       </For>
+      <MenuSeparator />
+      <MenuLabel>Accent</MenuLabel>
+      <AccentPicker menu />
     </Menu>
   );
 }
