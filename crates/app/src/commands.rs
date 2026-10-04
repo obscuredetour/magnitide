@@ -346,6 +346,15 @@ pub async fn remove_cover(state: State<'_, AppState>, id: i64) -> CmdResult<()> 
     write_library(&state, move |lib| lib.remove_cover(id)).await
 }
 
+/// Remove one format from a book, moving its file to the Trash.
+#[tauri::command]
+pub async fn remove_format(state: State<'_, AppState>, id: i64, format: String) -> CmdResult<()> {
+    write_library(&state, move |lib| {
+        lib.remove_format(id, &format, |path| trash::delete(path).map_err(std::io::Error::other))
+    })
+    .await
+}
+
 const READ_ONLY: &str =
     "This calibre library is read-only. Import it into a Magnitide library (library menu) to change it.";
 

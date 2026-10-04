@@ -106,6 +106,7 @@ fn main() {
             commands::save_book_edit,
             commands::set_cover_from_file,
             commands::remove_cover,
+            commands::remove_format,
             commands::tidy_preview,
             commands::tidy_file_names,
             commands::name_lists,

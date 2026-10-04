@@ -5,7 +5,7 @@ import { openEditor } from '../editor';
 import { editRevision, library, openBook, search, setSelectedId } from '../library';
 import { toast } from '../toast';
 import { devices, onDevice } from '../devices';
-import { removeFromDevice, sendToDevice } from '../transfer';
+import { removeFormat, removeFromDevice, sendToDevice } from '../transfer';
 import { writeBookFiles } from '../writeback';
 import { ConvertMenu } from './ConvertMenu';
 import { Cover } from './Cover';
@@ -206,22 +206,34 @@ function Details(props: { book: BookDetails }) {
         <div class={chips}>
           <For each={b().formats}>
             {(f) => (
-              <Show
-                when={f.present}
-                fallback={
-                  <span class={`${chip} text-danger line-through`} title="File missing from the library folder">
-                    {f.format} · {formatSize(f.size)}
-                  </span>
-                }
-              >
-                <button
-                  class={chipButton}
-                  title={`Open the ${f.format} in its default app`}
-                  onClick={() => openBook(b().id, f.format)}
+              <span class="group/format relative inline-flex">
+                <Show
+                  when={f.present}
+                  fallback={
+                    <span class={`${chip} text-danger line-through`} title="File missing from the library folder">
+                      {f.format} · {formatSize(f.size)}
+                    </span>
+                  }
                 >
-                  {f.format} · {formatSize(f.size)}
-                </button>
-              </Show>
+                  <button
+                    class={chipButton}
+                    title={`Open the ${f.format} in its default app`}
+                    onClick={() => openBook(b().id, f.format)}
+                  >
+                    {f.format} · {formatSize(f.size)}
+                  </button>
+                </Show>
+                <Show when={library()?.kind === 'magnitide'}>
+                  <button
+                    class="absolute -top-1.5 -right-1.5 grid size-[18px] cursor-pointer place-items-center rounded-full bg-surface text-xs leading-none text-muted opacity-0 shadow-sm ring-1 ring-line group-hover/format:opacity-100 hover:bg-danger hover:text-white hover:ring-danger focus-visible:opacity-100"
+                    title={`Remove the ${f.format}`}
+                    aria-label={`Remove the ${f.format}`}
+                    onClick={() => void removeFormat(b(), f.format)}
+                  >
+                    ×
+                  </button>
+                </Show>
+              </span>
             )}
           </For>
           <Show when={library()?.kind === 'magnitide'}>

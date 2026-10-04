@@ -2,7 +2,15 @@
 
 import { createSignal, For, Show } from 'solid-js';
 
-import { api, type BookRow, type DeviceInfo, errorMessage, onConvertProgress, onTransferProgress } from './api';
+import {
+  api,
+  type BookRow,
+  type DeviceInfo,
+  errorMessage,
+  onConvertProgress,
+  onTransferProgress,
+  trashName,
+} from './api';
 import { confirm } from './confirm';
 import { booksOn, DEVICE_KIND_NAMES, preferredFormat, setPreferredFormat } from './devices';
 import { items, library, refresh, setEditRevision, setLibrary, setSelectedId } from './library';
@@ -236,6 +244,37 @@ export async function mergeBooks(a: BookRow, b: BookRow): Promise<void> {
     setSelectedId(kept);
     setEditRevision((n) => n + 1);
     toast(`Merged · ${plural(r.formatsMoved, 'file', 'files')} moved${r.coverTaken ? ', cover taken' : ''}`);
+  } catch (err) {
+    toast(errorMessage(err), { error: true });
+  }
+}
+
+/** Remove one format from a book, after asking; its file goes to the Trash. */
+export async function removeFormat(book: { id: number; title: string; formats: { format: string }[] }, format: string) {
+  const last = book.formats.length === 1;
+  const ok = await confirm({
+    title: `Remove the ${format}?`,
+    message: () => (
+      <>
+        <p>
+          The {format} file of <span class="font-medium text-fg">{book.title}</span> moves to the {trashName}.
+        </p>
+        <p class="mt-2 text-xs">
+          {last
+            ? 'It is the only file, so the book stays in your library with no files.'
+            : 'The book and its other formats stay.'}
+        </p>
+      </>
+    ),
+    confirm: `Remove ${format}`,
+    danger: true,
+  });
+  if (!ok) return;
+  try {
+    await api.removeFormat(book.id, format);
+    await refresh();
+    setEditRevision((n) => n + 1);
+    toast(`Removed the ${format} · it's in the ${trashName}`);
   } catch (err) {
     toast(errorMessage(err), { error: true });
   }
