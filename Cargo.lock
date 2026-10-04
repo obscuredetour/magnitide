@@ -2228,6 +2228,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "magnitide-core"
+version = "0.1.0"
+dependencies = [
+ "calibre-compat",
+ "chrono",
+ "rusqlite",
+ "serde",
+ "tempfile",
+ "thiserror 2.0.21",
+ "uuid",
+]
+
+[[package]]
 name = "maplit"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
