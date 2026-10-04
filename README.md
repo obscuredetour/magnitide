@@ -70,20 +70,21 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] List view zebra stripes (setting, on by default)
 - [ ] (Jamie) Tweak zebra stripe colours: inconsistent across themes. The stripe is `bg-surface-2/40` in `crates/app/ui/src/components/BookTable.tsx`; a per-theme `--row-stripe` variable in `themes.css` would let each theme set its own
 - [ ] Add clear search button
-- [ ] Covers view should keep selected book in view after sidebar opens
+- [ ] Covers view should keep selected book in view after sidebar opens & grid resize
+- [ ] Implement table column reordering
 - [ ] Implement right click context menu for books
 - [x] Native Magnitide library (schema v1) and calibre import, in the app with progress (also `cargo run --release -p magnitide-core --example import_calibre -- <calibre> <dest>`)
 - [x] Library safety: single-writer lock (`.magnitide.lock`), warning for libraries on network shares
 - [x] Drag and drop (and "Add Books…") to add books: EPUB metadata and covers, file-name fallback, formats grouped, duplicates skipped
 - [ ] Metadata readers for MOBI/AZW3 and PDF (drag and drop uses file names for these today)
-- [ ] Adding a new format to an existing book (today a new format of a book already in the library becomes a separate book)
+- [x] Adding a new format of a book already in the library (same title and first author) adds it to that book instead of creating another
 - [x] Metadata editing (⌘E): all built-in fields, rich-text description, cover change/remove; folder and file names follow title and first author (all-or-nothing with the database)
 - [x] Autocomplete for authors, tags, series and publishers in the edit form
 - [ ] Editing custom fields
 - [x] File name clean-up: names follow edits, and Settings → Library → "Tidy file names" fixes drifted books and reports files missing from disk
 - [x] Write metadata and covers back into EPUB/KEPUB files (details panel "Write to file", Settings → Library for every book, optional write on save); only files that differ are rewritten
 - [x] Metadata lookup from Open Library and Google Books (your own API key) with a field-by-field matching dialog: "Find Metadata…" in the edit window, sources in Settings → Metadata Sources. On request only; ranking is plain string matching, no AI
-- [ ] E-reader detection (Kindle, Kobo, generic USB storage): scan mounted devices, "On device" column and cover badge
+- [x] E-reader detection (Kobo, Kindle, any calibre-managed USB device): plugged-in devices appear in the top bar, books on them get an "On Device" column, a cover badge and a line in the details panel, and the list can be filtered to books on or not on a device. Matched by calibre's uuid, ISBN, identical file, then title and author; Eject from the device menu
 - [ ] File transfer between a mounted device and the library (send, import, delete); MTP devices (newer Kindles) later
 - [ ] Format conversion: EPUB → KEPUB natively; AZW3 via an installed calibre `ebook-convert` at first
 - [ ] Multi-select, then bulk metadata lookup and bulk send to device

@@ -111,6 +111,53 @@ pub(crate) fn store_book(
     }
 }
 
+/// Add more formats to an existing book: each file goes into the book's
+/// folder under the book's naming. All or nothing: on failure the files
+/// copied here are removed and the database is unchanged.
+pub(crate) fn add_formats(lib: &mut Library, id: BookId, files: &[(String, PathBuf)]) -> Result<Stored> {
+    let root = lib.root.clone();
+    let tx = lib.conn.transaction()?;
+    let (rel_dir, title, first_author): (String, String, String) = tx.query_row(
+        "SELECT b.path, b.title, coalesce(a.name, 'Unknown') FROM books b
+         LEFT JOIN book_authors ba ON ba.book_id = b.id AND ba.position = 0
+         LEFT JOIN authors a ON a.id = ba.author_id
+         WHERE b.id = ?",
+        [id],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    )?;
+    let dir = rel_dir.split('/').fold(root, |p, c| p.join(c));
+
+    let mut written: Vec<PathBuf> = Vec::new();
+    let result = (|| -> Result<Stored> {
+        fs::create_dir_all(&dir)?;
+        let mut out = Stored { id, ..Default::default() };
+        for (format, src) in files {
+            let filename = paths::book_file(&title, &first_author, format);
+            let dest = dir.join(&filename);
+            if dest.exists() {
+                return Err(Error::Import(format!("{} already exists", dest.display())));
+            }
+            let size = clone_or_copy(src, &dest, &mut out)?;
+            written.push(dest);
+            tx.prepare_cached("INSERT INTO files (book_id, format, filename, size, added_at) VALUES (?, ?, ?, ?, ?)")?
+                .execute(params![id, format, filename, size as i64, now()])?;
+            out.files += 1;
+        }
+        tx.execute("UPDATE books SET modified_at = ? WHERE id = ?", params![now(), id])?;
+        Ok(out)
+    })();
+
+    match result.and_then(|out| tx.commit().map(|_| out).map_err(Error::from)) {
+        Ok(out) => Ok(out),
+        Err(e) => {
+            for f in written {
+                let _ = fs::remove_file(f);
+            }
+            Err(Error::Import(format!("“{}”: {e}", title.trim())))
+        }
+    }
+}
+
 /// Clone if the filesystem can, else copy. Never overwrites. Returns the size.
 fn clone_or_copy(src: &Path, dest: &Path, out: &mut Stored) -> Result<u64> {
     match reflink_copy::reflink_or_copy(src, dest)? {

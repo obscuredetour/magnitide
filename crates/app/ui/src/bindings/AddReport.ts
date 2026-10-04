@@ -6,7 +6,13 @@ export type AddReport = {
  */
 added: Array<number>, files: number, covers: number, cloned: number, copied: number, copiedBytes: number, 
 /**
- * Books already in the library (same title, first author and format).
+ * Books already in the library that got new formats (same title and
+ * first author): ids, in order. Not in `added`.
+ */
+formatsAddedTo: Array<number>, 
+/**
+ * Books already in the library in every format given (same title and
+ * first author).
  */
 duplicates: Array<string>, 
 /**

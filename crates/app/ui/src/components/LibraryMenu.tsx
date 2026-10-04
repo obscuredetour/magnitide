@@ -1,7 +1,8 @@
 import { For, Show } from 'solid-js';
 
 import { api, errorMessage, fileManagerName } from '../api';
-import { chooseLibrary, items, library, openLibrary, recentLibraries } from '../library';
+import { shownItems } from '../devices';
+import { chooseLibrary, library, openLibrary, recentLibraries } from '../library';
 import { startImport } from '../importer';
 import { chooseAndAddBooks } from '../adder';
 import { toast } from '../toast';
@@ -10,7 +11,7 @@ import { Menu, MenuItem, MenuLabel, MenuSeparator } from './Menu';
 export function LibraryMenu() {
   const count = () => {
     const total = library()?.bookCount ?? 0;
-    const shown = items().length;
+    const shown = shownItems().length;
     return shown === total
       ? `${total.toLocaleString()} books`
       : `${shown.toLocaleString()} of ${total.toLocaleString()}`;
@@ -29,7 +30,7 @@ export function LibraryMenu() {
     <Menu
       label="Library"
       title={library()?.path ?? 'Open a library'}
-      class="min-w-0 justify-self-start"
+      class="min-w-0"
       buttonClass="-ml-2 flex max-w-full min-w-0 items-baseline gap-2 rounded-[7px] px-2 py-[5px] hover:bg-line aria-expanded:bg-line"
       panelClass="w-80"
       button={

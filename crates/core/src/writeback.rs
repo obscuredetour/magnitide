@@ -230,6 +230,7 @@ impl Library {
                 description: b.description_html,
                 tags: b.tags,
                 cover,
+                uuids: Vec::new(),
             },
         })
     }

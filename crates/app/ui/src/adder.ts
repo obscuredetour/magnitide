@@ -3,7 +3,7 @@
 import { batch } from 'solid-js';
 
 import { type AddReport, api, errorMessage, onAddProgress } from './api';
-import { library, refresh, setDetailsOpen, setLibrary, setSelectedId } from './library';
+import { library, refresh, setDetailsOpen, setEditRevision, setLibrary, setSelectedId } from './library';
 import { toast } from './toast';
 
 const READ_ONLY = 'This calibre library is read-only. Import it into a Magnitide library (library menu) to add books.';
@@ -30,13 +30,16 @@ export async function addPaths(paths: string[]): Promise<void> {
   try {
     const report = await api.addBooks(paths);
     await refresh();
-    const first = report.added[0];
+    const first = report.added[0] ?? report.formatsAddedTo[0];
+    const touched = report.added.length + report.formatsAddedTo.length;
     batch(() => {
       setLibrary({ ...lib, bookCount: lib.bookCount + report.added.length });
+      // Books that gained formats show them.
+      if (report.formatsAddedTo.length) setEditRevision((n) => n + 1);
       if (first !== undefined) {
         setSelectedId(first);
-        // One new book: show it. Several: just select the first.
-        if (report.added.length === 1) setDetailsOpen(true);
+        // One book: show it. Several: just select the first.
+        if (touched === 1) setDetailsOpen(true);
       }
     });
     summarize(report);
@@ -55,11 +58,13 @@ export async function chooseAndAddBooks(): Promise<void> {
 
 function summarize(r: AddReport): void {
   const n = r.added.length;
-  const parts = [n === 1 ? 'Added 1 book' : `Added ${n} books`];
+  const joined = r.formatsAddedTo.length;
+  const parts = n || !joined ? [n === 1 ? 'Added 1 book' : `Added ${n} books`] : [];
+  if (joined) parts.push(`Added new formats to ${joined === 1 ? '1 book' : `${joined} books`} already in the library`);
   if (r.duplicates.length) parts.push(`${r.duplicates.length} already in the library`);
   if (r.skipped.length) parts.push(`${r.skipped.length} skipped`);
   if (r.failed.length) parts.push(`${r.failed.length} failed`);
-  const problems = r.failed.length > 0 || (n === 0 && r.duplicates.length + r.skipped.length > 0);
+  const problems = r.failed.length > 0 || (n + joined === 0 && r.duplicates.length + r.skipped.length > 0);
   for (const line of [...r.failed, ...r.duplicates, ...r.skipped, ...r.warnings]) console.info(line);
   toast(parts.join(' · '), { error: problems, duration: problems ? 6000 : 3000 });
 }

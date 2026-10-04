@@ -10,6 +10,10 @@ import { open, save } from '@tauri-apps/plugin-dialog';
 
 import type { BookDetails } from './bindings/BookDetails';
 import type { CoverPreview } from './bindings/CoverPreview';
+import type { DeviceHit } from './bindings/DeviceHit';
+import type { DeviceInfo } from './bindings/DeviceInfo';
+import type { DeviceKind } from './bindings/DeviceKind';
+import type { MatchedBy } from './bindings/MatchedBy';
 import type { Lookup } from './bindings/Lookup';
 import type { Match as MetadataMatch } from './bindings/Match';
 import type { MatchKind } from './bindings/MatchKind';
@@ -40,7 +44,11 @@ export type {
   BookDetails,
   BookEdit,
   CoverPreview,
+  DeviceHit,
+  DeviceInfo,
+  DeviceKind,
   Lookup,
+  MatchedBy,
   MatchKind,
   MetadataMatch,
   SearchResult,
@@ -161,6 +169,18 @@ export const api = {
   /** Use a source's cover for a book (applies now). */
   setCoverFromUrl: (id: number, url: string) => invoke<void>('set_cover_from_url', { id, url }),
 
+  /** Connected e-readers and which books of the open library are on them. */
+  listDevices: () => invoke<DeviceInfo[]>('list_devices'),
+
+  /** Scan a device again (after books were added or removed on it). */
+  rescanDevice: (id: string) => invoke<void>('rescan_device', { id }),
+
+  /** Eject (unmount) a device so it can be unplugged. */
+  ejectDevice: (id: string) => invoke<void>('eject_device', { id }),
+
+  /** Open a device in the file manager. */
+  revealDevice: (id: string) => invoke<void>('reveal_device', { id }),
+
   /** Names already in the library (authors, tags, series, publishers), for autocomplete. */
   nameLists: () => invoke<NameLists>('name_lists'),
 
@@ -233,6 +253,11 @@ export const fileManagerName = /Mac/.test(navigator.userAgent)
  */
 export function onOpenSettings(handler: () => void): Promise<UnlistenFn> {
   return listen('open-settings', handler);
+}
+
+/** An e-reader was connected or disconnected (or rescanned). Matches `DEVICES_CHANGED_EVENT` in devices.rs. */
+export function onDevicesChanged(handler: () => void): Promise<UnlistenFn> {
+  return listen('devices-changed', handler);
 }
 
 /** Import progress. Event name matches `IMPORT_PROGRESS_EVENT` in `crates/app/src/commands.rs`. */

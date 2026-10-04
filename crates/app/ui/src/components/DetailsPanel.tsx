@@ -1,9 +1,10 @@
 import { createResource, createSignal, For, Show } from 'solid-js';
 
-import { api, type BookDetails, errorMessage, fileManagerName } from '../api';
+import { api, type BookDetails, errorMessage, fileManagerName, type MatchedBy } from '../api';
 import { openEditor } from '../editor';
 import { editRevision, library, openBook, search } from '../library';
 import { toast } from '../toast';
+import { onDevice } from '../devices';
 import { writeBookFiles } from '../writeback';
 import { Cover } from './Cover';
 
@@ -35,6 +36,13 @@ function formatSize(bytes: number): string {
 }
 
 const searchFor = (field: string, value: string) => search(`${field}:"${value}"`);
+
+const MATCHED_BY: Record<MatchedBy, string> = {
+  uuid: 'its calibre id',
+  isbn: 'ISBN',
+  file: 'an identical file',
+  title: 'title and author',
+};
 
 // Shared styles for repeated elements.
 const chips = 'my-4 flex flex-wrap gap-1.5';
@@ -181,6 +189,21 @@ function Details(props: { book: BookDetails }) {
             )}
           </For>
         </div>
+      </Show>
+
+      <Show when={onDevice().get(b().id)}>
+        {(where) => (
+          <div class="-mt-1.5 mb-4 space-y-0.5 text-xs">
+            <For each={where()}>
+              {(o) => (
+                <p class="flex items-center gap-1.5 text-muted" title={`Found by ${MATCHED_BY[o.hit.matchedBy]}`}>
+                  <span class="font-medium text-success">On {o.device.name}</span>
+                  <span class="truncate">{o.hit.path}</span>
+                </p>
+              )}
+            </For>
+          </div>
+        )}
       </Show>
 
       <Show when={fileStatus() === 'outdated'}>

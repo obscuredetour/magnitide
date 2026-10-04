@@ -63,6 +63,8 @@ fn read_inner(path: &Path) -> Res<BookMetadata> {
             "identifier" => {
                 if let Some((scheme, id)) = identifier(attr(node, "scheme"), &value) {
                     out.identifiers.entry(scheme).or_insert(id);
+                } else if let Some(uuid) = book_uuid(attr(node, "scheme"), &value) {
+                    out.uuids.push(uuid);
                 }
             }
             "meta" => match (attr(node, "name"), attr(node, "property")) {
@@ -181,6 +183,15 @@ pub(super) fn identifier(scheme: Option<&str>, value: &str) -> Option<(String, S
         "isbn" => Some(("isbn".into(), normalize_isbn(v))),
         _ => Some((scheme, v.to_owned())),
     }
+}
+
+/// A uuid identifier ("urn:uuid:…", or scheme uuid/calibre), lower case.
+fn book_uuid(scheme: Option<&str>, value: &str) -> Option<String> {
+    let v = value.trim().to_ascii_lowercase();
+    let v = v.strip_prefix("urn:uuid:").or_else(|| v.strip_prefix("calibre:")).unwrap_or(&v).to_owned();
+    let uuidish = v.len() == 36 && v.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-');
+    let named = scheme.is_some_and(|s| s.eq_ignore_ascii_case("uuid") || s.eq_ignore_ascii_case("calibre"));
+    (uuidish && (named || value.trim().to_ascii_lowercase().starts_with("urn:uuid:") || scheme.is_none())).then_some(v)
 }
 
 pub(super) fn normalize_isbn(s: &str) -> String {
@@ -328,6 +339,7 @@ pub(crate) mod tests {
         assert_eq!(m.languages, ["eng"]);
         assert_eq!(m.identifiers.get("isbn").map(String::as_str), Some("9780061054884"));
         assert_eq!(m.identifiers.len(), 1, "package uuid skipped");
+        assert_eq!(m.uuids, ["5c4b5b2c-0000-4000-8000-000000000000"]);
         assert_eq!(m.tags, ["Science Fiction", "Classics"]);
         assert_eq!(m.description.as_deref(), Some("<p>An <b>ambiguous</b> utopia.</p>"));
         assert_eq!(m.series, Some(("Hainish Cycle".into(), 5.0)));

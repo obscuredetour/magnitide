@@ -14,6 +14,7 @@ import { createVirtualizer } from '@tanstack/solid-virtual';
 import { createEffect, For, Index, on, onMount, Show } from 'solid-js';
 
 import type { BookRow, SortKey } from '../api';
+import { onDevice } from '../devices';
 import { sort, sortDir, toggleSort } from '../library';
 import { columnSizing, effectiveColumnVisibility, setColumnSizing, setColumnVisibility, zebraRows } from '../view';
 import { Cover } from './Cover';
@@ -78,6 +79,13 @@ const columns: ColumnDef<typeof features, BookRow, any>[] = [
         </span>
       );
     },
+  }),
+  col.display({
+    id: 'device',
+    size: 84,
+    meta: { label: 'On Device' } satisfies Meta,
+    header: 'On Device',
+    cell: (info) => <DeviceCheck id={info.row.original.id} />,
   }),
   col.accessor('authors', {
     id: 'author',
@@ -146,6 +154,32 @@ const columns: ColumnDef<typeof features, BookRow, any>[] = [
     cell: (info) => muted(formatSize(info.getValue())),
   }),
 ];
+
+/** A check mark when the book is on a connected device. */
+function DeviceCheck(props: { id: number }) {
+  const where = () => onDevice().get(props.id);
+  return (
+    <Show when={where()}>
+      {(w) => (
+        <span
+          class="text-success"
+          title={w()
+            .map((o) => `On ${o.device.name}: ${o.hit.path}`)
+            .join('\n')}
+          aria-label="On device"
+        >
+          <svg
+            class="size-3.5 fill-none stroke-current stroke-[2.2] [stroke-linecap:round] [stroke-linejoin:round]"
+            viewBox="0 0 14 14"
+            aria-hidden="true"
+          >
+            <path d="m3 7.5 2.5 2.5L11 4" />
+          </svg>
+        </span>
+      )}
+    </Show>
+  );
+}
 
 const meta = (h: { column: { columnDef: { meta?: unknown } } }) => h.column.columnDef.meta as Meta;
 const apply = <T,>(updater: Updater<T>, prev: T): T =>

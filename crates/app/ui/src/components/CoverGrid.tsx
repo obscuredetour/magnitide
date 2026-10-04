@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js';
 
 import type { BookRow } from '../api';
+import { onDevice } from '../devices';
 import { Cover } from './Cover';
 
 // Layout constants (CSS px).
@@ -158,6 +159,25 @@ export function CoverGrid(props: Props) {
             >
               <div class="relative aspect-[2/3] w-full overflow-hidden rounded-md bg-surface-2 shadow-card transition duration-[180ms] ease-out group-hover:-translate-y-[3px] group-hover:shadow-lift group-data-selected:outline-3 group-data-selected:outline-offset-3 group-data-selected:outline-accent">
                 <Cover id={item.id} title={item.title} authors={item.authors} hasCover={item.hasCover} size="thumb" />
+                <Show when={onDevice().get(item.id)}>
+                  {(where) => (
+                    <span
+                      class="absolute top-1.5 left-1.5 grid size-5 place-items-center rounded-full bg-success text-white shadow-card ring-2 ring-black/20"
+                      title={where()
+                        .map((o) => `On ${o.device.name}`)
+                        .join('\n')}
+                      aria-label="On device"
+                    >
+                      <svg
+                        class="size-3 fill-none stroke-current stroke-[2.4] [stroke-linecap:round] [stroke-linejoin:round]"
+                        viewBox="0 0 14 14"
+                        aria-hidden="true"
+                      >
+                        <path d="m3 7.5 2.5 2.5L11 4" />
+                      </svg>
+                    </span>
+                  )}
+                </Show>
                 <Show when={item.seriesIndex}>
                   {(n) => (
                     <span class="absolute right-1.5 bottom-1.5 rounded-full bg-black/60 px-[7px] py-px text-[11px] font-semibold text-white tabular-nums backdrop-blur-sm">
