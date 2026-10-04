@@ -18,7 +18,9 @@ import { addonReport, addThemeFile, loadThemeAddons, setTheme, themeAttrs, theme
 import { AccentPicker } from './AccentPicker';
 import { toast } from '../toast';
 import {
+  columnOrder,
   isColumnVisible,
+  resetColumnOrder,
   resetColumnSizing,
   setColumnVisible,
   setViewMode,
@@ -389,13 +391,22 @@ function LibrarySettings() {
 }
 
 function ListSettings() {
+  // In display order: saved ones first, the rest in their default places.
+  const ordered = () => {
+    const order = columnOrder();
+    const known = order.filter((id) => TABLE_COLUMNS.some((c) => c.id === id));
+    return [
+      ...known.map((id) => TABLE_COLUMNS.find((c) => c.id === id)!),
+      ...TABLE_COLUMNS.filter((c) => !known.includes(c.id)),
+    ];
+  };
   return (
     <>
       <Heading>List View</Heading>
       <div class="mb-1 font-medium">Columns</div>
       <div class="mb-4 text-xs text-muted">Also available from the ⋯ button at the end of the list header.</div>
       <div class="mb-6 grid grid-cols-2 gap-x-6 gap-y-2">
-        <For each={TABLE_COLUMNS}>
+        <For each={ordered()}>
           {(c) => (
             <label class="flex items-center gap-2" classList={{ 'opacity-60': c.locked }}>
               <input
@@ -422,6 +433,14 @@ function ListSettings() {
       <Row label="Column widths" description="Drag a column's edge to resize it; double-click to reset one.">
         <button class={button} onClick={() => resetColumnSizing()}>
           Reset All
+        </button>
+      </Row>
+      <Row
+        label="Column order"
+        description="Drag a column's header sideways to move it, or focus it and press ⌥← / ⌥→."
+      >
+        <button class={button} disabled={!columnOrder().length} onClick={() => resetColumnOrder()}>
+          Reset
         </button>
       </Row>
     </>
