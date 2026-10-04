@@ -28,9 +28,26 @@ pub enum Error {
     #[error("import failed: {0}")]
     Import(String),
 
+    /// Another process has the library open for writing.
+    #[error("{}", describe_holder(.0.as_ref()))]
+    LibraryInUse(Option<crate::lock::LockHolder>),
+
     #[error(transparent)]
     Sqlite(#[from] rusqlite::Error),
 
     #[error(transparent)]
     Io(#[from] std::io::Error),
+}
+
+fn describe_holder(holder: Option<&crate::lock::LockHolder>) -> String {
+    match holder {
+        Some(h) => format!(
+            "This library is already open in {} (process {}{}, since {}). Close it there first.",
+            h.app,
+            h.pid,
+            h.host.as_deref().map(|host| format!(" on {host}")).unwrap_or_default(),
+            h.since
+        ),
+        None => "This library is already open in another Magnitide window or program. Close it there first.".into(),
+    }
 }

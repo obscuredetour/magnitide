@@ -6,7 +6,7 @@ mod covers;
 mod menu;
 
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use magnitide_catalog::Catalog;
 use serde::Serialize;
@@ -27,6 +27,9 @@ pub struct Loaded {
     pub kind: LibraryKind,
     /// Every book, loaded once; search, sort and all views read this.
     pub catalog: Catalog,
+    /// Magnitide libraries stay open (holding their single-writer lock) for as
+    /// long as they're shown; edits go through this. None for calibre libraries.
+    pub native: Option<Arc<Mutex<magnitide_core::Library>>>,
     /// Where this library's cover thumbnails are cached (never inside the library).
     pub thumb_dir: PathBuf,
 }

@@ -1,6 +1,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use calibre_compat::locate;
@@ -23,6 +24,8 @@ pub struct LibraryInfo {
     book_count: usize,
     load_ms: u128,
     warnings: Vec<String>,
+    /// On SMB/NFS/…: SQLite and file locks aren't reliable there.
+    on_network_share: bool,
 }
 
 /// Open a Magnitide or calibre library at `path` (calibre ones read-only), or
@@ -35,18 +38,28 @@ pub async fn open_library(app: AppHandle, state: State<'_, AppState>, path: Opti
             .ok_or("No library found. Choose a Magnitide or calibre library folder to open.")?,
     };
     let thumbs_root = thumbs_root(&app)?;
+    // Reopening the library we already hold must reuse its handle: opening it
+    // again would trip our own single-writer lock.
+    let current = state.current().filter(|l| l.native.is_some() && same_path(&l.root, &path));
 
     let (loaded, info) = tauri::async_runtime::spawn_blocking(move || -> anyhow::Result<_> {
         let t = Instant::now();
-        let (root, kind, name, catalog) = if magnitide_core::Library::exists_at(&path) {
+        let (root, kind, name, catalog, native) = if let Some(current) = current {
+            let native = current.native.clone().expect("filtered on native above");
+            let (name, catalog) = {
+                let lib = native.lock().unwrap_or_else(|e| e.into_inner());
+                (lib.info()?.name, lib.load_catalog()?)
+            };
+            (current.root.clone(), LibraryKind::Magnitide, name, catalog, Some(native))
+        } else if magnitide_core::Library::exists_at(&path) {
             let lib = magnitide_core::Library::open(&path)?;
-            let name = lib.info()?.name;
-            (lib.root().to_path_buf(), LibraryKind::Magnitide, name, lib.load_catalog()?)
+            let (root, name, catalog) = (lib.root().to_path_buf(), lib.info()?.name, lib.load_catalog()?);
+            (root, LibraryKind::Magnitide, name, catalog, Some(Arc::new(Mutex::new(lib))))
         } else {
             let lib = calibre_compat::Library::open(&path)?;
             let root = lib.root().to_path_buf();
             let name = root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            (root, LibraryKind::Calibre, name, lib.load()?)
+            (root, LibraryKind::Calibre, name, lib.load()?, None)
         };
         let cache_key = catalog.library_uuid.clone().unwrap_or_else(|| {
             let mut h = DefaultHasher::new();
@@ -60,8 +73,9 @@ pub async fn open_library(app: AppHandle, state: State<'_, AppState>, path: Opti
             book_count: catalog.books.len(),
             load_ms: t.elapsed().as_millis(),
             warnings: catalog.warnings.clone(),
+            on_network_share: magnitide_core::fsinfo::is_network_filesystem(&root),
         };
-        Ok((Loaded { root, kind, catalog, thumb_dir: thumbs_root.join(cache_key) }, info))
+        Ok((Loaded { root, kind, catalog, native, thumb_dir: thumbs_root.join(cache_key) }, info))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -75,12 +89,9 @@ pub async fn open_library(app: AppHandle, state: State<'_, AppState>, path: Opti
 #[tauri::command]
 pub async fn rename_library(state: State<'_, AppState>, name: String) -> CmdResult<String> {
     let lib = state.current().ok_or("No library is open")?;
-    if lib.kind != LibraryKind::Magnitide {
-        return Err("calibre libraries are read-only; import one to rename it.".into());
-    }
-    let root = lib.root.clone();
+    let native = lib.native.clone().ok_or("calibre libraries are read-only; import one to rename it.")?;
     tauri::async_runtime::spawn_blocking(move || {
-        let mut native = magnitide_core::Library::open(&root)?;
+        let mut native = native.lock().unwrap_or_else(|e| e.into_inner());
         native.set_name(&name)?;
         Ok::<_, magnitide_core::Error>(native.info()?.name)
     })
@@ -466,5 +477,13 @@ mod bench {
             t.elapsed() - sorted,
             json.len() as f64 / 1e6
         );
+    }
+}
+
+/// Whether two paths name the same folder (resolving symlinks and `..`).
+fn same_path(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
     }
 }

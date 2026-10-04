@@ -256,7 +256,8 @@ export function BookTable(props: Props) {
                     role="row"
                     aria-rowindex={v.index + 2}
                     class="absolute top-0 left-0 flex w-full cursor-default items-center border-b border-line/50 hover:bg-line data-selected:bg-accent/20"
-                    classList={{ 'bg-surface-2/60': zebraRows() && v.index % 2 === 1 }}
+                    // TODO(Jamie): stripe colour is inconsistent across themes (see README roadmap).
+                    classList={{ 'bg-surface-2/40': zebraRows() && v.index % 2 === 1 }}
                     data-selected={r().original.id === props.selectedId || undefined}
                     style={{ height: `${ROW_H}px`, transform: `translateY(${v.start}px)` }}
                     onClick={() => props.onSelect(r().original.id)}

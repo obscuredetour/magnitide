@@ -5,6 +5,7 @@ import { CoverGrid, type ViewHandle } from './components/CoverGrid';
 import { DetailsPanel } from './components/DetailsPanel';
 import { EmptyState } from './components/EmptyState';
 import { ImportDialog } from './components/ImportDialog';
+import { NetworkWarning } from './components/NetworkWarning';
 import { SettingsDialog } from './components/Settings';
 import { TopBar } from './components/TopBar';
 import {
@@ -132,33 +133,36 @@ export function App() {
       />
       <Switch>
         <Match when={status().kind === 'ready'}>
-          <main class="fixed inset-x-0 top-[52px] bottom-0 flex">
-            <Show
-              when={viewMode() === 'table'}
-              fallback={
-                <CoverGrid
+          <main class="fixed inset-x-0 top-[52px] bottom-0 flex flex-col">
+            <NetworkWarning />
+            <div class="relative flex min-h-0 flex-1">
+              <Show
+                when={viewMode() === 'table'}
+                fallback={
+                  <CoverGrid
+                    ref={(h) => (view = h)}
+                    items={items()}
+                    tileSize={coverSize()}
+                    selectedId={selectedId()}
+                    emptyMessage={emptyMessage()}
+                    onSelect={(id) => select(id)}
+                    onOpen={(id) => void openBook(id)}
+                  />
+                }
+              >
+                <BookTable
                   ref={(h) => (view = h)}
-                  items={items()}
-                  tileSize={coverSize()}
+                  rows={items()}
                   selectedId={selectedId()}
                   emptyMessage={emptyMessage()}
                   onSelect={(id) => select(id)}
                   onOpen={(id) => void openBook(id)}
                 />
-              }
-            >
-              <BookTable
-                ref={(h) => (view = h)}
-                rows={items()}
-                selectedId={selectedId()}
-                emptyMessage={emptyMessage()}
-                onSelect={(id) => select(id)}
-                onOpen={(id) => void openBook(id)}
-              />
-            </Show>
-            <Show when={detailsOpen() && selectedId()}>
-              {(id) => <DetailsPanel id={id()} onClose={() => setDetailsOpen(false)} />}
-            </Show>
+              </Show>
+              <Show when={detailsOpen() && selectedId()}>
+                {(id) => <DetailsPanel id={id()} onClose={() => setDetailsOpen(false)} />}
+              </Show>
+            </div>
           </main>
         </Match>
         <Match when={noLibrary()}>{(s) => <EmptyState message={s().message} />}</Match>

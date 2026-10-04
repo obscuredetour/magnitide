@@ -9,6 +9,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::Serialize;
 
 use crate::error::{Error, Result};
+use crate::lock::LibraryLock;
 use crate::{db, names, paths};
 
 pub const DB_FILE: &str = "magnitide.db";
@@ -22,6 +23,9 @@ pub const LOCAL_USER: UserId = 1;
 pub struct Library {
     pub(crate) root: PathBuf,
     pub(crate) conn: Connection,
+    // Held while open: one writer per library (see lock.rs). Declared last so
+    // the database closes before the lock is released.
+    _lock: LibraryLock,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -103,6 +107,7 @@ impl Library {
             return Err(Error::AlreadyALibrary(root.to_path_buf()));
         }
         fs::create_dir_all(root)?;
+        let lock = LibraryLock::acquire(root)?;
         let mut conn = db::open(&root.join(DB_FILE), true)?;
         db::migrate(&mut conn)?;
         let tx = conn.transaction()?;
@@ -115,7 +120,7 @@ impl Library {
         tx.prepare_cached("INSERT INTO users (id, name, created_at) VALUES (?, 'local', ?)")?
             .execute(params![LOCAL_USER, created])?;
         tx.commit()?;
-        Ok(Self { root: root.to_path_buf(), conn })
+        Ok(Self { root: root.to_path_buf(), conn, _lock: lock })
     }
 
     /// Open an existing library, upgrading its schema if it was made by an
@@ -125,9 +130,11 @@ impl Library {
         if !Self::exists_at(root) {
             return Err(Error::NotALibrary(root.to_path_buf()));
         }
+        // Lock before migrating, so an upgrade never races another writer.
+        let lock = LibraryLock::acquire(root)?;
         let mut conn = db::open(&root.join(DB_FILE), false)?;
         db::migrate(&mut conn)?;
-        Ok(Self { root: root.to_path_buf(), conn })
+        Ok(Self { root: root.to_path_buf(), conn, _lock: lock })
     }
 
     pub fn root(&self) -> &Path {
@@ -375,12 +382,24 @@ mod tests {
     }
 
     #[test]
+    fn one_writer_at_a_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = Library::create(dir.path(), "Test").unwrap();
+        let err = Library::open(dir.path()).err().unwrap();
+        assert!(matches!(err, Error::LibraryInUse(_)), "{err}");
+        assert!(err.to_string().contains("already open"), "{err}");
+        drop(lib);
+        Library::open(dir.path()).unwrap();
+    }
+
+    #[test]
     fn renames() {
         let dir = tempfile::tempdir().unwrap();
         let mut lib = Library::create(dir.path(), "Old").unwrap();
         lib.set_name("  New Name ").unwrap();
-        assert_eq!(Library::open(dir.path()).unwrap().info().unwrap().name, "New Name");
         assert!(matches!(lib.set_name("   "), Err(Error::InvalidName(_))));
+        drop(lib);
+        assert_eq!(Library::open(dir.path()).unwrap().info().unwrap().name, "New Name");
     }
 
     #[test]
