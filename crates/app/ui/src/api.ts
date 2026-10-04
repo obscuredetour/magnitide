@@ -3,6 +3,7 @@
 // generates from the Rust structs (`cargo test` regenerates them).
 
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 
 import type { BookDetails } from './bindings/BookDetails';
@@ -65,3 +66,11 @@ export const fileManagerName = /Mac/.test(navigator.userAgent)
   : /Windows/.test(navigator.userAgent)
     ? 'File Explorer'
     : 'Files';
+
+/**
+ * The macOS menu bar's "Settings… ⌘," item. Event name matches
+ * `OPEN_SETTINGS_EVENT` in `crates/app/src/menu.rs`.
+ */
+export function onOpenSettings(handler: () => void): Promise<UnlistenFn> {
+  return listen('open-settings', handler);
+}
