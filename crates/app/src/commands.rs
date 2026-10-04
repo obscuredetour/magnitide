@@ -215,6 +215,35 @@ pub async fn author_sorts(
         .map_err(|e| e.to_string())
 }
 
+/// What these books have in common, for the bulk edit form.
+#[tauri::command]
+pub async fn bulk_values(state: State<'_, AppState>, ids: Vec<i64>) -> CmdResult<magnitide_core::bulk::BulkValues> {
+    let native = native(&state)?;
+    tauri::async_runtime::spawn_blocking(move || native.lock().unwrap_or_else(|e| e.into_inner()).bulk_values(&ids))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+/// Sent while several books are saved. Matches `onBulkProgress` in ui/src/api.ts.
+pub const BULK_PROGRESS_EVENT: &str = "bulk-progress";
+
+/// Apply one change to several books (in the order given, for series numbering).
+#[tauri::command]
+pub async fn bulk_edit(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+    change: magnitide_core::bulk::BulkEdit,
+) -> CmdResult<magnitide_core::bulk::BulkReport> {
+    write_library(&state, move |lib| {
+        lib.bulk_edit(&ids, &change, |done, total| {
+            let _ = app.emit(BULK_PROGRESS_EVENT, ImportProgress { done, total, title: String::new() });
+        })
+    })
+    .await
+}
+
 /// A book's editable fields, for the edit form.
 #[tauri::command]
 pub async fn book_edit(state: State<'_, AppState>, id: i64) -> CmdResult<magnitide_core::BookEdit> {

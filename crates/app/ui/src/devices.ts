@@ -11,7 +11,7 @@ import {
   errorMessage,
   onDevicesChanged,
 } from './api';
-import { editRevision, items, library } from './library';
+import { editRevision, items, library, selectedIds } from './library';
 import { storage } from './storage';
 import { toast } from './toast';
 
@@ -88,6 +88,12 @@ export function setPreferredFormat(kind: DeviceKind, format: string | null): voi
   setDeviceFormats(next);
   storage.set('deviceFormats', JSON.stringify(next));
 }
+
+/** The selected books, in the order the views show them. */
+export const selectedInOrder = () =>
+  shownItems()
+    .filter((b) => selectedIds().has(b.id))
+    .map((b) => b.id);
 
 let seq = 0;
 

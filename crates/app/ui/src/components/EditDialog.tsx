@@ -98,16 +98,23 @@ export function EditDialog(props: { editing: Editing }) {
   // Existing names for autocomplete; the form works without them.
   const [names] = createResource(() => api.nameLists().catch(() => null));
 
+  // To tell whether anything changed before stepping to another book.
+  let initial = '';
   onMount(() => {
     description.innerHTML = form.descriptionHtml ?? '';
+    initial = JSON.stringify(build());
     dialog.showModal();
   });
 
-  const save = async () => {
-    if (saving()) return;
-    setSaving(true);
+  // Stepping through several books (Edit One by One).
+  const queue = props.editing.queue;
+  const position = queue ? queue.indexOf(id) : -1;
+  const prev = queue && position > 0 ? queue[position - 1] : undefined;
+  const next = queue && position >= 0 && position < queue.length - 1 ? queue[position + 1] : undefined;
+
+  const build = (): BookEdit => {
     const html = description.innerHTML;
-    const edit: BookEdit = {
+    return {
       ...unwrap(form),
       authors: splitAuthors(authors()),
       authorSorts: Object.fromEntries(Object.entries(sortOverrides).filter(([n]) => authorNames().includes(n))),
@@ -116,7 +123,15 @@ export function EditDialog(props: { editing: Editing }) {
       identifiers: splitIds(identifiers()),
       descriptionHtml: description.textContent?.trim() ? html : null,
     };
-    setError(await saveEdit(id, edit));
+  };
+
+  /** Save (only if changed, when moving on), then close or open book `then`. */
+  const save = async (then?: number) => {
+    if (saving()) return;
+    setSaving(true);
+    const edit = build();
+    const changed = then === undefined || JSON.stringify(edit) !== initial;
+    setError(await saveEdit(id, changed ? edit : null, then));
     setSaving(false);
   };
 
@@ -370,6 +385,33 @@ export function EditDialog(props: { editing: Editing }) {
               <p class="mr-auto text-xs text-danger select-text" role="alert">
                 {e()}
               </p>
+            )}
+          </Show>
+          <Show when={queue}>
+            {(q) => (
+              <div class="mr-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  class={smallButton + ' px-3 py-1.5 text-sm'}
+                  disabled={prev === undefined || saving()}
+                  title="Save and edit the previous book"
+                  onClick={() => void save(prev)}
+                >
+                  ‹ Previous
+                </button>
+                <button
+                  type="button"
+                  class={smallButton + ' px-3 py-1.5 text-sm'}
+                  disabled={next === undefined || saving()}
+                  title="Save and edit the next book"
+                  onClick={() => void save(next)}
+                >
+                  Next ›
+                </button>
+                <span class="text-xs text-faint tabular-nums">
+                  {position + 1} of {q().length} · changes are saved as you move
+                </span>
+              </div>
             )}
           </Show>
           <button type="button" class={smallButton + ' px-4 py-1.5 text-sm'} onClick={() => closeEditor()}>

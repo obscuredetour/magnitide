@@ -7,32 +7,66 @@ import { library, refresh, setEditRevision } from './library';
 import { toast } from './toast';
 import { writeOnSave } from './writeback';
 
-export type Editing = { id: number; edit: BookEdit };
+/** The book being edited; with `queue`, one of several stepped through in order. */
+export type Editing = { id: number; edit: BookEdit; queue?: number[] };
 
 const [editing, setEditing] = createSignal<Editing | null>(null);
 export const editingBook = editing;
 
-/** Open the edit dialog for a book. */
-export async function openEditor(id: number): Promise<void> {
+/** Books being edited together (the bulk edit window). */
+const [bulkIds, setBulkIds] = createSignal<number[] | null>(null);
+export { bulkIds };
+
+const READ_ONLY_EDIT =
+  'This calibre library is read-only. Import it into a Magnitide library (library menu) to edit books.';
+
+/** Open the edit dialog for a book (within `queue`, to step through several). */
+export async function openEditor(id: number, queue?: number[]): Promise<void> {
   if (library()?.kind !== 'magnitide') {
-    toast('This calibre library is read-only. Import it into a Magnitide library (library menu) to edit books.', {
-      error: true,
-    });
+    toast(READ_ONLY_EDIT, { error: true });
     return;
   }
   try {
-    setEditing({ id, edit: await api.bookEdit(id) });
+    setEditing({ id, edit: await api.bookEdit(id), queue: queue && queue.length > 1 ? queue : undefined });
   } catch (err) {
     toast(errorMessage(err), { error: true });
   }
+}
+
+/** ⌘E: one book opens the editor; several open the bulk editor. */
+export function editBooks(ids: number[]): void {
+  if (ids.length === 1) void openEditor(ids[0]!);
+  else if (ids.length > 1) {
+    if (library()?.kind !== 'magnitide') toast(READ_ONLY_EDIT, { error: true });
+    else setBulkIds(ids);
+  }
+}
+
+/** From the bulk editor: step through the books in the normal editor. */
+export function editOneByOne(ids: number[]): void {
+  setBulkIds(null);
+  if (ids.length) void openEditor(ids[0]!, ids);
+}
+
+export function closeBulkEditor(): void {
+  setBulkIds(null);
 }
 
 export function closeEditor(): void {
   setEditing(null);
 }
 
-/** Save; resolves to an error message, or null on success (and closes). */
-export async function saveEdit(id: number, edit: BookEdit): Promise<string | null> {
+/**
+ * Save; resolves to an error message, or null on success. Then closes, or
+ * with `then`, opens that book of the queue instead.
+ */
+export async function saveEdit(id: number, edit: BookEdit | null, then?: number): Promise<string | null> {
+  const queue = editing()?.queue;
+  if (edit === null) {
+    // Nothing changed: just move.
+    if (then !== undefined) await openEditor(then, queue);
+    return null;
+  }
   try {
     const outcome = await api.saveBookEdit(id, edit);
     let message = outcome.moved || outcome.renamedFiles ? 'Saved · files renamed to match' : 'Saved';
@@ -49,7 +83,8 @@ export async function saveEdit(id: number, edit: BookEdit): Promise<string | nul
     }
     await refresh();
     setEditRevision((n) => n + 1);
-    setEditing(null);
+    if (then !== undefined) await openEditor(then, queue);
+    else setEditing(null);
     if (warning) toast(`Saved, but the file couldn’t be updated: ${warning}`, { error: true, duration: 6000 });
     else toast(message);
     return null;

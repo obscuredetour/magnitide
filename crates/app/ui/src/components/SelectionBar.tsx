@@ -4,6 +4,8 @@ import { booksOn, devices } from '../devices';
 import { items, library, selectedId, selectedIds, setSelectedId } from '../library';
 import { liftToasts } from '../toast';
 import { mergeBooks, removeFromDevice, sendToDevice } from '../transfer';
+import { selectedInOrder } from '../devices';
+import { editBooks } from '../editor';
 import { ConvertMenu } from './ConvertMenu';
 
 const action =
@@ -24,6 +26,11 @@ export function SelectionBar() {
       aria-label="Selected books"
     >
       <span class="mr-1.5 text-xs whitespace-nowrap tabular-nums">{selectedIds().size.toLocaleString()} selected</span>
+      <Show when={library()?.kind === 'magnitide'}>
+        <button class={action} title="Edit these books together (⌘E)" onClick={() => editBooks(selectedInOrder())}>
+          Edit…
+        </button>
+      </Show>
       <For each={devices()}>
         {(d) => {
           const on = () => ids().filter((id) => booksOn(d).has(id)).length;
