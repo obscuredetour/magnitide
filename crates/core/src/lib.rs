@@ -5,9 +5,11 @@
 pub mod catalog;
 pub mod db;
 pub mod error;
+pub mod fsinfo;
 pub mod html;
 pub mod import;
 pub mod library;
+pub mod lock;
 pub mod names;
 pub mod paths;
 

@@ -2247,6 +2247,7 @@ dependencies = [
  "ammonia",
  "calibre-compat",
  "chrono",
+ "libc",
  "magnitide-catalog",
  "reflink-copy",
  "rusqlite",

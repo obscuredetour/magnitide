@@ -126,7 +126,9 @@ export async function openLibrary(path: string | null): Promise<boolean> {
     await refresh();
     return true;
   } catch (err) {
-    setStatus({ kind: 'no-library', message: errorMessage(err) });
+    // Keep showing the current library if there is one; otherwise explain on the empty screen.
+    if (status().kind === 'ready') toast(errorMessage(err), { error: true });
+    else setStatus({ kind: 'no-library', message: errorMessage(err) });
     return false;
   }
 }

@@ -68,10 +68,12 @@ My Library/
 - **Provenance is recorded** for imported books (source, source library id,
   source book id, original uuid), so imports can be repeated or reconciled
   and devices that key on uuids keep working.
-- **One writer per library.** SQLite must not be shared over SMB/NFS: two
-  machines writing one file over a network share is a known corruption
-  risk. Remote access goes through the server, not a mounted share. The app
-  will warn when a library is opened from a network volume.
+- **One writer per library.** An open library holds an exclusive OS lock on
+  `.magnitide.lock` (released automatically if the process dies); a second
+  process gets a "library in use" error naming the holder. SQLite and file
+  locks aren't reliable over SMB/NFS, so the app warns when a Magnitide
+  library is on a network share (macOS, Linux; Windows UNC paths). Remote
+  access goes through the server, not a mounted share.
 - **Paths on disk come only from the database.** Requests from the UI or the
   network name a book id (and maybe a format), never a path.
 
@@ -140,3 +142,4 @@ a library file directly.
 | 2026-10-03 | Schema multi-user-ready; provenance recorded on import; export to calibre planned. |
 | 2026-10-03 | Server mode planned; OPDS first, then accounts, kosync, Kobo sync. |
 | 2026-10-03 | Extension points are core traits; WASM for third-party plugins later.                                     |
+| 2026-10-04 | Shared in-memory catalog crate for every library kind; the app holds an open Magnitide library (and its lock) while it's shown. |

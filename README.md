@@ -67,8 +67,9 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Toolbar (library menu, cover size, theme picker) and table view (sortable, resizable, choosable columns)
 - [x] Settings panel (⌘,): appearance, library, list columns, thumbnail cache, about
 - [x] List view zebra stripes (setting, on by default)
+- [ ] (Jamie) Tweak zebra stripe colours: inconsistent across themes. The stripe is `bg-surface-2/40` in `crates/app/ui/src/components/BookTable.tsx`; a per-theme `--row-stripe` variable in `themes.css` would let each theme set its own
 - [x] Native Magnitide library (schema v1) and calibre import, in the app with progress (also `cargo run --release -p magnitide-core --example import_calibre -- <calibre> <dest>`)
-- [ ] Library safety: single-writer lock, warning for libraries on network shares
+- [x] Library safety: single-writer lock (`.magnitide.lock`), warning for libraries on network shares
 - [ ] Drag and drop to add books
 - [ ] Metadata editing
 - [ ] File name clean-up: keep file and folder names in sync with metadata (rename on edit, plus a "Tidy file names" action for existing books)
