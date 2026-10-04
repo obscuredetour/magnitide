@@ -1,5 +1,6 @@
 import { createEffect, createSignal, Match, on, onCleanup, onMount, Show, Switch } from 'solid-js';
 
+import { BookMenuHost, openBookMenu } from './components/BookMenu';
 import { BookTable } from './components/BookTable';
 import { CoverGrid, type ViewHandle } from './components/CoverGrid';
 import { DetailsPanel } from './components/DetailsPanel';
@@ -32,6 +33,7 @@ import { onOpenSettings } from './api';
 import { bulkIds, editBooks, editingBook } from './editor';
 import { importState } from './importer';
 import { Toast } from './toast';
+import { deleteBooks } from './transfer';
 import { coverSize, setViewMode, viewMode } from './view';
 
 export function App() {
@@ -56,6 +58,16 @@ export function App() {
     else if (e.shiftKey) selectRange(id, shownItems());
     else select(id);
   };
+
+  /** Right-click on a book: its menu, for the selection if it's in it, else for it alone (as in Finder). */
+  const contextMenu = (id: number, e: MouseEvent) => {
+    e.preventDefault();
+    if (!selectedIds().has(id)) select(id, { open: false });
+    openBookMenu(e.clientX, e.clientY, selectedInOrder());
+  };
+
+  /** The selected books, in list order (at least the primary one). */
+  const chosen = (id: number) => (selectedInOrder().length ? selectedInOrder() : [id]);
 
   // Opening/closing the panel or switching views changes the layout; keep the selection in view.
   createEffect(
@@ -114,7 +126,16 @@ export function App() {
       else setDetailsOpen(false);
     } else if (e.key === 'e' && cmd && id !== null) {
       e.preventDefault();
-      editBooks(selectedInOrder().length ? selectedInOrder() : [id]);
+      editBooks(chosen(id));
+    } else if (((e.key === 'Backspace' && cmd) || e.key === 'Delete') && id !== null) {
+      e.preventDefault();
+      void deleteBooks(chosen(id));
+    } else if ((e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) && id !== null) {
+      // The keyboard's menu key: open it beside the selected book.
+      e.preventDefault();
+      view?.reveal(id);
+      const r = document.querySelector(`[data-book-id="${id}"]`)?.getBoundingClientRect();
+      if (r) openBookMenu(r.left + Math.min(32, r.width / 2), r.top + Math.min(r.height, 28), chosen(id));
     } else if (e.key === 'o' && cmd && id !== null) {
       e.preventDefault();
       void openBook(id);
@@ -174,6 +195,7 @@ export function App() {
                     selectedIds={selectedIds()}
                     emptyMessage={emptyMessage()}
                     onSelect={click}
+                    onContextMenu={contextMenu}
                     onOpen={(id) => void openBook(id)}
                   />
                 }
@@ -185,6 +207,7 @@ export function App() {
                   selectedIds={selectedIds()}
                   emptyMessage={emptyMessage()}
                   onSelect={click}
+                  onContextMenu={contextMenu}
                   onOpen={(id) => void openBook(id)}
                 />
               </Show>
@@ -211,6 +234,7 @@ export function App() {
       <Show when={settingsOpen()}>
         <SettingsDialog onClose={() => setSettingsOpen(false)} />
       </Show>
+      <BookMenuHost />
       <ConfirmHost />
       <Toast />
     </>

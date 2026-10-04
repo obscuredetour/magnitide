@@ -6,6 +6,7 @@ pub mod bulk;
 pub mod catalog;
 pub mod convert;
 pub mod db;
+pub mod delete;
 pub mod devices;
 pub mod edit;
 pub mod error;

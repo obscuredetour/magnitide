@@ -193,6 +193,8 @@ type Props = {
   emptyMessage: string;
   /** A click; modifier keys (⌘, Shift) extend the selection. */
   onSelect(id: number, e: MouseEvent): void;
+  /** Right-click (or the keyboard's menu key) on a book. */
+  onContextMenu(id: number, e: MouseEvent): void;
   onOpen(id: number): void;
   ref?: (handle: ViewHandle) => void;
 };
@@ -296,8 +298,10 @@ export function BookTable(props: Props) {
                     // TODO(Jamie): stripe colour is inconsistent across themes (see README roadmap).
                     classList={{ 'bg-surface-2/40': zebraRows() && v.index % 2 === 1 }}
                     data-selected={props.selectedIds.has(r().original.id) || undefined}
+                    data-book-id={r().original.id}
                     style={{ height: `${ROW_H}px`, transform: `translateY(${v.start}px)` }}
                     onClick={(e) => props.onSelect(r().original.id, e)}
+                    onContextMenu={(e) => props.onContextMenu(r().original.id, e)}
                     onDblClick={() => props.onOpen(r().original.id)}
                   >
                     <For each={r().getVisibleCells()}>
