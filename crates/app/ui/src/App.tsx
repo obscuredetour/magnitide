@@ -1,9 +1,10 @@
-import { createEffect, Match, on, onCleanup, onMount, Show, Switch } from 'solid-js';
+import { createEffect, createSignal, Match, on, onCleanup, onMount, Show, Switch } from 'solid-js';
 
 import { BookTable } from './components/BookTable';
 import { CoverGrid, type ViewHandle } from './components/CoverGrid';
 import { DetailsPanel } from './components/DetailsPanel';
 import { EmptyState } from './components/EmptyState';
+import { SettingsDialog } from './components/Settings';
 import { TopBar } from './components/TopBar';
 import {
   detailsOpen,
@@ -22,6 +23,7 @@ import { coverSize, setViewMode, viewMode } from './view';
 export function App() {
   let view: ViewHandle | undefined;
   let searchInput: HTMLInputElement | undefined;
+  const [settingsOpen, setSettingsOpen] = createSignal(false);
 
   const noLibrary = () => {
     const s = status();
@@ -57,6 +59,14 @@ export function App() {
     const target = e.target as HTMLElement;
     const inField = target instanceof HTMLInputElement || target instanceof HTMLSelectElement;
     const cmd = e.metaKey || e.ctrlKey;
+
+    // ⌘, opens settings (macOS convention). While it's open, its own controls own the keyboard.
+    if (cmd && e.key === ',') {
+      e.preventDefault();
+      setSettingsOpen(true);
+      return;
+    }
+    if (target.closest('dialog')) return;
 
     if ((e.key === '/' && !inField) || (e.key === 'f' && cmd)) {
       e.preventDefault();
@@ -109,7 +119,11 @@ export function App() {
 
   return (
     <>
-      <TopBar searchRef={(el) => (searchInput = el)} onLeaveSearch={leaveSearch} />
+      <TopBar
+        searchRef={(el) => (searchInput = el)}
+        onLeaveSearch={leaveSearch}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
       <Switch>
         <Match when={status().kind === 'ready'}>
           <main class="fixed inset-x-0 top-[52px] bottom-0 flex">
@@ -143,6 +157,9 @@ export function App() {
         </Match>
         <Match when={noLibrary()}>{(s) => <EmptyState message={s().message} />}</Match>
       </Switch>
+      <Show when={settingsOpen()}>
+        <SettingsDialog onClose={() => setSettingsOpen(false)} />
+      </Show>
       <Toast />
     </>
   );

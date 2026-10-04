@@ -30,7 +30,7 @@ pub async fn open_library(app: AppHandle, state: State<'_, AppState>, path: Opti
         Some(p) => PathBuf::from(p),
         None => locate::default_library().ok_or("No calibre library found. Choose a library folder to open.")?,
     };
-    let cache_root = app.path().app_cache_dir().map_err(|e| e.to_string())?;
+    let thumbs_root = thumbs_root(&app)?;
 
     let (loaded, info) = tauri::async_runtime::spawn_blocking(move || -> anyhow::Result<_> {
         let t = Instant::now();
@@ -49,7 +49,7 @@ pub async fn open_library(app: AppHandle, state: State<'_, AppState>, path: Opti
             load_ms: t.elapsed().as_millis(),
             warnings: snap.warnings.clone(),
         };
-        Ok((Loaded { root, snap, thumb_dir: cache_root.join("thumbs").join(cache_key) }, info))
+        Ok((Loaded { root, snap, thumb_dir: thumbs_root.join(cache_key) }, info))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -274,6 +274,56 @@ pub async fn show_library_folder(state: State<'_, AppState>) -> CmdResult<()> {
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| format!("Couldn’t open the library folder: {e}"))
+}
+
+/// Where cover thumbnails for all libraries are cached.
+fn thumbs_root(app: &AppHandle) -> CmdResult<PathBuf> {
+    Ok(app.path().app_cache_dir().map_err(|e| e.to_string())?.join("thumbs"))
+}
+
+#[derive(Serialize, TS)]
+#[ts(export)]
+pub struct CacheInfo {
+    bytes: u64,
+    files: u64,
+}
+
+/// Size of the thumbnail cache (all libraries).
+#[tauri::command]
+pub async fn thumbnail_cache_info(app: AppHandle) -> CmdResult<CacheInfo> {
+    let root = thumbs_root(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut info = CacheInfo { bytes: 0, files: 0 };
+        let mut dirs = vec![root];
+        while let Some(dir) = dirs.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+            for entry in entries.flatten() {
+                match entry.metadata() {
+                    Ok(m) if m.is_dir() => dirs.push(entry.path()),
+                    Ok(m) => {
+                        info.bytes += m.len();
+                        info.files += 1;
+                    }
+                    Err(_) => {}
+                }
+            }
+        }
+        info
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Delete all cached thumbnails; they are regenerated as covers are shown.
+#[tauri::command]
+pub async fn clear_thumbnail_cache(app: AppHandle) -> CmdResult<()> {
+    let root = thumbs_root(&app)?;
+    tauri::async_runtime::spawn_blocking(move || match std::fs::remove_dir_all(&root) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(format!("Couldn’t clear the thumbnail cache: {e}")),
+        _ => Ok(()),
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Comments are HTML from arbitrary sources (metadata downloads, publishers).

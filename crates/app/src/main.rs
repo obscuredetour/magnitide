@@ -46,7 +46,9 @@ fn main() {
             commands::book_details,
             commands::open_book,
             commands::reveal_book,
-            commands::show_library_folder
+            commands::show_library_folder,
+            commands::thumbnail_cache_info,
+            commands::clear_thumbnail_cache
         ])
         .run(tauri::generate_context!())
         .expect("error while running Magnitide");

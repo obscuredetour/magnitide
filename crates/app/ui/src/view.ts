@@ -52,3 +52,22 @@ export function setColumnVisibility(visibility: Record<string, boolean>): void {
   setColumnVisibilitySignal(visibility);
   storage.set('tableColumnVisibility', JSON.stringify(visibility));
 }
+
+/** Table columns hidden until the user turns them on. */
+const DEFAULT_HIDDEN: Record<string, boolean> = { publisher: false, tags: false, size: false };
+
+/** Visibility of every table column that differs from "shown". */
+export const effectiveColumnVisibility = () => ({ ...DEFAULT_HIDDEN, ...columnVisibility() });
+
+export function isColumnVisible(id: string): boolean {
+  return effectiveColumnVisibility()[id] ?? true;
+}
+
+export function setColumnVisible(id: string, visible: boolean): void {
+  setColumnVisibility({ ...effectiveColumnVisibility(), [id]: visible });
+}
+
+/** Back to each column's default width. */
+export function resetColumnSizing(): void {
+  setColumnSizing({});
+}
