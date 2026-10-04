@@ -1,8 +1,10 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js';
+import Check from 'lucide-solid/icons/check';
 
 import type { BookRow } from '../api';
 import { onDevice } from '../devices';
 import { Cover } from './Cover';
+import { Icon } from './Icon';
 
 // Layout constants (CSS px).
 const PAD = 28;
@@ -175,13 +177,7 @@ export function CoverGrid(props: Props) {
                         .join('\n')}
                       aria-label="On device"
                     >
-                      <svg
-                        class="size-3 fill-none stroke-current stroke-[2.4] [stroke-linecap:round] [stroke-linejoin:round]"
-                        viewBox="0 0 14 14"
-                        aria-hidden="true"
-                      >
-                        <path d="m3 7.5 2.5 2.5L11 4" />
-                      </svg>
+                      <Icon of={Check} size={12} />
                     </span>
                   )}
                 </Show>

@@ -1,4 +1,5 @@
 import { For, Show } from 'solid-js';
+import ChevronDown from 'lucide-solid/icons/chevron-down';
 
 import { api, errorMessage, fileManagerName } from '../api';
 import { shownItems } from '../devices';
@@ -7,6 +8,7 @@ import { startImport } from '../importer';
 import { chooseAndAddBooks } from '../adder';
 import { toast } from '../toast';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from './Menu';
+import { Icon } from './Icon';
 
 export function LibraryMenu() {
   const count = () => {
@@ -39,13 +41,7 @@ export function LibraryMenu() {
           <Show when={library()}>
             <span class="whitespace-nowrap text-muted tabular-nums max-[1080px]:hidden">{count()}</span>
           </Show>
-          <svg
-            class="size-2.5 flex-none self-center fill-none stroke-muted stroke-2"
-            viewBox="0 0 10 10"
-            aria-hidden="true"
-          >
-            <path d="m2 3.5 3 3 3-3" />
-          </svg>
+          <Icon of={ChevronDown} size={12} class="self-center text-muted" />
         </>
       }
     >

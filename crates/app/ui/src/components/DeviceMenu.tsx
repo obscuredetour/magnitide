@@ -1,4 +1,5 @@
 import { For, Show } from 'solid-js';
+import Tablet from 'lucide-solid/icons/tablet';
 
 import { api, type DeviceInfo, errorMessage, fileManagerName } from '../api';
 import { deviceFilter, devices, ejectDevice, rescanDevice, setDeviceFilter } from '../devices';
@@ -6,18 +7,14 @@ import { library } from '../library';
 import { importFromDevice } from '../transfer';
 import { toast } from '../toast';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from './Menu';
+import { Icon } from './Icon';
 
 function formatBytes(bytes: number): string {
   return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`;
 }
 
 function DeviceIcon() {
-  return (
-    <svg class="size-[15px] flex-none fill-none stroke-current stroke-[1.5]" viewBox="0 0 16 16" aria-hidden="true">
-      <rect x="3" y="1.5" width="10" height="13" rx="1.8" />
-      <path d="M6.5 12h3" stroke-linecap="round" />
-    </svg>
-  );
+  return <Icon of={Tablet} />;
 }
 
 /** The connected e-readers: which books are on them, and a filter to show just those. */

@@ -1,18 +1,16 @@
+import RectangleVertical from 'lucide-solid/icons/rectangle-vertical';
 import { COVER_SIZE, coverSize, setCoverSize } from '../view';
+import { Icon } from './Icon';
 
-function BookIcon(props: { class: string }) {
-  return (
-    <svg class={`flex-none fill-faint ${props.class}`} viewBox="0 0 8 12" aria-hidden="true">
-      <rect width="8" height="12" rx="1.2" />
-    </svg>
-  );
+function BookIcon(props: { size: 12 | 16 }) {
+  return <Icon of={RectangleVertical} size={props.size} class="text-faint" />;
 }
 
 export function CoverSizeSlider() {
   return (
     <label class="flex items-center gap-1.5" title="Cover size">
       <span class="sr-only">Cover size</span>
-      <BookIcon class="h-2.5 w-[7px]" />
+      <BookIcon size={12} />
       <input
         type="range"
         class="w-24 accent-accent"
@@ -22,7 +20,7 @@ export function CoverSizeSlider() {
         value={coverSize()}
         onInput={(e) => setCoverSize(Number(e.currentTarget.value))}
       />
-      <BookIcon class="h-4 w-[11px]" />
+      <BookIcon size={16} />
     </label>
   );
 }

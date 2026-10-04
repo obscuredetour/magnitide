@@ -37,6 +37,37 @@ async function exclusive(label: string, work: () => Promise<void>): Promise<void
   }
 }
 
+/** A format these books could be sent to a device in. */
+export type SendOption = {
+  format: string;
+  /** No book has it: it's made (natively) on the way. */
+  converted: boolean;
+  /** How many of the books have it. */
+  have: number;
+};
+
+/**
+ * The formats `ids` could go to `device` in, best first: ones the device
+ * reads that a book has, plus the ones made natively on the way (KEPUB for a
+ * Kobo and AZW3 for a Kindle, from an EPUB). Books already on it don't count.
+ */
+export function sendOptions(device: DeviceInfo, ids: number[]): SendOption[] {
+  const on = booksOn(device);
+  const books = items().filter((b) => ids.includes(b.id) && !on.has(b.id));
+  const made = device.kind === 'kobo' ? 'KEPUB' : device.kind === 'kindle' ? 'AZW3' : null;
+  const fromEpub = (b: BookRow) => b.formats.includes('EPUB') || (made === 'AZW3' && b.formats.includes('KEPUB'));
+  const choices = (b: BookRow) => [
+    ...device.formats.filter((f) => b.formats.includes(f)),
+    ...(made && fromEpub(b) && !b.formats.includes(made) ? [made] : []),
+  ];
+  return device.formats
+    .filter((f) => books.some((b) => choices(b).includes(f)))
+    .map((format) => {
+      const have = books.filter((b) => b.formats.includes(format)).length;
+      return { format, converted: have === 0, have };
+    });
+}
+
 /**
  * Which format to send: the device kind's default, or (when a book has more
  * than one the device reads) the user's pick. Undefined: cancelled.
@@ -45,15 +76,12 @@ async function chooseFormat(device: DeviceInfo, ids: number[]): Promise<string |
   const preferred = preferredFormat(device.kind);
   if (preferred) return preferred;
   const books = items().filter((b) => ids.includes(b.id));
+  const sendable = sendOptions(device, ids);
   const readable = (b: BookRow) => device.formats.filter((f) => b.formats.includes(f));
-  // KEPUB can always be made from EPUB, so on a Kobo an EPUB is a choice too.
-  const makeable = (b: BookRow) =>
-    device.kind === 'kobo' && b.formats.includes('EPUB') && !b.formats.includes('KEPUB') ? ['KEPUB'] : [];
-  const choices = (b: BookRow) => [...readable(b), ...makeable(b)];
-  if (!books.some((b) => choices(b).length > 1)) return null;
-  // Every format the device reads that some selected book has (or can get), best first.
-  const options = device.formats.filter((f) => books.some((b) => choices(b).includes(f)));
-  const converted = (f: string) => books.every((b) => !b.formats.includes(f));
+  const madeFor = sendable.filter((o) => o.converted).map((o) => o.format);
+  if (!books.some((b) => readable(b).length + madeFor.length > 1)) return null;
+  const options = sendable.map((o) => o.format);
+  const converted = (f: string) => sendable.some((o) => o.format === f && o.converted);
   const [pick, setPick] = createSignal(options[0]!);
   const [remember, setRemember] = createSignal(false);
   const one = books.length === 1 ? books[0] : undefined;
@@ -109,8 +137,12 @@ async function chooseFormat(device: DeviceInfo, ids: number[]): Promise<string |
   return pick();
 }
 
-/** Copy books to a device; ones already there are skipped. */
-export async function sendToDevice(device: DeviceInfo, ids: number[]): Promise<void> {
+/**
+ * Copy books to a device; ones already there are skipped. `as` sends that
+ * format (converting where a book lacks it); otherwise the device's default,
+ * or asking when there's a choice.
+ */
+export async function sendToDevice(device: DeviceInfo, ids: number[], as?: string): Promise<void> {
   const already = booksOn(device);
   const todo = ids.filter((id) => !already.has(id));
   if (!todo.length) {
@@ -121,7 +153,7 @@ export async function sendToDevice(device: DeviceInfo, ids: number[]): Promise<v
     toast('Still working on the last transfer…');
     return;
   }
-  const format = await chooseFormat(device, todo);
+  const format = as ?? (await chooseFormat(device, todo));
   if (format === undefined) return;
   return exclusive(`Sending to ${device.name}…`, async () => {
     const unlisten = await onTransferProgress((p) => {

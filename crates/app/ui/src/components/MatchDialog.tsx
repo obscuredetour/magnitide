@@ -1,6 +1,7 @@
 import { createMemo, createResource, createSignal, For, type JSX, onMount, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { Portal } from 'solid-js/web';
+import Check from 'lucide-solid/icons/check';
 
 import {
   api,
@@ -13,6 +14,7 @@ import {
   type SourceId,
   type SourceRecord,
 } from '../api';
+import { Icon } from './Icon';
 
 /** The edit form's values, to compare against. */
 export type Current = {
@@ -162,13 +164,7 @@ function CurrentCover(props: { id: number }) {
 function SameBadge() {
   return (
     <span class="mt-px inline-flex flex-none items-center gap-1 rounded-full bg-success/20 px-2 py-0.5 text-xs font-semibold text-success ring-1 ring-success/30">
-      <svg
-        class="size-3 fill-none stroke-current stroke-[2.5] [stroke-linecap:round] [stroke-linejoin:round]"
-        viewBox="0 0 12 12"
-        aria-hidden="true"
-      >
-        <path d="m2.5 6.5 2.5 2.5 4.5-6" />
-      </svg>
+      <Icon of={Check} size={12} />
       Same
     </span>
   );

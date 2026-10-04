@@ -10,6 +10,9 @@ import {
   useContext,
 } from 'solid-js';
 import { Portal } from 'solid-js/web';
+import Check from 'lucide-solid/icons/check';
+import ChevronRight from 'lucide-solid/icons/chevron-right';
+import { Icon } from './Icon';
 
 const MenuContext = createContext<{ close(): void }>();
 
@@ -272,13 +275,7 @@ export function SubMenu(props: { label: string; disabled?: boolean; children: JS
         }}
       >
         {props.label}
-        <svg
-          class="ml-auto size-3 flex-none fill-none stroke-muted stroke-2 [stroke-linecap:round] [stroke-linejoin:round]"
-          viewBox="0 0 16 16"
-          aria-hidden="true"
-        >
-          <path d="m6 3.5 4.5 4.5L6 12.5" />
-        </svg>
+        <Icon of={ChevronRight} class="ml-auto text-muted" />
       </button>
       <Show when={open()}>
         {(how) => (
@@ -360,14 +357,7 @@ export function MenuItem(props: ItemProps) {
         <span class="ml-auto pl-4 text-xs text-faint">{props.shortcut}</span>
       </Show>
       <Show when={isRadio()}>
-        <svg
-          class="ml-auto size-3.5 flex-none fill-none stroke-accent stroke-2 [stroke-linecap:round] [stroke-linejoin:round]"
-          classList={{ invisible: !props.checked }}
-          viewBox="0 0 16 16"
-          aria-hidden="true"
-        >
-          <path d="m3 8.5 3.5 3.5L13 4.5" />
-        </svg>
+        <Icon of={Check} class={`ml-auto text-accent ${props.checked ? '' : 'invisible'}`} />
       </Show>
     </button>
   );

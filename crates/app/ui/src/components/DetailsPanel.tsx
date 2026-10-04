@@ -1,4 +1,5 @@
 import { createResource, createSignal, For, Show } from 'solid-js';
+import X from 'lucide-solid/icons/x';
 
 import { api, type BookDetails, errorMessage, fileManagerName, type MatchedBy } from '../api';
 import { openEditor } from '../editor';
@@ -9,6 +10,7 @@ import { removeFormat, removeFromDevice, sendToDevice } from '../transfer';
 import { writeBookFiles } from '../writeback';
 import { ConvertMenu } from './ConvertMenu';
 import { Cover } from './Cover';
+import { Icon } from './Icon';
 
 type Props = {
   id: number;
@@ -86,9 +88,7 @@ export function DetailsPanel(props: Props) {
           title="Close (Esc)"
           onClick={() => props.onClose()}
         >
-          <svg class="size-3 stroke-muted stroke-2 [stroke-linecap:round]" viewBox="0 0 20 20" aria-hidden="true">
-            <path d="m5 5 10 10M15 5 5 15" />
-          </svg>
+          <Icon of={X} class="text-muted" />
         </button>
       </div>
       <Show when={book()}>{(b) => <Details book={b()} />}</Show>
@@ -230,7 +230,7 @@ function Details(props: { book: BookDetails }) {
                     aria-label={`Remove the ${f.format}`}
                     onClick={() => void removeFormat(b(), f.format)}
                   >
-                    ×
+                    <Icon of={X} size={12} />
                   </button>
                 </Show>
               </span>
