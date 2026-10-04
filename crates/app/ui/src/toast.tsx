@@ -26,7 +26,7 @@ export function Toast() {
             'bottom-6': !lifted(),
             'bottom-20': lifted(),
             'bg-inverse/95 text-on-inverse': !t().error,
-            'bg-danger text-on-accent': t().error,
+            'bg-danger text-on-status': t().error,
           }}
           role="status"
           aria-live="polite"

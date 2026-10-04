@@ -13,7 +13,8 @@ import {
   setEditRevision,
 } from '../library';
 import { startImport } from '../importer';
-import { setTheme, THEMES, themeChoice } from '../theme';
+import { addonReport, addThemeFile, loadThemeAddons, setTheme, themeAttrs, themeChoice, themes } from '../theme';
+import { AccentPicker } from './AccentPicker';
 import { toast } from '../toast';
 import {
   isColumnVisible,
@@ -141,7 +142,7 @@ function Row(props: ParentProps<{ label: string; description?: JSX.Element }>) {
 /** Miniature of a theme: page, a card, an accent. Scoped via data-theme. */
 function ThemePreview(props: { theme: string }) {
   return (
-    <div data-theme={props.theme} class="flex h-full w-full flex-col gap-1.5 bg-bg p-2">
+    <div {...themeAttrs(props.theme)} class="flex h-full w-full flex-col gap-1.5 bg-bg p-2">
       <div class="h-1.5 w-1/2 rounded-full bg-fg/70" />
       <div class="flex flex-1 gap-1.5">
         <div class="flex-1 rounded bg-panel shadow-card" />
@@ -168,6 +169,52 @@ function ThemeCard(props: ParentProps<{ selected: boolean; label: string; onSele
   );
 }
 
+/** Theme files in the themes folder: add one, open the folder, reload, and what couldn't be used. */
+function ThemeAddonsSection() {
+  const reload = () => loadThemeAddons().catch((err) => toast(errorMessage(err), { error: true }));
+  onMount(() => void reload());
+  return (
+    <div class="mb-6">
+      <div class="mb-1 font-medium">Theme add-ons</div>
+      <p class="text-xs text-muted">
+        Theme files in the themes folder show up with the themes above. A Catppuccin-style <code>palette.json</code>{' '}
+        works too, one theme per flavour. The format is in <code>docs/themes.md</code>.
+      </p>
+      <Show when={addonReport()?.problems.length}>
+        <ul class="mt-2 space-y-1 text-xs text-danger select-text">
+          <For each={addonReport()!.problems}>
+            {(p) => (
+              <li>
+                <span class="font-medium">{p.file}</span>: {p.message}
+              </li>
+            )}
+          </For>
+        </ul>
+      </Show>
+      <div class="mt-2.5 flex flex-wrap gap-2">
+        <button
+          class={button}
+          onClick={async () => {
+            const error = await addThemeFile();
+            if (error) toast(error, { error: true });
+          }}
+        >
+          Add Theme File…
+        </button>
+        <button
+          class={button}
+          onClick={() => api.openThemesFolder().catch((err) => toast(errorMessage(err), { error: true }))}
+        >
+          Open Themes Folder
+        </button>
+        <button class={button} title="After editing theme files" onClick={() => void reload()}>
+          Reload
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Appearance() {
   return (
     <>
@@ -184,7 +231,7 @@ function Appearance() {
             </div>
           </div>
         </ThemeCard>
-        <For each={THEMES}>
+        <For each={themes()}>
           {(t) => (
             <ThemeCard selected={themeChoice() === t.id} label={t.label} onSelect={() => setTheme(t.id)}>
               <ThemePreview theme={t.id} />
@@ -192,6 +239,14 @@ function Appearance() {
           )}
         </For>
       </div>
+
+      <div class="mb-2 font-medium">Accent</div>
+      <div class="mb-6">
+        <AccentPicker />
+        <p class="mt-2 text-xs text-muted">Remembered for each theme.</p>
+      </div>
+
+      <ThemeAddonsSection />
 
       <Row label="View" description="Also ⌘1 and ⌘2.">
         <div class="flex rounded-lg bg-element p-0.5" role="group" aria-label="View">

@@ -169,7 +169,7 @@ export function CoverGrid(props: Props) {
                 <Show when={onDevice().get(item.id)}>
                   {(where) => (
                     <span
-                      class="absolute top-1.5 left-1.5 grid size-5 place-items-center rounded-full bg-success text-on-accent shadow-card ring-2 ring-black/20"
+                      class="absolute top-1.5 left-1.5 grid size-5 place-items-center rounded-full bg-success text-on-status shadow-card ring-2 ring-black/20"
                       title={where()
                         .map((o) => `On ${o.device.name}`)
                         .join('\n')}

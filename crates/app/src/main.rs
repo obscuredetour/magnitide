@@ -6,6 +6,7 @@ mod devices;
 mod lookup;
 #[cfg(target_os = "macos")]
 mod menu;
+mod themes;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
@@ -108,6 +109,9 @@ fn main() {
             commands::remove_cover,
             commands::remove_format,
             commands::delete_books,
+            themes::theme_addons,
+            themes::add_theme_file,
+            themes::open_themes_folder,
             commands::tidy_preview,
             commands::tidy_file_names,
             commands::name_lists,

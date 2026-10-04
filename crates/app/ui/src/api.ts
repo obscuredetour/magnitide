@@ -17,6 +17,8 @@ import type { DeviceInfo } from './bindings/DeviceInfo';
 import type { DeviceKind } from './bindings/DeviceKind';
 import type { MatchedBy } from './bindings/MatchedBy';
 import type { DeleteReport } from './bindings/DeleteReport';
+import type { ThemeAddon } from './bindings/ThemeAddon';
+import type { ThemeAddons } from './bindings/ThemeAddons';
 import type { MergeOutcome } from './bindings/MergeOutcome';
 import type { RemoveReport } from './bindings/RemoveReport';
 import type { SendReport } from './bindings/SendReport';
@@ -67,6 +69,8 @@ export type {
   Lookup,
   MatchedBy,
   DeleteReport,
+  ThemeAddon,
+  ThemeAddons,
   MergeOutcome,
   RemoveReport,
   SendReport,
@@ -252,6 +256,23 @@ export const api = {
       title: 'Choose a cover image',
       multiple: false,
       filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif'] }],
+    });
+    return typeof picked === 'string' ? picked : null;
+  },
+
+  /** Theme add-ons in the themes folder, and files that couldn't be used. */
+  themeAddons: () => invoke<ThemeAddons>('theme_addons'),
+
+  /** Check a theme file and copy it into the themes folder. */
+  addThemeFile: (path: string) => invoke<ThemeAddons>('add_theme_file', { path }),
+
+  openThemesFolder: () => invoke<void>('open_themes_folder'),
+
+  async chooseThemeFile(): Promise<string | null> {
+    const picked = await open({
+      title: 'Choose a theme file',
+      multiple: false,
+      filters: [{ name: 'Theme files', extensions: ['json'] }],
     });
     return typeof picked === 'string' ? picked : null;
   },
