@@ -7,8 +7,6 @@ import { Cover } from './Cover';
 const PAD = 28;
 const GAP_X = 24;
 const GAP_Y = 28;
-const MIN_TILE = 128;
-const MAX_TILE = 176;
 const TEXT_H = 38; // title + author lines under the cover
 const OVERSCAN = 3; // rows rendered above/below the viewport
 
@@ -22,6 +20,8 @@ export type GridHandle = {
 
 type Props = {
   items: GridItem[];
+  /** Target cover width (CSS px); tiles stretch to fill each row. */
+  tileSize: number;
   selectedId: number | null;
   emptyMessage: string;
   onSelect(id: number): void;
@@ -41,13 +41,8 @@ export function CoverGrid(props: Props) {
 
   const metrics = createMemo(() => {
     const avail = Math.max(0, width() - PAD * 2);
-    let cols = Math.max(1, Math.floor((avail + GAP_X) / (MIN_TILE + GAP_X)));
-    let tileW = (avail - GAP_X * (cols - 1)) / cols;
-    while (tileW > MAX_TILE) {
-      cols += 1;
-      tileW = (avail - GAP_X * (cols - 1)) / cols;
-    }
-    tileW = Math.max(60, tileW);
+    const cols = Math.max(1, Math.floor((avail + GAP_X) / (props.tileSize + GAP_X)));
+    const tileW = Math.max(60, (avail - GAP_X * (cols - 1)) / cols);
     const rowH = tileW * 1.5 + TEXT_H + GAP_Y;
     const rows = Math.ceil(props.items.length / cols);
     return { cols, tileW, rowH, rows };
@@ -68,6 +63,17 @@ export function CoverGrid(props: Props) {
     const { rows, rowH } = metrics();
     return rows ? PAD * 2 + rows * rowH - GAP_Y : 0;
   };
+
+  // When the layout changes (cover size, window width), keep the row that was
+  // at the top of the viewport there, instead of jumping somewhere unrelated.
+  createEffect(
+    on(metrics, (m, prev) => {
+      if (!prev || (prev.cols === m.cols && prev.rowH === m.rowH)) return;
+      const firstIndex = Math.max(0, Math.floor((el.scrollTop - PAD) / prev.rowH)) * prev.cols;
+      el.scrollTop = Math.floor(firstIndex / m.cols) * m.rowH;
+      setScrollTop(el.scrollTop);
+    }),
+  );
 
   // A new result set starts at the top.
   createEffect(
@@ -148,7 +154,13 @@ export function CoverGrid(props: Props) {
             >
               <div class="relative aspect-[2/3] w-full overflow-hidden rounded-md bg-surface-2 shadow-card transition duration-[180ms] ease-out group-hover:-translate-y-[3px] group-hover:shadow-lift group-data-selected:outline-3 group-data-selected:outline-offset-3 group-data-selected:outline-accent">
                 <Cover id={item.id} title={item.title} authors={item.authors} hasCover={item.hasCover} size="thumb" />
-                <Show when={item.seriesIndex}>{(n) => <span class="absolute right-1.5 bottom-1.5 rounded-full bg-black/60 px-[7px] py-px text-[11px] font-semibold text-white tabular-nums backdrop-blur-sm">#{n()}</span>}</Show>
+                <Show when={item.seriesIndex}>
+                  {(n) => (
+                    <span class="absolute right-1.5 bottom-1.5 rounded-full bg-black/60 px-[7px] py-px text-[11px] font-semibold text-white tabular-nums backdrop-blur-sm">
+                      #{n()}
+                    </span>
+                  )}
+                </Show>
               </div>
               <p class="truncate text-[12.5px] font-semibold">{item.title}</p>
               <p class="-mt-1.5 truncate text-xs text-muted">{item.authors}</p>

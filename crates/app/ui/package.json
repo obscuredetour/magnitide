@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write src",
+    "lint": "tsc --noEmit && prettier --check src"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.1",
@@ -15,6 +17,8 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "prettier": "^3.9.9",
+    "prettier-plugin-tailwindcss": "^0.8.1",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.3.2",

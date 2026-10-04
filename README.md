@@ -39,7 +39,7 @@ Search accepts `author:`, `tag:`, `series:`, `title:`, `#custom:`, quotes and `-
 
 ```bash
 cargo test                             # all crates; also regenerates the UI's TypeScript bindings
-pnpm --dir crates/app/ui typecheck
+pnpm --dir crates/app/ui lint                 # typecheck + formatting (`format` to fix)
 cargo run -p calibre-compat -- info    # CLI against the default library
 ```
 
@@ -63,5 +63,6 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [ ] UI build-out: toolbar, table view
 - [ ] Drag and drop to add books (needs the write path: calibre's SQL functions, schema upgrades)
 - [ ] Metadata editing
+- [ ] Accessibility scaling: ⌘+ / ⌘− / ⌘0 zoom the whole UI (remembered), respecting the OS text size where available
 - [ ] Plugin host for DeDRM (embedded Python)
 - [ ] Built-in reader

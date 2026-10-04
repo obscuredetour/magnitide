@@ -1,7 +1,8 @@
 import { createResource, For, Show } from 'solid-js';
 
-import { api, type BookDetails } from '../api';
+import { api, type BookDetails, errorMessage, fileManagerName } from '../api';
 import { openBook, search } from '../library';
+import { toast } from '../toast';
 import { Cover } from './Cover';
 
 type Props = {
@@ -178,7 +179,15 @@ function Details(props: { book: BookDetails }) {
         )}
       </Show>
 
-      <p class="mt-6 text-[11px] text-faint [overflow-wrap:anywhere]">{b().folder}</p>
+      <div class="mt-6">
+        <button
+          class="cursor-pointer text-xs text-accent hover:underline"
+          onClick={() => api.revealBook(b().id).catch((err) => toast(errorMessage(err), { error: true }))}
+        >
+          Show in {fileManagerName}
+        </button>
+        <p class="mt-1 text-[11px] [overflow-wrap:anywhere] text-faint">{b().folder}</p>
+      </div>
     </div>
   );
 }

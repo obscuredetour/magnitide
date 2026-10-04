@@ -35,7 +35,7 @@ export function Cover(props: Props) {
       when={props.hasCover && !failed()}
       fallback={
         <div
-          class="cover-placeholder absolute inset-0 flex flex-col justify-between px-[12%] py-[14%] text-white/95"
+          class="absolute inset-0 flex flex-col justify-between px-[12%] py-[14%] text-white/95 cover-placeholder"
           style={{ '--hue': String((props.id * 47) % 360) }}
         >
           <div
