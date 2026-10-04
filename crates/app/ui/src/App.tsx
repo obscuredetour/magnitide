@@ -4,6 +4,7 @@ import { BookTable } from './components/BookTable';
 import { CoverGrid, type ViewHandle } from './components/CoverGrid';
 import { DetailsPanel } from './components/DetailsPanel';
 import { DropOverlay } from './components/DropOverlay';
+import { BulkEditDialog } from './components/BulkEditDialog';
 import { EditDialog } from './components/EditDialog';
 import { EmptyState } from './components/EmptyState';
 import { ImportDialog } from './components/ImportDialog';
@@ -12,7 +13,7 @@ import { SelectionBar } from './components/SelectionBar';
 import { SettingsDialog } from './components/Settings';
 import { ConfirmHost } from './confirm';
 import { TopBar } from './components/TopBar';
-import { shownItems, watchDevices } from './devices';
+import { selectedInOrder, shownItems, watchDevices } from './devices';
 import {
   detailsOpen,
   openBook,
@@ -28,7 +29,7 @@ import {
   toggleSelected,
 } from './library';
 import { onOpenSettings } from './api';
-import { editingBook, openEditor } from './editor';
+import { bulkIds, editBooks, editingBook } from './editor';
 import { importState } from './importer';
 import { Toast } from './toast';
 import { coverSize, setViewMode, viewMode } from './view';
@@ -113,7 +114,7 @@ export function App() {
       else setDetailsOpen(false);
     } else if (e.key === 'e' && cmd && id !== null) {
       e.preventDefault();
-      void openEditor(id);
+      editBooks(selectedInOrder().length ? selectedInOrder() : [id]);
     } else if (e.key === 'o' && cmd && id !== null) {
       e.preventDefault();
       void openBook(id);
@@ -198,7 +199,11 @@ export function App() {
         </Match>
         <Match when={noLibrary()}>{(s) => <EmptyState message={s().message} />}</Match>
       </Switch>
-      <Show when={editingBook()}>{(e) => <EditDialog editing={e()} />}</Show>
+      {/* Keyed: stepping to another book (Edit One by One) gets a fresh form. */}
+      <Show when={editingBook()} keyed>
+        {(e) => <EditDialog editing={e} />}
+      </Show>
+      <Show when={bulkIds()}>{(ids) => <BulkEditDialog ids={ids()} />}</Show>
       <DropOverlay />
       <Show when={importState().phase !== 'idle'}>
         <ImportDialog />

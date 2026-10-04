@@ -100,6 +100,8 @@ fn main() {
             commands::add_books,
             commands::book_edit,
             commands::author_sorts,
+            commands::bulk_values,
+            commands::bulk_edit,
             commands::save_book_edit,
             commands::set_cover_from_file,
             commands::remove_cover,

@@ -30,6 +30,10 @@ import type { AddReport } from './bindings/AddReport';
 import type { BookRow } from './bindings/BookRow';
 import type { AuthorSort } from './bindings/AuthorSort';
 import type { BookEdit } from './bindings/BookEdit';
+import type { BulkEdit } from './bindings/BulkEdit';
+import type { BulkReport } from './bindings/BulkReport';
+import type { BulkValues } from './bindings/BulkValues';
+import type { Shared } from './bindings/Shared';
 import type { CacheInfo } from './bindings/CacheInfo';
 import type { EditOutcome } from './bindings/EditOutcome';
 import type { FileMetadataStatus } from './bindings/FileMetadataStatus';
@@ -50,6 +54,9 @@ export type {
   AuthorSort,
   BookDetails,
   BookEdit,
+  BulkEdit,
+  BulkReport,
+  BulkValues,
   ConversionInfo,
   ConvertReport,
   CoverPreview,
@@ -61,6 +68,7 @@ export type {
   MergeOutcome,
   RemoveReport,
   SendReport,
+  Shared,
   MatchKind,
   MetadataMatch,
   SearchResult,
@@ -135,6 +143,12 @@ export const api = {
 
   /** A book's editable fields (Magnitide libraries only). */
   bookEdit: (id: number) => invoke<BookEdit>('book_edit', { id }),
+
+  /** What these books have in common, for the bulk editor. */
+  bulkValues: (ids: number[]) => invoke<BulkValues>('bulk_values', { ids }),
+
+  /** Apply one change to several books, in this order (series numbering). Progress via onBulkProgress. */
+  bulkEdit: (ids: number[], change: BulkEdit) => invoke<BulkReport>('bulk_edit', { ids, change }),
 
   /** How these authors sort: saved sort names, or the automatic ones for new authors. */
   authorSorts: (names: string[]) => invoke<AuthorSort[]>('author_sorts', { names }),
@@ -295,6 +309,11 @@ export function onOpenSettings(handler: () => void): Promise<UnlistenFn> {
 /** An e-reader was connected or disconnected (or rescanned). Matches `DEVICES_CHANGED_EVENT` in devices.rs. */
 export function onDevicesChanged(handler: () => void): Promise<UnlistenFn> {
   return listen('devices-changed', handler);
+}
+
+/** Saving several books. Event name matches `BULK_PROGRESS_EVENT` in commands.rs. */
+export function onBulkProgress(handler: (p: ImportProgress) => void): Promise<UnlistenFn> {
+  return listen<ImportProgress>('bulk-progress', (e) => handler(e.payload));
 }
 
 /** Converting books. Event name matches `CONVERT_PROGRESS_EVENT` in commands.rs. */

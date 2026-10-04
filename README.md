@@ -93,7 +93,8 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Format conversion: "Convert…" in the details panel and selection bar adds the new format to the book. EPUB → KEPUB is built in (Kobo spans, like kepubify); AZW3, MOBI, PDF and others use calibre's `ebook-convert` when installed (detected, never bundled). Sending converts on the way when a device's default format is missing, or when a Kindle gets an EPUB-only book
 - [x] Send asks which format when a book has several the device reads; Settings → Devices sets a default per kind of device
 - [x] Multi-select (⌘-click, Shift-click, ⌘A) with a selection bar; "Merge…" for two records of the same book
-- [ ] Bulk metadata lookup and bulk edit for a selection
+- [x] Bulk editing (⌘E with several books selected): fields show what the books share or "Mixed", only changed fields are saved; add/remove tags, series numbering in list order; "Edit One by One" steps through the selection with Previous/Next
+- [ ] Bulk metadata lookup for a selection
 - [ ] MTP devices (newer Kindles) and Kobo collections/shelves
 - [ ] Accessibility scaling: ⌘+ / ⌘− / ⌘0 zoom the whole UI (remembered), respecting the OS text size where available
 - [ ] Built-in reader
