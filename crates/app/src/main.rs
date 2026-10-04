@@ -8,12 +8,25 @@ mod menu;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-use calibre_compat::Snapshot;
+use magnitide_catalog::Catalog;
+use serde::Serialize;
+use ts_rs::TS;
+
+/// What kind of library is open. calibre libraries are only ever read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "lowercase")]
+pub enum LibraryKind {
+    Magnitide,
+    Calibre,
+}
 
 /// The open library. Swapped wholesale when another library is opened.
 pub struct Loaded {
     pub root: PathBuf,
-    pub snap: Snapshot,
+    pub kind: LibraryKind,
+    /// Every book, loaded once; search, sort and all views read this.
+    pub catalog: Catalog,
     /// Where this library's cover thumbnails are cached (never inside the library).
     pub thumb_dir: PathBuf,
 }
@@ -54,7 +67,9 @@ fn main() {
             commands::reveal_book,
             commands::show_library_folder,
             commands::thumbnail_cache_info,
-            commands::clear_thumbnail_cache
+            commands::clear_thumbnail_cache,
+            commands::import_calibre_library,
+            commands::rename_library
         ])
         .run(tauri::generate_context!())
         .expect("error while running Magnitide");

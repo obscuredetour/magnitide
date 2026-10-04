@@ -151,6 +151,16 @@ impl Library {
         })
     }
 
+    /// Rename the library (shown in the app; the folder keeps its name).
+    pub fn set_name(&mut self, name: &str) -> Result<()> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(Error::InvalidName("a library needs a name".into()));
+        }
+        self.conn.execute("UPDATE library_info SET value = ? WHERE key = 'name'", [name])?;
+        Ok(())
+    }
+
     /// Record a book's metadata and return its id. Assigns its folder
     /// (`Author/Title (id)`) but creates nothing on disk: adding files is the
     /// import pipeline's job, so it can clean up if copying fails.
@@ -362,6 +372,15 @@ mod tests {
         let reopened = Library::open(dir.path()).unwrap().info().unwrap();
         assert_eq!(reopened.uuid, info.uuid);
         assert!(matches!(Library::create(dir.path(), "Again"), Err(Error::AlreadyALibrary(_))));
+    }
+
+    #[test]
+    fn renames() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut lib = Library::create(dir.path(), "Old").unwrap();
+        lib.set_name("  New Name ").unwrap();
+        assert_eq!(Library::open(dir.path()).unwrap().info().unwrap().name, "New Name");
+        assert!(matches!(lib.set_name("   "), Err(Error::InvalidName(_))));
     }
 
     #[test]

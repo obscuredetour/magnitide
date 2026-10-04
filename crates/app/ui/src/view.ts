@@ -71,3 +71,12 @@ export function setColumnVisible(id: string, visible: boolean): void {
 export function resetColumnSizing(): void {
   setColumnSizing({});
 }
+
+/** Alternating row colours in the list view; on unless turned off. */
+const [zebraRows, setZebraRowsSignal] = createSignal(storage.get('tableZebra') !== 'off');
+export { zebraRows };
+
+export function setZebraRows(on: boolean): void {
+  setZebraRowsSignal(on);
+  storage.set('tableZebra', on ? 'on' : 'off');
+}

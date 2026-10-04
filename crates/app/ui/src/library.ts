@@ -131,6 +131,22 @@ export async function openLibrary(path: string | null): Promise<boolean> {
   }
 }
 
+/** Rename the open Magnitide library (calibre libraries are read-only). */
+export async function renameLibrary(name: string): Promise<boolean> {
+  const current = library();
+  if (!current) return false;
+  try {
+    const saved = await api.renameLibrary(name);
+    const info = { ...current, name: saved };
+    setLibrary(info);
+    rememberLibrary(info);
+    return true;
+  } catch (err) {
+    toast(errorMessage(err), { error: true });
+    return false;
+  }
+}
+
 export async function chooseLibrary(): Promise<void> {
   const path = await api.chooseLibraryFolder();
   if (path) await openLibrary(path);

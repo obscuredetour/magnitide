@@ -24,6 +24,8 @@ use crate::{html, paths};
 const SOURCE: &str = "calibre";
 
 #[derive(Debug, Default, Clone, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
 pub struct ImportReport {
     pub library_created: bool,
     pub books_imported: usize,
@@ -70,11 +72,22 @@ pub fn import_calibre(source: &Path, dest: &Path, mut progress: impl FnMut(Progr
     let mut report = ImportReport::default();
     report.warnings.extend(snap.warnings.iter().map(|w| format!("calibre: {w}")));
 
+    // A new library goes in a new or empty folder, never scattered through an
+    // existing one (Documents, Downloads, …).
+    if !Library::exists_at(&dest_abs) && dest_abs.is_dir() && fs::read_dir(&dest_abs)?.next().is_some() {
+        return Err(Error::Import(format!(
+            "{} isn't empty; choose a new or empty folder for the Magnitide library",
+            dest_abs.display()
+        )));
+    }
+
     let mut lib = if Library::exists_at(&dest_abs) {
         Library::open(&dest_abs)?
     } else {
         report.library_created = true;
-        let name = src_root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Library".into());
+        // Named after the folder the user chose ("Magnitide Library"), not the
+        // calibre library, so the two are easy to tell apart.
+        let name = dest_abs.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Library".into());
         Library::create(&dest_abs, &name)?
     };
 

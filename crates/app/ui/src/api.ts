@@ -4,16 +4,29 @@
 
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { open } from '@tauri-apps/plugin-dialog';
+import { open, save } from '@tauri-apps/plugin-dialog';
 
 import type { BookDetails } from './bindings/BookDetails';
 import type { BookRow } from './bindings/BookRow';
 import type { CacheInfo } from './bindings/CacheInfo';
+import type { ImportProgress } from './bindings/ImportProgress';
+import type { ImportReport } from './bindings/ImportReport';
+import type { LibraryKind } from './bindings/LibraryKind';
 import type { LibraryInfo } from './bindings/LibraryInfo';
 import type { SortDir } from './bindings/SortDir';
 import type { SortKey } from './bindings/SortKey';
 
-export type { BookDetails, BookRow, CacheInfo, LibraryInfo, SortDir, SortKey };
+export type {
+  BookDetails,
+  BookRow,
+  CacheInfo,
+  ImportProgress,
+  ImportReport,
+  LibraryInfo,
+  LibraryKind,
+  SortDir,
+  SortKey,
+};
 export type { FormatInfo } from './bindings/FormatInfo';
 
 export const api = {
@@ -38,9 +51,27 @@ export const api = {
 
   clearThumbnailCache: () => invoke<void>('clear_thumbnail_cache'),
 
+  /**
+   * Import the open calibre library into a Magnitide library at `dest`
+   * (created if new; a repeat import adds only new books). Progress arrives
+   * via onImportProgress.
+   */
+  importCalibreLibrary: (dest: string) => invoke<ImportReport>('import_calibre_library', { dest }),
+
+  /** Rename the open Magnitide library; resolves to the saved name. */
+  renameLibrary: (name: string) => invoke<string>('rename_library', { name }),
+
+  /** Where to create a new Magnitide library; null when cancelled. */
+  chooseNewLibraryLocation: (suggestedName: string) =>
+    save({ title: 'Create a Magnitide library', defaultPath: suggestedName }),
+
   /** Native folder picker; null when cancelled. */
   async chooseLibraryFolder(): Promise<string | null> {
-    const picked = await open({ directory: true, multiple: false, title: 'Choose a calibre library folder' });
+    const picked = await open({
+      directory: true,
+      multiple: false,
+      title: 'Choose a Magnitide or calibre library folder',
+    });
     return typeof picked === 'string' ? picked : null;
   },
 };
@@ -73,4 +104,9 @@ export const fileManagerName = /Mac/.test(navigator.userAgent)
  */
 export function onOpenSettings(handler: () => void): Promise<UnlistenFn> {
   return listen('open-settings', handler);
+}
+
+/** Import progress. Event name matches `IMPORT_PROGRESS_EVENT` in `crates/app/src/commands.rs`. */
+export function onImportProgress(handler: (p: ImportProgress) => void): Promise<UnlistenFn> {
+  return listen<ImportProgress>('import-progress', (e) => handler(e.payload));
 }

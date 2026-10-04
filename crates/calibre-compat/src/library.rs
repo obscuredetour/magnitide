@@ -10,10 +10,9 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use rusqlite::types::ValueRef;
 use rusqlite::{Connection, OpenFlags, Row};
-use serde::Serialize;
 
 use crate::dates;
-use crate::model::{Book, BookId, CustomColumn, CustomValue, Datatype, Format};
+use magnitide_catalog::{Book, BookId, Catalog, CustomColumn, CustomValue, Datatype, Format};
 
 /// `PRAGMA application_id` of calibre databases: "cali" as a big-endian int.
 pub const CALIBRE_APPLICATION_ID: i32 = 0x6361_6c69;
@@ -28,24 +27,8 @@ pub struct Library {
     pub application_id: i32,
 }
 
-/// Everything in the library, loaded into memory.
-#[derive(Debug, Serialize)]
-pub struct Snapshot {
-    pub library_uuid: Option<String>,
-    pub schema_version: i32,
-    pub custom_columns: Vec<CustomColumn>,
-    pub books: Vec<Book>,
-    /// Non-fatal problems hit while loading (e.g. a missing custom column table).
-    pub warnings: Vec<String>,
-    #[serde(skip)]
-    index: HashMap<BookId, usize>,
-}
-
-impl Snapshot {
-    pub fn get(&self, id: BookId) -> Option<&Book> {
-        self.index.get(&id).map(|&i| &self.books[i])
-    }
-}
+/// A calibre library loaded into memory (the shared catalog type).
+pub type Snapshot = Catalog;
 
 impl Library {
     /// `path` may be the library folder or the `metadata.db` file itself.
@@ -219,7 +202,7 @@ impl Library {
 
         let library_uuid = conn.query_row("SELECT uuid FROM library_id LIMIT 1", [], |r| r.get(0)).ok();
 
-        Ok(Snapshot { library_uuid, schema_version: self.schema_version, custom_columns, books, warnings, index })
+        Ok(Catalog::new(library_uuid, custom_columns, books, warnings))
     }
 
     pub fn custom_columns(&self) -> Result<Vec<CustomColumn>> {

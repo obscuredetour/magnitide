@@ -4,6 +4,7 @@ import { BookTable } from './components/BookTable';
 import { CoverGrid, type ViewHandle } from './components/CoverGrid';
 import { DetailsPanel } from './components/DetailsPanel';
 import { EmptyState } from './components/EmptyState';
+import { ImportDialog } from './components/ImportDialog';
 import { SettingsDialog } from './components/Settings';
 import { TopBar } from './components/TopBar';
 import {
@@ -18,6 +19,7 @@ import {
   status,
 } from './library';
 import { onOpenSettings } from './api';
+import { importState } from './importer';
 import { Toast } from './toast';
 import { coverSize, setViewMode, viewMode } from './view';
 
@@ -161,6 +163,9 @@ export function App() {
         </Match>
         <Match when={noLibrary()}>{(s) => <EmptyState message={s().message} />}</Match>
       </Switch>
+      <Show when={importState().phase !== 'idle'}>
+        <ImportDialog />
+      </Show>
       <Show when={settingsOpen()}>
         <SettingsDialog onClose={() => setSettingsOpen(false)} />
       </Show>

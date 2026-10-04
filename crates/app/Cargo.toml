@@ -8,7 +8,8 @@ license = "GPL-3.0-or-later"
 [dependencies]
 ammonia = "4.2.1"
 anyhow = "1.0.104"
-calibre-compat = { version = "0.1.0", path = "../calibre-compat", features = ["ts"] }
+calibre-compat = { version = "0.1.0", path = "../calibre-compat" }
+magnitide-catalog = { version = "0.1.0", path = "../catalog", features = ["ts"] }
 chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
 open = "5"
@@ -18,6 +19,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = { version = "2", default-features = false }
 ts-rs = "12.0.1"
+magnitide-core = { version = "0.1.0", path = "../core", features = ["ts"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

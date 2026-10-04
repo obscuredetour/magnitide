@@ -1,0 +1,13 @@
+//! The in-memory book catalog shared by every kind of library (calibre
+//! libraries opened read-only, native Magnitide libraries): the book model,
+//! search and sort. Loaders turn a library into a [`Catalog`]; views query it.
+
+pub mod catalog;
+pub mod model;
+pub mod search;
+pub mod sort;
+
+pub use catalog::Catalog;
+pub use model::{Book, BookId, CustomColumn, CustomValue, Datatype, Format};
+pub use search::Query;
+pub use sort::{SortDir, SortKey, sort_books};

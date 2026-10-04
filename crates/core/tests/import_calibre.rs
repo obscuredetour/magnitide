@@ -96,7 +96,7 @@ fn imports_everything_and_leaves_calibre_untouched() {
 
     let lib = Library::open(&dest).unwrap();
     assert_eq!(lib.info().unwrap().book_count, 3);
-    assert_eq!(lib.info().unwrap().name, "calibre");
+    assert_eq!(lib.info().unwrap().name, "magnitide", "named after the destination folder");
 
     // Book 1 ("Title Two"): two authors in order, series, rating, both formats, cover.
     let b = lib.book(imported_id(&dest, 1)).unwrap();
@@ -186,4 +186,72 @@ fn a_failing_book_is_rolled_back_without_touching_existing_folders() {
     assert_eq!(report.books_imported, 2, "the other books still import");
     assert_eq!(Library::open(&dest).unwrap().info().unwrap().book_count, 2, "failed book rolled back");
     assert_eq!(fs::read_to_string(blocker.join("keep.txt")).unwrap(), "not ours", "pre-existing folder kept");
+}
+
+/// The strongest check: after importing, the native library loads into the
+/// catalog with the same data the calibre library does.
+#[test]
+fn imported_library_matches_the_calibre_catalog() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (src, dest) = (tmp.path().join("calibre"), tmp.path().join("magnitide"));
+    fs::create_dir(&src).unwrap();
+    calibre_library(&src);
+    import_calibre(&src, &dest, |_| {}).unwrap();
+
+    let calibre = calibre_compat::Library::open(&src).unwrap().load().unwrap();
+    let native = Library::open(&dest).unwrap().load_catalog().unwrap();
+    assert!(native.warnings.is_empty(), "{:?}", native.warnings);
+    assert_eq!(native.books.len(), calibre.books.len());
+
+    for c in &calibre.books {
+        let n = native.get(imported_id(&dest, c.id)).unwrap();
+        let sorted = |v: &[String]| {
+            let mut v = v.to_vec();
+            v.sort();
+            v
+        };
+        assert_eq!(n.title, c.title);
+        assert_eq!(n.authors, c.authors, "author order kept");
+        assert_eq!(
+            (&n.series, n.series.as_ref().map(|_| n.series_index)),
+            (&c.series, c.series.as_ref().map(|_| c.series_index))
+        );
+        assert_eq!(n.publisher, c.publisher);
+        assert_eq!(n.rating, c.rating);
+        assert_eq!(sorted(&n.tags), sorted(&c.tags));
+        assert_eq!(n.languages, c.languages);
+        assert_eq!(n.identifiers, c.identifiers);
+        assert_eq!(n.uuid, c.uuid);
+        assert_eq!(n.has_cover, c.has_cover);
+        assert_eq!(n.pubdate.map(|d| d.date_naive()), c.pubdate.map(|d| d.date_naive()));
+        assert_eq!(n.timestamp.map(|d| d.timestamp()), c.timestamp.map(|d| d.timestamp()));
+        let formats =
+            |b: &calibre_compat::Book| b.formats.iter().map(|f| (f.format.clone(), f.size)).collect::<Vec<_>>();
+        assert_eq!(formats(n), formats(c));
+        // Every stored custom value survives, keyed the same way.
+        assert_eq!(n.custom, c.custom, "custom values for {:?}", c.title);
+        // Files resolve on disk through the shared path helpers.
+        for f in &n.formats {
+            assert!(n.format_path(&dest, f).is_file());
+        }
+    }
+}
+
+#[test]
+fn refuses_a_non_empty_folder_that_is_not_a_library() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (src, dest) = (tmp.path().join("calibre"), tmp.path().join("Documents"));
+    fs::create_dir(&src).unwrap();
+    calibre_library(&src);
+    fs::create_dir(&dest).unwrap();
+    fs::write(dest.join("taxes.pdf"), "important").unwrap();
+
+    let err = import_calibre(&src, &dest, |_| {}).err().unwrap();
+    assert!(matches!(err, Error::Import(ref m) if m.contains("isn't empty")), "{err}");
+    assert_eq!(fs::read_dir(&dest).unwrap().count(), 1, "nothing written");
+
+    // An empty existing folder is fine.
+    let empty = tmp.path().join("Empty");
+    fs::create_dir(&empty).unwrap();
+    assert_eq!(import_calibre(&src, &empty, |_| {}).unwrap().books_imported, 3);
 }

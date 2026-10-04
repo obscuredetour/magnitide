@@ -3,12 +3,13 @@ use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::time::Instant;
 
-use calibre_compat::{Book, Library, Query, SortDir, SortKey, locate, sort_books};
+use calibre_compat::locate;
+use magnitide_catalog::{Book, Query, SortDir, SortKey, sort_books};
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use ts_rs::TS;
 
-use crate::{AppState, Loaded};
+use crate::{AppState, LibraryKind, Loaded};
 
 type CmdResult<T> = Result<T, String>;
 
@@ -18,38 +19,49 @@ type CmdResult<T> = Result<T, String>;
 pub struct LibraryInfo {
     path: String,
     name: String,
+    kind: LibraryKind,
     book_count: usize,
     load_ms: u128,
     warnings: Vec<String>,
 }
 
-/// Open `path`, or calibre's current/default library when `path` is None.
+/// Open a Magnitide or calibre library at `path` (calibre ones read-only), or
+/// calibre's current/default library when `path` is None.
 #[tauri::command]
 pub async fn open_library(app: AppHandle, state: State<'_, AppState>, path: Option<String>) -> CmdResult<LibraryInfo> {
     let path = match path {
         Some(p) => PathBuf::from(p),
-        None => locate::default_library().ok_or("No calibre library found. Choose a library folder to open.")?,
+        None => locate::default_library()
+            .ok_or("No library found. Choose a Magnitide or calibre library folder to open.")?,
     };
     let thumbs_root = thumbs_root(&app)?;
 
     let (loaded, info) = tauri::async_runtime::spawn_blocking(move || -> anyhow::Result<_> {
         let t = Instant::now();
-        let lib = Library::open(&path)?;
-        let snap = lib.load()?;
-        let root = lib.root().to_path_buf();
-        let cache_key = snap.library_uuid.clone().unwrap_or_else(|| {
+        let (root, kind, name, catalog) = if magnitide_core::Library::exists_at(&path) {
+            let lib = magnitide_core::Library::open(&path)?;
+            let name = lib.info()?.name;
+            (lib.root().to_path_buf(), LibraryKind::Magnitide, name, lib.load_catalog()?)
+        } else {
+            let lib = calibre_compat::Library::open(&path)?;
+            let root = lib.root().to_path_buf();
+            let name = root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            (root, LibraryKind::Calibre, name, lib.load()?)
+        };
+        let cache_key = catalog.library_uuid.clone().unwrap_or_else(|| {
             let mut h = DefaultHasher::new();
             root.hash(&mut h);
             format!("path-{:016x}", h.finish())
         });
         let info = LibraryInfo {
             path: root.display().to_string(),
-            name: root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
-            book_count: snap.books.len(),
+            name,
+            kind,
+            book_count: catalog.books.len(),
             load_ms: t.elapsed().as_millis(),
-            warnings: snap.warnings.clone(),
+            warnings: catalog.warnings.clone(),
         };
-        Ok((Loaded { root, snap, thumb_dir: thumbs_root.join(cache_key) }, info))
+        Ok((Loaded { root, kind, catalog, thumb_dir: thumbs_root.join(cache_key) }, info))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -57,6 +69,67 @@ pub async fn open_library(app: AppHandle, state: State<'_, AppState>, path: Opti
 
     state.replace(loaded);
     Ok(info)
+}
+
+/// Rename the open Magnitide library. Returns the cleaned-up name.
+#[tauri::command]
+pub async fn rename_library(state: State<'_, AppState>, name: String) -> CmdResult<String> {
+    let lib = state.current().ok_or("No library is open")?;
+    if lib.kind != LibraryKind::Magnitide {
+        return Err("calibre libraries are read-only; import one to rename it.".into());
+    }
+    let root = lib.root.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut native = magnitide_core::Library::open(&root)?;
+        native.set_name(&name)?;
+        Ok::<_, magnitide_core::Error>(native.info()?.name)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
+/// Sent while an import runs. Event name matches `onImportProgress` in ui/src/api.ts.
+pub const IMPORT_PROGRESS_EVENT: &str = "import-progress";
+
+#[derive(Clone, Serialize, TS)]
+#[ts(export)]
+pub struct ImportProgress {
+    done: usize,
+    total: usize,
+    title: String,
+}
+
+/// Import the open calibre library into a Magnitide library at `dest`
+/// (created if new; repeat imports add only new books). The calibre library
+/// is only read. Progress arrives as `import-progress` events.
+#[tauri::command]
+pub async fn import_calibre_library(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    dest: String,
+) -> CmdResult<magnitide_core::import::ImportReport> {
+    let lib = state.current().ok_or("No library is open")?;
+    if lib.kind != LibraryKind::Calibre {
+        return Err("Only calibre libraries can be imported.".into());
+    }
+    let src = lib.root.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut last = Instant::now();
+        magnitide_core::import::import_calibre(&src, dest.as_ref(), |p| {
+            // ~20 updates a second is plenty for a progress bar.
+            if p.done == 0 || p.done == p.total || last.elapsed().as_millis() >= 50 {
+                last = Instant::now();
+                let _ = app.emit(
+                    IMPORT_PROGRESS_EVENT,
+                    ImportProgress { done: p.done, total: p.total, title: p.title.to_owned() },
+                );
+            }
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
 }
 
 /// One book in the grid or table. Flat and display-ready, because every
@@ -119,7 +192,8 @@ pub async fn list_books(
     let lib = state.current().ok_or("No library is open")?;
     let query = query.trim();
     let query = (!query.is_empty()).then(|| Query::parse(query)).transpose().map_err(|e| e.to_string())?;
-    let mut books: Vec<&Book> = lib.snap.books.iter().filter(|b| query.as_ref().is_none_or(|q| q.matches(b))).collect();
+    let mut books: Vec<&Book> =
+        lib.catalog.books.iter().filter(|b| query.as_ref().is_none_or(|q| q.matches(b))).collect();
     sort_books(&mut books, sort, dir.unwrap_or(sort.natural_dir()));
     Ok(books.into_iter().map(BookRow::from).collect())
 }
@@ -157,7 +231,7 @@ pub struct FormatInfo {
 #[tauri::command]
 pub async fn book_details(state: State<'_, AppState>, id: i64) -> CmdResult<BookDetails> {
     let lib = state.current().ok_or("No library is open")?;
-    let b = lib.snap.get(id).ok_or_else(|| format!("No book with id {id}"))?;
+    let b = lib.catalog.get(id).ok_or_else(|| format!("No book with id {id}"))?;
     Ok(BookDetails {
         id: b.id,
         title: b.title.clone(),
@@ -207,7 +281,7 @@ fn by_preference<'a>(available: &[&'a str]) -> Vec<&'a str> {
 #[tauri::command]
 pub async fn open_book(state: State<'_, AppState>, id: i64, format: Option<String>) -> CmdResult<String> {
     let lib = state.current().ok_or("No library is open")?;
-    let b = lib.snap.get(id).ok_or_else(|| format!("No book with id {id}"))?;
+    let b = lib.catalog.get(id).ok_or_else(|| format!("No book with id {id}"))?;
     // Only paths derived from the database are opened; the UI just names a book and format.
     let present: Vec<_> = b.formats.iter().filter(|f| b.format_path(&lib.root, f).is_file()).collect();
     let names: Vec<&str> = present.iter().map(|f| f.format.as_str()).collect();
@@ -254,7 +328,7 @@ pub async fn open_book(state: State<'_, AppState>, id: i64, format: Option<Strin
 #[tauri::command]
 pub async fn reveal_book(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
     let lib = state.current().ok_or("No library is open")?;
-    let b = lib.snap.get(id).ok_or_else(|| format!("No book with id {id}"))?;
+    let b = lib.catalog.get(id).ok_or_else(|| format!("No book with id {id}"))?;
     let present: Vec<_> = b.formats.iter().filter(|f| b.format_path(&lib.root, f).is_file()).collect();
     let names: Vec<&str> = present.iter().map(|f| f.format.as_str()).collect();
     let target = by_preference(&names)
@@ -379,7 +453,7 @@ mod bench {
     #[ignore]
     fn list_payload_size() {
         let path = std::env::var("MAGNITIDE_BENCH_LIBRARY").expect("set MAGNITIDE_BENCH_LIBRARY");
-        let snap = Library::open(path).unwrap().load().unwrap();
+        let snap = calibre_compat::Library::open(path).unwrap().load().unwrap();
         let t = Instant::now();
         let mut books: Vec<&Book> = snap.books.iter().collect();
         sort_books(&mut books, SortKey::Title, SortDir::Asc);

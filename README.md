@@ -9,7 +9,8 @@ How the pieces fit, and the decisions behind them: [docs/architecture.md](docs/a
 | Crate | What it is |
 |---|---|
 | [`app`](crates/app) | The desktop app: Tauri 2, with a Solid + TypeScript UI in [`crates/app/ui`](crates/app/ui). Currently a read-only cover grid with search and a details panel |
-| [`core`](crates/core) | `magnitide-core`: the native Magnitide library (schema, migrations, edits; import next). No Tauri code, so the planned server can share it |
+| [`core`](crates/core) | `magnitide-core`: the native Magnitide library (schema, migrations, edits) and calibre import. No Tauri code, so the planned server can share it |
+| [`catalog`](crates/catalog) | `magnitide-catalog`: the in-memory book model, search and sort that every kind of library loads into |
 | [`calibre-compat`](crates/calibre-compat) | Read-only access to calibre libraries (`metadata.db` + book folders), plus a CLI to inspect them |
 
 ## Setup
@@ -65,9 +66,12 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Solid + TypeScript UI with types generated from Rust
 - [x] Toolbar (library menu, cover size, theme picker) and table view (sortable, resizable, choosable columns)
 - [x] Settings panel (⌘,): appearance, library, list columns, thumbnail cache, about
-- [ ] Native Magnitide library: schema v1 and calibre import done in `core` (`cargo run --release -p magnitide-core --example import_calibre -- <calibre> <dest>`); next: open native libraries and import from the app
+- [x] List view zebra stripes (setting, on by default)
+- [x] Native Magnitide library (schema v1) and calibre import, in the app with progress (also `cargo run --release -p magnitide-core --example import_calibre -- <calibre> <dest>`)
+- [ ] Library safety: single-writer lock, warning for libraries on network shares
 - [ ] Drag and drop to add books
 - [ ] Metadata editing
+- [ ] File name clean-up: keep file and folder names in sync with metadata (rename on edit, plus a "Tidy file names" action for existing books)
 - [ ] Accessibility scaling: ⌘+ / ⌘− / ⌘0 zoom the whole UI (remembered), respecting the OS text size where available
 - [ ] Plugin host for DeDRM (embedded Python)
 - [ ] Built-in reader

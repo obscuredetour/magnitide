@@ -22,6 +22,9 @@ pub enum Error {
     #[error("invalid book: {0}")]
     InvalidBook(String),
 
+    #[error("invalid name: {0}")]
+    InvalidName(String),
+
     #[error("import failed: {0}")]
     Import(String),
 
