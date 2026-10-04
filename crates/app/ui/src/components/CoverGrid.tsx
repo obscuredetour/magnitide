@@ -27,8 +27,11 @@ type Props = {
   /** Target cover width (CSS px); tiles stretch to fill each row. */
   tileSize: number;
   selectedId: number | null;
+  /** Every selected book (highlighted). */
+  selectedIds: ReadonlySet<number>;
   emptyMessage: string;
-  onSelect(id: number): void;
+  /** A click; modifier keys (⌘, Shift) extend the selection. */
+  onSelect(id: number, e: MouseEvent): void;
   onOpen(id: number): void;
   ref?: (handle: ViewHandle) => void;
 };
@@ -149,12 +152,12 @@ export function CoverGrid(props: Props) {
           return (
             <div
               class="group absolute top-0 left-0 flex cursor-default flex-col gap-2 [contain:layout_style]"
-              data-selected={item.id === props.selectedId || undefined}
+              data-selected={props.selectedIds.has(item.id) || undefined}
               style={{ width: `${metrics().tileW}px`, transform: position() }}
               title={[item.title, item.authors, item.series && `${item.series} #${item.seriesIndex}`]
                 .filter(Boolean)
                 .join('\n')}
-              onClick={() => props.onSelect(item.id)}
+              onClick={(e) => props.onSelect(item.id, e)}
               onDblClick={() => props.onOpen(item.id)}
             >
               <div class="relative aspect-[2/3] w-full overflow-hidden rounded-md bg-surface-2 shadow-card transition duration-[180ms] ease-out group-hover:-translate-y-[3px] group-hover:shadow-lift group-data-selected:outline-3 group-data-selected:outline-offset-3 group-data-selected:outline-accent">

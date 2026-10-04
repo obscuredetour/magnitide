@@ -13,6 +13,7 @@ mod images;
 pub mod import;
 pub mod library;
 pub mod lock;
+pub mod merge;
 pub mod metadata;
 pub mod names;
 pub mod paths;

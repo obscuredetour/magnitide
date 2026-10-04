@@ -13,10 +13,13 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use ts_rs::TS;
 
 use crate::AppState;
-use crate::commands::CmdResult;
+use crate::commands::{CmdResult, ImportProgress, write_library};
 
 /// Event name matches `onDevicesChanged` in ui/src/api.ts.
 pub const DEVICES_CHANGED_EVENT: &str = "devices-changed";
+
+/// Sent while books are copied to a device. Matches `onTransferProgress` in ui/src/api.ts.
+pub const TRANSFER_PROGRESS_EVENT: &str = "transfer-progress";
 
 /// How often the mounted volumes are checked (a directory listing; cheap).
 const POLL: Duration = Duration::from_secs(3);
@@ -127,6 +130,94 @@ pub async fn rescan_device(app: AppHandle, state: State<'_, AppState>, id: Strin
     state.set_devices(scans);
     let _ = app.emit(DEVICES_CHANGED_EVENT, ());
     Ok(())
+}
+
+/// Rescan one device after changing it, and tell the UI.
+fn rescanned(app: &AppHandle, root: &Path) {
+    let state = app.state::<AppState>();
+    let scans = state
+        .devices()
+        .into_iter()
+        .map(|s| if s.device.root == root { Arc::new(devices::scan(&s.device)) } else { s })
+        .collect();
+    state.set_devices(scans);
+    let _ = app.emit(DEVICES_CHANGED_EVENT, ());
+}
+
+/// Copy books from the open library to a device (in the format it reads
+/// best; EPUBs get the library's metadata written into the copy).
+#[tauri::command]
+pub async fn send_to_device(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    book_ids: Vec<i64>,
+) -> CmdResult<devices::transfer::SendReport> {
+    let scan = state.device(&id)?;
+    let lib = state.current().ok_or("No library is open")?;
+    // Books already on the device aren't sent again.
+    let already: std::collections::HashSet<i64> =
+        devices::match_books(&scan, &lib.catalog, &lib.root).into_iter().flatten().map(|(b, _)| b).collect();
+    let app2 = app.clone();
+    let report = tauri::async_runtime::spawn_blocking(move || {
+        let books: Vec<&magnitide_catalog::Book> =
+            book_ids.iter().filter(|b| !already.contains(b)).filter_map(|b| lib.catalog.get(*b)).collect();
+        let free = devices::volumes::space(&scan.device.root).map(|s| s.1);
+        let report = devices::transfer::send(&scan.device, &books, &lib.root, free, |done, total, title| {
+            let _ = app2.emit(TRANSFER_PROGRESS_EVENT, ImportProgress { done, total, title: title.to_owned() });
+        });
+        rescanned(&app2, &scan.device.root);
+        report
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(report)
+}
+
+/// Delete books' files from a device (and KOReader's notes for them).
+#[tauri::command]
+pub async fn remove_from_device(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    book_ids: Vec<i64>,
+) -> CmdResult<devices::transfer::RemoveReport> {
+    let scan = state.device(&id)?;
+    let lib = state.current().ok_or("No library is open")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let matches = devices::match_books(&scan, &lib.catalog, &lib.root);
+        let paths: Vec<String> = scan
+            .files
+            .iter()
+            .zip(matches)
+            .filter(|(_, m)| m.is_some_and(|(b, _)| book_ids.contains(&b)))
+            .map(|(f, _)| f.path.clone())
+            .collect();
+        let report = devices::transfer::remove(&scan.device, &paths);
+        rescanned(&app, &scan.device.root);
+        report
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Add device files that aren't in the library (paths as listed in
+/// `DeviceInfo::unmatched`) to the open Magnitide library.
+#[tauri::command]
+pub async fn import_from_device(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    paths: Vec<String>,
+) -> CmdResult<magnitide_core::import::AddReport> {
+    let scan = state.device(&id)?;
+    // Only files the scan found, so nothing outside the device is read.
+    let files: Vec<std::path::PathBuf> =
+        scan.files.iter().filter(|f| paths.contains(&f.path)).map(|f| scan.device.root.join(&f.path)).collect();
+    let report = write_library(&state, move |lib| magnitide_core::import::add_files(lib, &files, |_| {})).await?;
+    let root = scan.device.root.clone();
+    tauri::async_runtime::spawn_blocking(move || rescanned(&app, &root)).await.map_err(|e| e.to_string())?;
+    Ok(report)
 }
 
 /// Eject the device so it can be unplugged. It leaves the list straight away.

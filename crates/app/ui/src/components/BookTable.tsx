@@ -188,8 +188,11 @@ const apply = <T,>(updater: Updater<T>, prev: T): T =>
 type Props = {
   rows: BookRow[];
   selectedId: number | null;
+  /** Every selected book (highlighted). */
+  selectedIds: ReadonlySet<number>;
   emptyMessage: string;
-  onSelect(id: number): void;
+  /** A click; modifier keys (⌘, Shift) extend the selection. */
+  onSelect(id: number, e: MouseEvent): void;
   onOpen(id: number): void;
   ref?: (handle: ViewHandle) => void;
 };
@@ -292,9 +295,9 @@ export function BookTable(props: Props) {
                     class="absolute top-0 left-0 flex w-full cursor-default items-center border-b border-line/50 hover:bg-line data-selected:bg-accent/20"
                     // TODO(Jamie): stripe colour is inconsistent across themes (see README roadmap).
                     classList={{ 'bg-surface-2/40': zebraRows() && v.index % 2 === 1 }}
-                    data-selected={r().original.id === props.selectedId || undefined}
+                    data-selected={props.selectedIds.has(r().original.id) || undefined}
                     style={{ height: `${ROW_H}px`, transform: `translateY(${v.start}px)` }}
-                    onClick={() => props.onSelect(r().original.id)}
+                    onClick={(e) => props.onSelect(r().original.id, e)}
                     onDblClick={() => props.onOpen(r().original.id)}
                   >
                     <For each={r().getVisibleCells()}>

@@ -4,7 +4,8 @@ import { api, type BookDetails, errorMessage, fileManagerName, type MatchedBy } 
 import { openEditor } from '../editor';
 import { editRevision, library, openBook, search } from '../library';
 import { toast } from '../toast';
-import { onDevice } from '../devices';
+import { devices, onDevice } from '../devices';
+import { removeFromDevice, sendToDevice } from '../transfer';
 import { writeBookFiles } from '../writeback';
 import { Cover } from './Cover';
 
@@ -191,19 +192,43 @@ function Details(props: { book: BookDetails }) {
         </div>
       </Show>
 
-      <Show when={onDevice().get(b().id)}>
-        {(where) => (
-          <div class="-mt-1.5 mb-4 space-y-0.5 text-xs">
-            <For each={where()}>
-              {(o) => (
-                <p class="flex items-center gap-1.5 text-muted" title={`Found by ${MATCHED_BY[o.hit.matchedBy]}`}>
-                  <span class="font-medium text-success">On {o.device.name}</span>
-                  <span class="truncate">{o.hit.path}</span>
-                </p>
-              )}
-            </For>
-          </div>
-        )}
+      <Show when={devices().length}>
+        <div class="-mt-1.5 mb-4 space-y-1 text-xs">
+          <For each={devices()}>
+            {(d) => {
+              const hit = () =>
+                onDevice()
+                  .get(b().id)
+                  ?.find((o) => o.device.id === d.id)?.hit;
+              return (
+                <Show
+                  when={hit()}
+                  fallback={
+                    <button class={chipButton} onClick={() => void sendToDevice(d, [b().id])}>
+                      Send to {d.name}
+                    </button>
+                  }
+                >
+                  {(h) => (
+                    <p
+                      class="flex items-center gap-1.5 text-muted"
+                      title={`${h().path}\nFound by ${MATCHED_BY[h().matchedBy]}`}
+                    >
+                      <span class="font-medium whitespace-nowrap text-success">On {d.name}</span>
+                      <span class="min-w-0 truncate">{h().path}</span>
+                      <button
+                        class="ml-auto cursor-pointer whitespace-nowrap text-accent hover:underline"
+                        onClick={() => void removeFromDevice(d, [b().id])}
+                      >
+                        Remove
+                      </button>
+                    </p>
+                  )}
+                </Show>
+              );
+            }}
+          </For>
+        </div>
       </Show>
 
       <Show when={fileStatus() === 'outdated'}>

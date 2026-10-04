@@ -2,6 +2,8 @@ import { For, Show } from 'solid-js';
 
 import { api, type DeviceInfo, errorMessage, fileManagerName } from '../api';
 import { deviceFilter, devices, ejectDevice, rescanDevice, setDeviceFilter } from '../devices';
+import { library } from '../library';
+import { importFromDevice } from '../transfer';
 import { toast } from '../toast';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from './Menu';
 
@@ -94,6 +96,11 @@ function DeviceSection(props: { device: DeviceInfo }) {
           </Show>
         </div>
       </div>
+      <Show when={d().unmatched.length && library()?.kind === 'magnitide'}>
+        <MenuItem title={d().unmatched.slice(0, 20).join('\n')} onSelect={() => void importFromDevice(d())}>
+          Add {d().unmatched.length.toLocaleString()} Other {d().unmatched.length === 1 ? 'File' : 'Files'} to Library
+        </MenuItem>
+      </Show>
       <MenuItem onSelect={() => void rescanDevice(d())}>Rescan</MenuItem>
       <MenuItem onSelect={() => void reveal()}>Show in {fileManagerName}</MenuItem>
       <MenuItem onSelect={() => void ejectDevice(d())}>Eject “{d().name}”</MenuItem>

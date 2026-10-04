@@ -118,7 +118,11 @@ fn main() {
             devices::list_devices,
             devices::rescan_device,
             devices::reveal_device,
-            devices::eject_device
+            devices::eject_device,
+            devices::send_to_device,
+            devices::remove_from_device,
+            devices::import_from_device,
+            commands::merge_books
         ])
         .run(tauri::generate_context!())
         .expect("error while running Magnitide");
