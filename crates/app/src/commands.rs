@@ -469,7 +469,7 @@ impl From<&Book> for BookRow {
             title: b.title.clone(),
             authors: b.authors.join(" & "),
             series: b.series.clone(),
-            series_index: b.series.as_ref().map(|_| fmt_index(b.series_index)),
+            series_index: b.series.as_ref().map(|_| magnitide_catalog::format_number(b.series_index, b.series_end)),
             has_cover: b.has_cover,
             rating: b.rating,
             publisher: b.publisher.clone(),
@@ -500,6 +500,13 @@ pub async fn list_books(
     Ok(books.into_iter().map(BookRow::from).collect())
 }
 
+/// These books' list rows, in the order asked (unknown ids are skipped).
+#[tauri::command]
+pub async fn book_rows(state: State<'_, AppState>, ids: Vec<i64>) -> CmdResult<Vec<BookRow>> {
+    let lib = state.current().ok_or("No library is open")?;
+    Ok(ids.iter().filter_map(|id| lib.catalog.get(*id)).map(BookRow::from).collect())
+}
+
 #[derive(Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -507,8 +514,13 @@ pub struct BookDetails {
     id: i64,
     title: String,
     authors: Vec<String>,
-    series: Option<String>,
+    /// "Book 3 of …", or "Books 1–3 of …" for an omnibus; then any further series.
+    series: Vec<String>,
     stars: Option<f32>,
+    /// Books this omnibus contains.
+    collects: Vec<BookLink>,
+    /// Omnibuses that contain this book.
+    collected_in: Vec<BookLink>,
     tags: Vec<String>,
     publisher: Option<String>,
     published: Option<String>,
@@ -520,6 +532,13 @@ pub struct BookDetails {
     comments_html: Option<String>,
     has_cover: bool,
     folder: String,
+}
+
+#[derive(Serialize, TS)]
+#[ts(export)]
+pub struct BookLink {
+    id: i64,
+    title: String,
 }
 
 #[derive(Serialize, TS)]
@@ -538,7 +557,19 @@ pub async fn book_details(state: State<'_, AppState>, id: i64) -> CmdResult<Book
         id: b.id,
         title: b.title.clone(),
         authors: b.authors.clone(),
-        series: b.series.as_ref().map(|s| format!("Book {} of {s}", fmt_index(b.series_index))),
+        series: {
+            let line = |name: &str, index: f64, end: Option<f64>| {
+                let n = magnitide_catalog::format_number(index, end);
+                format!("{} {n} of {name}", if end.is_some() { "Books" } else { "Book" })
+            };
+            b.series
+                .iter()
+                .map(|s| line(s, b.series_index, b.series_end))
+                .chain(b.more_series.iter().map(|s| line(&s.name, s.index, s.end)))
+                .collect()
+        },
+        collects: links(&lib.catalog, &b.collects),
+        collected_in: links(&lib.catalog, &b.collected_in),
         stars: b.stars(),
         tags: b.tags.clone(),
         publisher: b.publisher.clone(),
@@ -708,8 +739,8 @@ pub(crate) fn sanitize(html: &str) -> String {
     ammonia::Builder::default().rm_tags(["img"]).clean(html).to_string()
 }
 
-fn fmt_index(i: f64) -> String {
-    if i.fract() == 0.0 { format!("{}", i as i64) } else { format!("{i}") }
+fn links(catalog: &magnitide_catalog::Catalog, ids: &[i64]) -> Vec<BookLink> {
+    ids.iter().filter_map(|id| catalog.get(*id)).map(|b| BookLink { id: b.id, title: b.title.clone() }).collect()
 }
 
 #[cfg(test)]
@@ -738,8 +769,9 @@ mod tests {
 
     #[test]
     fn formats_series_index() {
-        assert_eq!(fmt_index(3.0), "3");
-        assert_eq!(fmt_index(2.5), "2.5");
+        assert_eq!(magnitide_catalog::format_number(3.0, None), "3");
+        assert_eq!(magnitide_catalog::format_number(2.5, None), "2.5");
+        assert_eq!(magnitide_catalog::format_number(1.0, Some(3.0)), "1–3");
     }
 }
 

@@ -61,7 +61,8 @@ impl FromStr for SortKey {
 #[derive(PartialEq, PartialOrd)]
 enum Value {
     Text(String),
-    Series(String, f64),
+    /// Name, number, then omnibuses (0) before single books (1) at the same number.
+    Series(String, f64, u8),
     Number(f64),
 }
 
@@ -70,7 +71,9 @@ fn value(b: &Book, key: SortKey) -> Option<Value> {
     match key {
         SortKey::Title => text(b.sort.as_deref().unwrap_or(&b.title)),
         SortKey::Author => b.author_sort.as_deref().and_then(text),
-        SortKey::Series => b.series.as_ref().map(|s| Value::Series(s.to_lowercase(), b.series_index)),
+        SortKey::Series => {
+            b.series.as_ref().map(|s| Value::Series(s.to_lowercase(), b.series_index, u8::from(b.series_end.is_none())))
+        }
         SortKey::Rating => b.rating.map(|r| Value::Number(r.into())),
         SortKey::Added => b.timestamp.map(|t| Value::Number(t.timestamp_micros() as f64)),
         SortKey::Published => b.pubdate.map(|t| Value::Number(t.timestamp_micros() as f64)),
@@ -115,6 +118,10 @@ mod tests {
             author_sort: None,
             series: series.map(|(s, _)| s.into()),
             series_index: series.map_or(1.0, |(_, i)| i),
+            series_end: None,
+            more_series: vec![],
+            collects: vec![],
+            collected_in: vec![],
             tags: vec![],
             publisher: None,
             rating,

@@ -5,6 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, NaiveDate, SecondsFormat, Utc};
+use magnitide_catalog::SeriesEntry;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::Serialize;
 
@@ -75,6 +76,11 @@ pub struct Book {
     pub title_sort: String,
     pub authors: Vec<String>,
     pub series: Option<(String, f64)>,
+    /// An omnibus's range end in `series`.
+    pub series_end: Option<f64>,
+    pub more_series: Vec<SeriesEntry>,
+    /// Books this omnibus contains, in order.
+    pub collects: Vec<BookId>,
     pub publisher: Option<String>,
     pub published: Option<NaiveDate>,
     pub description_html: Option<String>,
@@ -264,7 +270,7 @@ impl Library {
         let mut book = c
             .query_row(
                 "SELECT b.uuid, b.title, b.title_sort, s.name, b.series_index, p.name, b.published,
-                        b.description_html, b.path, b.cover_file, b.added_at, b.modified_at, ub.rating
+                        b.description_html, b.path, b.cover_file, b.added_at, b.modified_at, ub.rating, b.series_end
                  FROM books b
                  LEFT JOIN series s ON s.id = b.series_id
                  LEFT JOIN publishers p ON p.id = b.publisher_id
@@ -287,6 +293,9 @@ impl Library {
                         added_at: r.get(10)?,
                         modified_at: r.get(11)?,
                         rating: r.get(12)?,
+                        series_end: r.get(13)?,
+                        more_series: Vec::new(),
+                        collects: Vec::new(),
                         authors: Vec::new(),
                         tags: Vec::new(),
                         languages: Vec::new(),
@@ -311,8 +320,29 @@ impl Library {
         book.languages = strings("SELECT lang FROM book_languages WHERE book_id = ? ORDER BY position")?;
         let mut stmt = c.prepare("SELECT scheme, value FROM identifiers WHERE book_id = ?")?;
         book.identifiers = stmt.query_map([id], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+        let mut stmt = c.prepare(
+            "SELECT s.name, m.number, m.number_end FROM book_more_series m JOIN series s ON s.id = m.series_id
+             WHERE m.book_id = ? ORDER BY m.position",
+        )?;
+        book.more_series = stmt
+            .query_map([id], |r| Ok(SeriesEntry { name: r.get(0)?, index: r.get(1)?, end: r.get(2)? }))?
+            .collect::<rusqlite::Result<_>>()?;
+        let mut stmt = c.prepare("SELECT book_id FROM book_collects WHERE omnibus_id = ? ORDER BY position")?;
+        book.collects = stmt.query_map([id], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
         Ok(book)
     }
+}
+
+/// Remove authors, tags, series and publishers no book uses any more.
+pub(crate) fn prune_unused_names(tx: &Transaction<'_>) -> Result<()> {
+    tx.execute_batch(
+        "DELETE FROM authors WHERE id NOT IN (SELECT author_id FROM book_authors);
+         DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM book_tags);
+         DELETE FROM series WHERE id NOT IN (SELECT series_id FROM books WHERE series_id IS NOT NULL)
+             AND id NOT IN (SELECT series_id FROM book_more_series);
+         DELETE FROM publishers WHERE id NOT IN (SELECT publisher_id FROM books WHERE publisher_id IS NOT NULL);",
+    )?;
+    Ok(())
 }
 
 /// Look up a name in a name table, inserting it if new. Matching is

@@ -89,6 +89,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::open_library,
             commands::list_books,
+            commands::book_rows,
             commands::book_details,
             commands::open_book,
             commands::reveal_book,

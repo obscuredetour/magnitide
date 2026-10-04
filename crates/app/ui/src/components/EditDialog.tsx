@@ -1,7 +1,7 @@
 import { createResource, createSignal, For, type JSX, onMount, type ParentProps, Show } from 'solid-js';
 import { createStore, unwrap } from 'solid-js/store';
 
-import { api, type AuthorSort, type BookEdit } from '../api';
+import { api, type AuthorSort, type BookEdit, type BookRow } from '../api';
 import { Autocomplete } from './Autocomplete';
 import { changeCover, closeEditor, type Editing, saveEdit } from '../editor';
 import { items } from '../library';
@@ -289,17 +289,69 @@ export function EditDialog(props: { editing: Editing }) {
                 onInput={(v) => setForm('series', v || null)}
               />
             </Field>
-            <Field label="Number in series">
-              <input
-                class={input}
-                type="number"
-                min="0"
-                step="0.5"
+            <Field label={form.seriesEnd != null ? 'Books in series' : 'Number in series'}>
+              <NumberRange
+                start={form.seriesIndex}
+                end={form.seriesEnd}
                 disabled={!form.series}
-                value={form.seriesIndex}
-                onInput={(e) => setForm('seriesIndex', Number(e.currentTarget.value) || 0)}
+                onChange={(start, end) => {
+                  setForm('seriesIndex', start);
+                  setForm('seriesEnd', end);
+                }}
               />
             </Field>
+            <Show when={form.series}>
+              <div class="col-span-2 -mt-1.5 space-y-2">
+                <For each={form.moreSeries}>
+                  {(s, i) => (
+                    <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-x-4">
+                      <Autocomplete
+                        class={input}
+                        placeholder="Another series"
+                        options={names()?.series ?? []}
+                        value={s.name}
+                        onInput={(v) => setForm('moreSeries', i(), 'name', v)}
+                      />
+                      <NumberRange
+                        start={s.index}
+                        end={s.end}
+                        onChange={(start, end) => {
+                          setForm('moreSeries', i(), 'index', start);
+                          setForm('moreSeries', i(), 'end', end);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        class="grid size-7 cursor-pointer place-items-center rounded-md text-muted hover:bg-line hover:text-fg"
+                        aria-label="Remove this series"
+                        onClick={() => setForm('moreSeries', (list) => list.filter((_, j) => j !== i()))}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
+                </For>
+                <button
+                  type="button"
+                  class="cursor-pointer text-xs text-accent hover:underline"
+                  onClick={() => setForm('moreSeries', (list) => [...list, { name: '', index: 1, end: null }])}
+                >
+                  + Another series
+                </button>
+              </div>
+            </Show>
+            <Show when={form.seriesEnd != null || form.collects.length}>
+              <div class="col-span-2">
+                <Collects
+                  id={id}
+                  ids={form.collects}
+                  series={form.series}
+                  start={form.seriesIndex}
+                  end={form.seriesEnd}
+                  onChange={(ids) => setForm('collects', ids)}
+                />
+              </div>
+            </Show>
             <Field label="Publisher">
               <Autocomplete
                 class={input}
@@ -446,5 +498,164 @@ export function EditDialog(props: { editing: Editing }) {
         />
       </Show>
     </dialog>
+  );
+}
+
+/** A series number, or with Omnibus ticked, a range ("Books 1 to 3"). */
+function NumberRange(props: {
+  start: number;
+  end: number | null;
+  disabled?: boolean;
+  onChange(start: number, end: number | null): void;
+}) {
+  const num =
+    'h-8 w-20 rounded-md border border-line bg-surface px-2.5 tabular-nums outline-none focus:border-accent focus:ring-3 focus:ring-accent/15 disabled:opacity-50';
+  return (
+    <div class="flex items-center gap-2" classList={{ 'opacity-50': props.disabled }}>
+      <input
+        class={num}
+        type="number"
+        min="0"
+        step="0.5"
+        aria-label={props.end != null ? 'First book' : 'Number in series'}
+        disabled={props.disabled}
+        value={props.start}
+        onInput={(e) => props.onChange(Number(e.currentTarget.value) || 0, props.end)}
+      />
+      <Show when={props.end != null}>
+        <span class="text-xs text-muted">to</span>
+        <input
+          class={num}
+          type="number"
+          min="0"
+          step="0.5"
+          aria-label="Last book"
+          disabled={props.disabled}
+          value={props.end ?? ''}
+          onInput={(e) => props.onChange(props.start, Number(e.currentTarget.value) || 0)}
+        />
+      </Show>
+      <label
+        class="ml-1 flex cursor-pointer items-center gap-1.5 text-xs text-muted"
+        title="An omnibus or box set: number it as a range of the series' books"
+      >
+        <input
+          type="checkbox"
+          class="accent-accent"
+          disabled={props.disabled}
+          checked={props.end != null}
+          onChange={(e) => props.onChange(props.start, e.currentTarget.checked ? props.start + 1 : null)}
+        />
+        Omnibus
+      </label>
+    </div>
+  );
+}
+
+/** The books an omnibus contains: linked by search, or all at once from its series range. */
+function Collects(props: {
+  id: number;
+  ids: number[];
+  series: string | null;
+  start: number;
+  end: number | null;
+  onChange(ids: number[]): void;
+}) {
+  const [titles, setTitles] = createStore<Record<number, string>>({});
+  const [query, setQuery] = createSignal('');
+  const remember = (rows: BookRow[]) => rows.forEach((r) => setTitles(r.id, r.title));
+  void api
+    .bookRows(props.ids)
+    .then(remember)
+    .catch(() => {});
+
+  const [results] = createResource(
+    () => query().trim(),
+    async (q) => {
+      if (q.length < 2) return [];
+      const rows = await api.listBooks(q, 'title', 'asc').catch(() => [] as BookRow[]);
+      return rows.filter((r) => r.id !== props.id && !props.ids.includes(r.id)).slice(0, 6);
+    },
+  );
+  // Books of the same series numbered inside the range, not yet linked.
+  const [inRange] = createResource(
+    () => (props.series && props.end != null ? ([props.series, props.start, props.end] as const) : null),
+    async ([series, start, end]) => {
+      const rows = await api.listBooks(`series:"${series}"`, 'series', 'asc').catch(() => [] as BookRow[]);
+      return rows.filter((r) => {
+        const n = Number(r.seriesIndex);
+        return r.id !== props.id && r.series === series && Number.isFinite(n) && n >= start && n <= end;
+      });
+    },
+  );
+  const suggested = () => (inRange() ?? []).filter((r) => !props.ids.includes(r.id));
+  const add = (rows: BookRow[]) => {
+    remember(rows);
+    props.onChange([...props.ids, ...rows.map((r) => r.id).filter((i) => !props.ids.includes(i))]);
+  };
+
+  return (
+    <div class="rounded-lg bg-bg p-3">
+      <div class="mb-1 text-xs font-medium text-muted">Collects</div>
+      <div class="mb-2 text-[11px] text-faint">The books this omnibus contains, if you have them separately.</div>
+      <div class="flex flex-wrap gap-1.5">
+        <For each={props.ids}>
+          {(bookId) => (
+            <span class="flex items-center gap-1 rounded-full bg-surface-2 py-[3px] pr-1 pl-2.5 text-xs">
+              {titles[bookId] ?? `Book ${bookId}`}
+              <button
+                type="button"
+                class="grid size-4 cursor-pointer place-items-center rounded-full text-muted hover:bg-line hover:text-fg"
+                aria-label={`Unlink ${titles[bookId] ?? 'book'}`}
+                onClick={() => props.onChange(props.ids.filter((i) => i !== bookId))}
+              >
+                ×
+              </button>
+            </span>
+          )}
+        </For>
+        <Show when={suggested().length}>
+          <button type="button" class={smallButton} onClick={() => add(suggested())}>
+            Add {suggested().length === 1 ? '1 book' : `${suggested().length} books`} numbered {props.start}–{props.end}{' '}
+            in {props.series}
+          </button>
+        </Show>
+      </div>
+      <div class="relative mt-2">
+        <input
+          class={input + ' h-7 text-xs'}
+          placeholder="Find a book to link…"
+          aria-label="Find a book to link"
+          value={query()}
+          onInput={(e) => setQuery(e.currentTarget.value)}
+        />
+        <Show when={results()?.length}>
+          <ul class="mt-1 rounded-md border border-line bg-surface p-1">
+            <For each={results()}>
+              {(r) => (
+                <li>
+                  <button
+                    type="button"
+                    class="w-full cursor-pointer truncate rounded px-2 py-1 text-left text-xs hover:bg-accent/15"
+                    onClick={() => {
+                      add([r]);
+                      setQuery('');
+                    }}
+                  >
+                    {r.title} <span class="text-muted">· {r.authors}</span>
+                    <Show when={r.series}>
+                      <span class="text-faint">
+                        {' '}
+                        · {r.series} #{r.seriesIndex}
+                      </span>
+                    </Show>
+                  </button>
+                </li>
+              )}
+            </For>
+          </ul>
+        </Show>
+      </div>
+    </div>
   );
 }

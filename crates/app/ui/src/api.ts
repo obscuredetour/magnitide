@@ -102,6 +102,9 @@ export const api = {
 
   bookDetails: (id: number) => invoke<BookDetails>('book_details', { id }),
 
+  /** These books' list rows, in the order asked. */
+  bookRows: (ids: number[]) => invoke<BookRow[]>('book_rows', { ids }),
+
   /** Opens in the system's default app; resolves to the format that was opened. */
   openBook: (id: number, format: string | null = null) => invoke<string>('open_book', { id, format }),
 

@@ -10,6 +10,6 @@ pub mod search;
 pub mod sort;
 
 pub use catalog::Catalog;
-pub use model::{Book, BookId, CustomColumn, CustomValue, Datatype, Format};
+pub use model::{Book, BookId, CustomColumn, CustomValue, Datatype, Format, SeriesEntry, format_number};
 pub use search::Query;
 pub use sort::{SortDir, SortKey, sort_books};

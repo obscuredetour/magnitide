@@ -92,15 +92,25 @@ impl Library {
                  WHERE book_id = ?2 AND scheme NOT IN (SELECT scheme FROM identifiers WHERE book_id = ?1)",
                 params![keep, other],
             )?;
+            // Omnibus links and further series follow the kept book.
+            tx.execute(
+                "UPDATE OR IGNORE book_collects SET book_id = ?1 WHERE book_id = ?2 AND omnibus_id <> ?1",
+                params![keep, other],
+            )?;
+            tx.execute(
+                "UPDATE OR IGNORE book_collects SET omnibus_id = ?1 WHERE omnibus_id = ?2 AND book_id <> ?1",
+                params![keep, other],
+            )?;
+            tx.execute(
+                "INSERT OR IGNORE INTO book_more_series (book_id, series_id, position, number, number_end)
+                 SELECT ?1, series_id, position + 1000, number, number_end FROM book_more_series
+                 WHERE book_id = ?2 AND series_id IS NOT (SELECT series_id FROM books WHERE id = ?1)",
+                params![keep, other],
+            )?;
             tx.execute("UPDATE books SET modified_at = ? WHERE id = ?", params![now(), keep])?;
             // Its authors, tags, files rows and the like go with it (ON DELETE CASCADE).
             tx.execute("DELETE FROM books WHERE id = ?", [other])?;
-            tx.execute_batch(
-                "DELETE FROM authors WHERE id NOT IN (SELECT author_id FROM book_authors);
-                 DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM book_tags);
-                 DELETE FROM series WHERE id NOT IN (SELECT series_id FROM books WHERE series_id IS NOT NULL);
-                 DELETE FROM publishers WHERE id NOT IN (SELECT publisher_id FROM books WHERE publisher_id IS NOT NULL);",
-            )?;
+            crate::library::prune_unused_names(&tx)?;
             Ok(())
         })();
 
