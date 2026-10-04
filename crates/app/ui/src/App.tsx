@@ -4,6 +4,7 @@ import { BookTable } from './components/BookTable';
 import { CoverGrid, type ViewHandle } from './components/CoverGrid';
 import { DetailsPanel } from './components/DetailsPanel';
 import { DropOverlay } from './components/DropOverlay';
+import { EditDialog } from './components/EditDialog';
 import { EmptyState } from './components/EmptyState';
 import { ImportDialog } from './components/ImportDialog';
 import { NetworkWarning } from './components/NetworkWarning';
@@ -21,6 +22,7 @@ import {
   status,
 } from './library';
 import { onOpenSettings } from './api';
+import { editingBook, openEditor } from './editor';
 import { importState } from './importer';
 import { Toast } from './toast';
 import { coverSize, setViewMode, viewMode } from './view';
@@ -61,7 +63,8 @@ export function App() {
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
-    const target = e.target as HTMLElement;
+    // Key events normally target an element; fall back to <body> for anything else.
+    const target = e.target instanceof HTMLElement ? e.target : document.body;
     const inField = target instanceof HTMLInputElement || target instanceof HTMLSelectElement;
     const cmd = e.metaKey || e.ctrlKey;
 
@@ -90,6 +93,9 @@ export function App() {
     const id = selectedId();
     if (e.key === 'Escape') {
       setDetailsOpen(false);
+    } else if (e.key === 'e' && cmd && id !== null) {
+      e.preventDefault();
+      void openEditor(id);
     } else if (e.key === 'o' && cmd && id !== null) {
       e.preventDefault();
       void openBook(id);
@@ -168,6 +174,7 @@ export function App() {
         </Match>
         <Match when={noLibrary()}>{(s) => <EmptyState message={s().message} />}</Match>
       </Switch>
+      <Show when={editingBook()}>{(e) => <EditDialog editing={e()} />}</Show>
       <DropOverlay />
       <Show when={importState().phase !== 'idle'}>
         <ImportDialog />

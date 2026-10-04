@@ -30,6 +30,8 @@ export const [query, setQuery] = createSignal('');
 export const [queryError, setQueryError] = createSignal<string | null>(null);
 export const [selectedId, setSelectedId] = createSignal<number | null>(null);
 export const [detailsOpen, setDetailsOpen] = createSignal(false);
+/** Bumped after any edit, so views showing a book's details fetch them again. */
+export const [editRevision, setEditRevision] = createSignal(0);
 
 const storedSort = storage.get('sort');
 export const [sort, setSortSignal] = createSignal<SortKey>(isSortKey(storedSort) ? storedSort : 'title');

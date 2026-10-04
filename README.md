@@ -35,7 +35,7 @@ Click the library name in the top-left to open a different one. The library
 is only ever read; cover thumbnails are cached in the app's cache folder
 (`~/Library/Caches/dev.magnitide.app` on macOS).
 
-Keys: `/` or ⌘F search · ⌘, settings · ⌘1 covers, ⌘2 list · arrows move · Enter opens details · double-click or ⌘O opens the book in its default app · Esc closes.
+Keys: `/` or ⌘F search · ⌘, settings · ⌘1 covers, ⌘2 list · arrows move · Enter opens details · ⌘E edits · double-click or ⌘O opens the book in its default app · Esc closes.
 In the details panel, click a format to open that specific file.
 Search accepts `author:`, `tag:`, `series:`, `title:`, `#custom:`, quotes and `-` to exclude.
 
@@ -73,8 +73,9 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Drag and drop (and "Add Books…") to add books: EPUB metadata and covers, file-name fallback, formats grouped, duplicates skipped
 - [ ] Metadata readers for MOBI/AZW3 and PDF (drag and drop uses file names for these today)
 - [ ] Adding a new format to an existing book (today a new format of a book already in the library becomes a separate book)
-- [ ] Metadata editing
-- [ ] File name clean-up: keep file and folder names in sync with metadata (rename on edit, plus a "Tidy file names" action for existing books)
+- [x] Metadata editing (⌘E): all built-in fields, rich-text description, cover change/remove; folder and file names follow title and first author (all-or-nothing with the database)
+- [ ] Editing custom fields; autocomplete for authors, tags, series and publishers in the edit form
+- [ ] File name clean-up: names already follow edits; still to do, a "Tidy file names" action for existing books whose names don't match their metadata
 - [ ] Accessibility scaling: ⌘+ / ⌘− / ⌘0 zoom the whole UI (remembered), respecting the OS text size where available
 - [ ] Plugin host for DeDRM (embedded Python)
 - [ ] Built-in reader

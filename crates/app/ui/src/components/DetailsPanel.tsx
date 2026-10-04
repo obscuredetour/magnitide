@@ -1,7 +1,8 @@
 import { createResource, For, Show } from 'solid-js';
 
 import { api, type BookDetails, errorMessage, fileManagerName } from '../api';
-import { openBook, search } from '../library';
+import { openEditor } from '../editor';
+import { editRevision, library, openBook, search } from '../library';
 import { toast } from '../toast';
 import { Cover } from './Cover';
 
@@ -43,9 +44,10 @@ const sectionLabel = 'mt-[22px] mb-2 text-[11px] font-semibold tracking-[.06em] 
 export function DetailsPanel(props: Props) {
   let scroller!: HTMLElement;
   // Keyed on id, so switching books never shows a stale response.
+  // Refetched after an edit, too (editRevision).
   const [book] = createResource(
-    () => props.id,
-    async (id) => {
+    () => [props.id, editRevision()] as const,
+    async ([id]) => {
       const b = await api.bookDetails(id);
       scroller.scrollTop = 0;
       return b;
@@ -58,15 +60,26 @@ export function DetailsPanel(props: Props) {
       ref={scroller}
       aria-label="Book details"
     >
-      <button
-        class="sticky top-2.5 z-1 float-right mt-2.5 mr-2.5 grid size-7 place-items-center rounded-full bg-surface-2 hover:bg-line"
-        title="Close (Esc)"
-        onClick={() => props.onClose()}
-      >
-        <svg class="size-3 stroke-muted stroke-2 [stroke-linecap:round]" viewBox="0 0 20 20" aria-hidden="true">
-          <path d="m5 5 10 10M15 5 5 15" />
-        </svg>
-      </button>
+      <div class="sticky top-2.5 z-1 float-right mt-2.5 mr-2.5 flex items-center gap-1.5">
+        <Show when={library()?.kind === 'magnitide'}>
+          <button
+            class="h-7 cursor-pointer rounded-full bg-surface-2 px-3 text-xs font-medium hover:bg-line"
+            title="Edit (⌘E)"
+            onClick={() => void openEditor(props.id)}
+          >
+            Edit
+          </button>
+        </Show>
+        <button
+          class="grid size-7 place-items-center rounded-full bg-surface-2 hover:bg-line"
+          title="Close (Esc)"
+          onClick={() => props.onClose()}
+        >
+          <svg class="size-3 stroke-muted stroke-2 [stroke-linecap:round]" viewBox="0 0 20 20" aria-hidden="true">
+            <path d="m5 5 10 10M15 5 5 15" />
+          </svg>
+        </button>
+      </div>
       <Show when={book()}>{(b) => <Details book={b()} />}</Show>
     </aside>
   );

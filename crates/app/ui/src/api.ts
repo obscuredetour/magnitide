@@ -3,6 +3,7 @@
 // generates from the Rust structs (`cargo test` regenerates them).
 
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { createSignal } from 'solid-js';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open, save } from '@tauri-apps/plugin-dialog';
@@ -10,7 +11,9 @@ import { open, save } from '@tauri-apps/plugin-dialog';
 import type { BookDetails } from './bindings/BookDetails';
 import type { AddReport } from './bindings/AddReport';
 import type { BookRow } from './bindings/BookRow';
+import type { BookEdit } from './bindings/BookEdit';
 import type { CacheInfo } from './bindings/CacheInfo';
+import type { EditOutcome } from './bindings/EditOutcome';
 import type { ImportProgress } from './bindings/ImportProgress';
 import type { ImportReport } from './bindings/ImportReport';
 import type { LibraryKind } from './bindings/LibraryKind';
@@ -21,6 +24,8 @@ import type { SortKey } from './bindings/SortKey';
 export type {
   AddReport,
   BookDetails,
+  BookEdit,
+  EditOutcome,
   BookRow,
   CacheInfo,
   ImportProgress,
@@ -80,6 +85,27 @@ export const api = {
     return Array.isArray(picked) ? picked : picked ? [picked] : [];
   },
 
+  /** A book's editable fields (Magnitide libraries only). */
+  bookEdit: (id: number) => invoke<BookEdit>('book_edit', { id }),
+
+  /** Save an edit; renames the book's folder and files if its title or first author changed. */
+  saveBookEdit: (id: number, edit: BookEdit) => invoke<EditOutcome>('save_book_edit', { id, edit }),
+
+  /** Replace a book's cover with an image file. */
+  setCoverFromFile: (id: number, path: string) => invoke<void>('set_cover_from_file', { id, path }),
+
+  removeCover: (id: number) => invoke<void>('remove_cover', { id }),
+
+  /** Pick an image for a cover; null when cancelled. */
+  async chooseImageFile(): Promise<string | null> {
+    const picked = await open({
+      title: 'Choose a cover image',
+      multiple: false,
+      filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif'] }],
+    });
+    return typeof picked === 'string' ? picked : null;
+  },
+
   /** Where to create a new Magnitide library; null when cancelled. */
   chooseNewLibraryLocation: (suggestedName: string) =>
     save({ title: 'Create a Magnitide library', defaultPath: suggestedName }),
@@ -99,10 +125,20 @@ export type CoverSize = 'thumb' | 'full';
 
 let coverBase: string | undefined;
 
-/** URL for the Rust `cover://` protocol (its form differs per platform). */
+// Bumped when a cover changes, so the webview fetches it again instead of
+// showing its cached copy. The Rust protocol ignores the query string.
+const [coverVersions, setCoverVersions] = createSignal<ReadonlyMap<number, number>>(new Map());
+
+/** Mark a book's cover as changed (its images reload everywhere). */
+export function coverChanged(id: number): void {
+  setCoverVersions((m) => new Map(m).set(id, (m.get(id) ?? 0) + 1));
+}
+
+/** URL for the Rust `cover://` protocol (its form differs per platform). Reactive. */
 export function coverUrl(size: CoverSize, id: number): string {
   coverBase ??= convertFileSrc('', 'cover');
-  return `${coverBase}${size}/${id}`;
+  const v = coverVersions().get(id);
+  return `${coverBase}${size}/${id}${v ? `?v=${v}` : ''}`;
 }
 
 /** Commands reject with the Rust error string; anything else is unexpected. */
