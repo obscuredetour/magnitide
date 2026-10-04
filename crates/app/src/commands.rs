@@ -12,7 +12,7 @@ use ts_rs::TS;
 
 use crate::{AppState, LibraryKind, Loaded};
 
-type CmdResult<T> = Result<T, String>;
+pub(crate) type CmdResult<T> = Result<T, String>;
 
 #[derive(Serialize, TS)]
 #[ts(export)]
@@ -248,7 +248,7 @@ fn native(state: &State<'_, AppState>) -> CmdResult<Arc<Mutex<magnitide_core::Li
 
 /// Run a change against the open Magnitide library off the main thread, then
 /// reload its catalog so every view (and search) sees the result.
-async fn write_library<T: Send + 'static>(
+pub(crate) async fn write_library<T: Send + 'static>(
     state: &State<'_, AppState>,
     change: impl FnOnce(&mut magnitide_core::Library) -> magnitide_core::Result<T> + Send + 'static,
 ) -> CmdResult<T> {
@@ -545,7 +545,7 @@ pub async fn show_library_folder(state: State<'_, AppState>) -> CmdResult<()> {
 }
 
 /// Where cover thumbnails for all libraries are cached.
-fn thumbs_root(app: &AppHandle) -> CmdResult<PathBuf> {
+pub(crate) fn thumbs_root(app: &AppHandle) -> CmdResult<PathBuf> {
     Ok(app.path().app_cache_dir().map_err(|e| e.to_string())?.join("thumbs"))
 }
 
@@ -596,7 +596,7 @@ pub async fn clear_thumbnail_cache(app: AppHandle) -> CmdResult<()> {
 
 /// Comments are HTML from arbitrary sources (metadata downloads, publishers).
 /// Anything that could run script or load remote content is stripped.
-fn sanitize(html: &str) -> String {
+pub(crate) fn sanitize(html: &str) -> String {
     ammonia::Builder::default().rm_tags(["img"]).clean(html).to_string()
 }
 

@@ -1,4 +1,5 @@
-//! The `cover://` protocol: `/thumb/<id>` (cached thumbnail) and `/full/<id>`.
+//! The `cover://` protocol: `/thumb/<id>` (cached thumbnail), `/full/<id>`, and
+//! `/remote/<key>` (a metadata source's cover, downloaded on request).
 //!
 //! Thumbnails live in the app cache, keyed by book id and the cover file's
 //! modification time, so a changed cover gets a fresh thumbnail.
@@ -46,6 +47,14 @@ fn status(code: StatusCode) -> Response<Vec<u8>> {
 fn serve(app: &AppHandle, path: &str) -> Result<Option<Vec<u8>>> {
     let mut parts = path.trim_start_matches('/').splitn(2, '/');
     let (Some(size), Some(id)) = (parts.next(), parts.next()) else { return Ok(None) };
+    if size == "remote" {
+        // A metadata source's cover, downloaded by `cover_preview`. Keys are hex hashes.
+        if id.len() != 16 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Ok(None);
+        }
+        let dir = crate::lookup::remote_dir(app).map_err(anyhow::Error::msg)?;
+        return Ok(fs::read(dir.join(id)).ok());
+    }
     let Ok(id) = id.parse::<i64>() else { return Ok(None) };
 
     let Some(lib) = app.state::<AppState>().current() else { return Ok(None) };

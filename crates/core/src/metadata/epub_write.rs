@@ -104,7 +104,8 @@ fn rewrite_opf(
 
     let mut ids: HashSet<String> = doc.descendants().filter_map(|n| attr(n, "id")).map(str::to_owned).collect();
     let mut fresh = |base: &str| {
-        let id = (1..).map(|n| if n == 1 { base.to_owned() } else { format!("{base}-{n}") }).find(|id| !ids.contains(id));
+        let id =
+            (1..).map(|n| if n == 1 { base.to_owned() } else { format!("{base}-{n}") }).find(|id| !ids.contains(id));
         let id = id.expect("unbounded");
         ids.insert(id.clone());
         id

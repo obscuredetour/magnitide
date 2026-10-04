@@ -3,6 +3,8 @@
 //! search and sort. Loaders turn a library into a [`Catalog`]; views query it.
 
 pub mod catalog;
+pub mod languages;
+pub mod matching;
 pub mod model;
 pub mod search;
 pub mod sort;

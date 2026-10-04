@@ -1,0 +1,52 @@
+{
+ "kind": "books#volumes",
+ "totalItems": 2,
+ "items": [
+  {
+   "kind": "books#volume",
+   "id": "bQ3dDwAAQBAJ",
+   "volumeInfo": {
+    "title": "The Dispossessed",
+    "subtitle": "An Ambiguous Utopia",
+    "authors": [
+     "Ursula K. Le Guin"
+    ],
+    "publisher": "Harper Collins",
+    "publishedDate": "2009-10-13",
+    "description": "<p><b>Winner of the Hugo and Nebula Awards.</b></p><p>Shevek, a brilliant physicist, decides to take action.</p>",
+    "industryIdentifiers": [
+     {
+      "type": "ISBN_10",
+      "identifier": "0061054887"
+     },
+     {
+      "type": "ISBN_13",
+      "identifier": "9780061054884"
+     }
+    ],
+    "pageCount": 387,
+    "categories": [
+     "Fiction / Science Fiction / General"
+    ],
+    "language": "en",
+    "imageLinks": {
+     "smallThumbnail": "http://books.google.com/books/content?id=bQ3dDwAAQBAJ&printsec=frontcover&img=1&zoom=5&edge=curl&source=gbs_api",
+     "thumbnail": "http://books.google.com/books/content?id=bQ3dDwAAQBAJ&printsec=frontcover&img=1&zoom=1&edge=curl&source=gbs_api"
+    },
+    "canonicalVolumeLink": "https://books.google.com/books/about/The_Dispossessed.html?id=bQ3dDwAAQBAJ"
+   }
+  },
+  {
+   "kind": "books#volume",
+   "id": "x1",
+   "volumeInfo": {
+    "title": "The Dispossessed (Study Guide)",
+    "authors": [
+     "Some Student"
+    ],
+    "publishedDate": "2015",
+    "language": "en"
+   }
+  }
+ ]
+}

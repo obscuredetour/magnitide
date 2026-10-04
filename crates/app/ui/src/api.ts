@@ -9,6 +9,14 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open, save } from '@tauri-apps/plugin-dialog';
 
 import type { BookDetails } from './bindings/BookDetails';
+import type { CoverPreview } from './bindings/CoverPreview';
+import type { Lookup } from './bindings/Lookup';
+import type { Match as MetadataMatch } from './bindings/Match';
+import type { MatchKind } from './bindings/MatchKind';
+import type { SearchResult } from './bindings/SearchResult';
+import type { SourceId } from './bindings/SourceId';
+import type { SourceRecord } from './bindings/SourceRecord';
+import type { SourceStatus } from './bindings/SourceStatus';
 import type { AddReport } from './bindings/AddReport';
 import type { BookRow } from './bindings/BookRow';
 import type { BookEdit } from './bindings/BookEdit';
@@ -31,6 +39,14 @@ export type {
   AddReport,
   BookDetails,
   BookEdit,
+  CoverPreview,
+  Lookup,
+  MatchKind,
+  MetadataMatch,
+  SearchResult,
+  SourceId,
+  SourceRecord,
+  SourceStatus,
   EditOutcome,
   BookRow,
   FileMetadataStatus,
@@ -126,6 +142,25 @@ export const api = {
   /** Write every book's metadata into its EPUB files that differ from the library. */
   writeAllMetadata: () => invoke<WriteReport>('write_all_metadata'),
 
+  /** Metadata sources and whether each will be asked. */
+  metadataSources: () => invoke<SourceStatus[]>('metadata_sources'),
+
+  /** Turn a source on or off; `apiKey` replaces its key ("" clears it, null leaves it). */
+  setMetadataSource: (id: SourceId, enabled: boolean, apiKey: string | null = null) =>
+    invoke<SourceStatus[]>('set_metadata_source', { id, enabled, apiKey }),
+
+  /** Search the active metadata sources (network). Descriptions come back sanitized. */
+  findMetadata: (lookup: Lookup) => invoke<SearchResult>('find_metadata', { lookup }),
+
+  /** Fetch the rest of a record (Open Library descriptions). */
+  metadataDetails: (record: SourceRecord) => invoke<SourceRecord>('metadata_details', { record }),
+
+  /** Download a source's cover for display; show it with `remoteCoverUrl(key)`. */
+  coverPreview: (url: string) => invoke<CoverPreview>('cover_preview', { url }),
+
+  /** Use a source's cover for a book (applies now). */
+  setCoverFromUrl: (id: number, url: string) => invoke<void>('set_cover_from_url', { id, url }),
+
   /** Names already in the library (authors, tags, series, publishers), for autocomplete. */
   nameLists: () => invoke<NameLists>('name_lists'),
 
@@ -172,6 +207,12 @@ export function coverUrl(size: CoverSize, id: number): string {
   coverBase ??= convertFileSrc('', 'cover');
   const v = coverVersions().get(id);
   return `${coverBase}${size}/${id}${v ? `?v=${v}` : ''}`;
+}
+
+/** A downloaded source cover (see `api.coverPreview`), via the Rust `cover://` protocol. */
+export function remoteCoverUrl(key: string): string {
+  coverBase ??= convertFileSrc('', 'cover');
+  return `${coverBase}remote/${key}`;
 }
 
 /** Commands reject with the Rust error string; anything else is unexpected. */

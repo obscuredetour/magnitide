@@ -1,0 +1,103 @@
+{
+ "numFound": 1,
+ "start": 0,
+ "numFoundExact": true,
+ "num_found": 1,
+ "documentation_url": "https://openlibrary.org/dev/docs/api/search",
+ "q": "",
+ "offset": null,
+ "docs": [
+  {
+   "author_name": [
+    "Ursula K. Le Guin"
+   ],
+   "cover_i": 6979680,
+   "first_publish_year": 1974,
+   "isbn": [
+    "1473228417",
+    "9780575079038",
+    "9753425287",
+    "9780586042199",
+    "8419206687",
+    "9780062421074",
+    "9782221004074",
+    "0061054887",
+    "9788804689973",
+    "9780060503987",
+    "9787550281929",
+    "9780060504007"
+   ],
+   "key": "/works/OL59863W",
+   "language": [
+    "chi",
+    "spa",
+    "fre",
+    "gre",
+    "eng",
+    "heb",
+    "ita",
+    "ger",
+    "por",
+    "pol",
+    "tur",
+    "dut"
+   ],
+   "publisher": [
+    "Cactus",
+    "Phantasia Paperback",
+    "RAYO VERDE EDITORIAL, S.L.",
+    "EOS",
+    "FISCHER TOR",
+    "Tandem Library",
+    "Metis Yayincilik",
+    "Harper Perennial",
+    "Gollancz",
+    "Orion",
+    "Minotauro",
+    "Phantom Press"
+   ],
+   "subtitle": "An Ambiguous Utopia",
+   "title": "The Dispossessed",
+   "subject": [
+    "Anarchism",
+    "Anarquismo",
+    "Ciencia-ficción",
+    "Communal living",
+    "Ficción",
+    "Fiction",
+    "Fiction in English",
+    "Físicos",
+    "Hugo Award Winner",
+    "Life on other planets",
+    "Novela utópica",
+    "Physicists"
+   ],
+   "editions": {
+    "numFound": 4,
+    "start": 0,
+    "numFoundExact": true,
+    "docs": [
+     {
+      "key": "/books/OL18092578M",
+      "title": "The dispossessed",
+      "subtitle": "an ambiguous Utopia",
+      "cover_i": 14614926,
+      "language": [
+       "eng"
+      ],
+      "publisher": [
+       "HarperPrism"
+      ],
+      "publish_date": [
+       "1994"
+      ],
+      "isbn": [
+       "0061054887",
+       "9780061054884"
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

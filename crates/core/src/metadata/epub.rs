@@ -128,7 +128,8 @@ fn cover_href(metadata: Node<'_, '_>, manifest: Node<'_, '_>) -> Option<String> 
         manifest.children().filter(|n| n.has_tag_name_local("item")).find(|n| {
             let id = attr(*n, "id").unwrap_or("").to_lowercase();
             let h = attr(*n, "href").unwrap_or("").to_lowercase();
-            attr(*n, "media-type").is_some_and(|t| t.starts_with("image/")) && (id.contains("cover") || h.contains("cover"))
+            attr(*n, "media-type").is_some_and(|t| t.starts_with("image/"))
+                && (id.contains("cover") || h.contains("cover"))
         })
     })?;
     attr(item, "href").map(str::to_owned)

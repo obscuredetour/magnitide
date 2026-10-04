@@ -2,6 +2,7 @@
 
 mod commands;
 mod covers;
+mod lookup;
 #[cfg(target_os = "macos")]
 mod menu;
 
@@ -84,7 +85,13 @@ fn main() {
             commands::file_metadata_status,
             commands::write_metadata_to_files,
             commands::writeback_preview,
-            commands::write_all_metadata
+            commands::write_all_metadata,
+            lookup::metadata_sources,
+            lookup::set_metadata_source,
+            lookup::find_metadata,
+            lookup::metadata_details,
+            lookup::cover_preview,
+            lookup::set_cover_from_url
         ])
         .run(tauri::generate_context!())
         .expect("error while running Magnitide");

@@ -1,0 +1,204 @@
+{
+ "numFound": 3,
+ "start": 0,
+ "numFoundExact": true,
+ "num_found": 3,
+ "documentation_url": "https://openlibrary.org/dev/docs/api/search",
+ "q": "",
+ "offset": null,
+ "docs": [
+  {
+   "author_name": [
+    "Philip Pullman"
+   ],
+   "cover_i": 12614549,
+   "first_publish_year": 1997,
+   "isbn": [
+    "0439950473",
+    "8440684096",
+    "0439994918",
+    "0439944678",
+    "0786241241",
+    "2070612430",
+    "8884511836",
+    "9780439994910",
+    "8422675714",
+    "9788498722512",
+    "0563529032",
+    "9780786241248"
+   ],
+   "key": "/works/OL28993W",
+   "language": [
+    "pol",
+    "rus",
+    "ger",
+    "eng",
+    "fre",
+    "spa",
+    "ita",
+    "heb",
+    "chi",
+    "jpn"
+   ],
+   "publisher": [
+    "Listening Library (Audio)",
+    "Círculo de Lectores",
+    "Albatros",
+    "Perfection Learning Prebound",
+    "Alfred A. Knopf",
+    "Paw Prints",
+    "Albatros Wydawnictwo A. Kuryłowicz",
+    "Rebound by Sagebrush",
+    "Del Rey",
+    "Folio Junior",
+    "Scholastic Press",
+    "Росмэн"
+   ],
+   "title": "The Subtle Knife",
+   "subject": [
+    "Fantasy",
+    "Juvenile literature",
+    "English Fantasy fiction",
+    "Fantasy fiction",
+    "Juvenile fiction",
+    "Fiction",
+    "Kidnapping",
+    "Missing persons",
+    "Arctic regions",
+    "Children's fiction",
+    "Belacqua, lyra (fictitious character), fiction",
+    "Large type books"
+   ],
+   "editions": {
+    "numFound": 61,
+    "start": 0,
+    "numFoundExact": true,
+    "docs": [
+     {
+      "key": "/books/OL43642614M",
+      "title": "The subtle knife",
+      "cover_i": 15173014,
+      "language": [
+       "eng"
+      ],
+      "publisher": [
+       "Scholastic"
+      ],
+      "publish_date": [
+       "2017"
+      ],
+      "isbn": [
+       "9781407187587",
+       "1407187589"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "author_name": [
+    "Philip Pullman",
+    "Thomas Gilbert",
+    "Stéphane Melchior"
+   ],
+   "cover_i": 11973643,
+   "first_publish_year": 2022,
+   "isbn": [
+    "9780241585436",
+    "9780593176924",
+    "166881157X",
+    "9780241585429",
+    "0593176936",
+    "0241585422",
+    "9780593176948",
+    "9798855108767",
+    "0593176928",
+    "9781668811573",
+    "9780593176931",
+    "0241585430"
+   ],
+   "key": "/works/OL25131860W",
+   "language": [
+    "eng"
+   ],
+   "publisher": [
+    "Bound to Stay Bound Books",
+    "Penguin Books, Limited",
+    "Knopf Books for Young Readers",
+    "Knopf Incorporated, Alfred A.",
+    "Random House Children's Books"
+   ],
+   "title": "The Subtle Knife Graphic Novel",
+   "editions": {
+    "numFound": 7,
+    "start": 0,
+    "numFoundExact": true,
+    "docs": [
+     {
+      "key": "/books/OL38803681M",
+      "title": "Subtle Knife",
+      "subtitle": "the Graphic Novel",
+      "language": [
+       "eng"
+      ],
+      "publisher": [
+       "Penguin Books, Limited"
+      ],
+      "publish_date": [
+       "2022"
+      ],
+      "isbn": [
+       "9780241585436",
+       "0241585430"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "author_name": [
+    "Philip Pullman"
+   ],
+   "first_publish_year": 1997,
+   "isbn": [
+    "0676762719",
+    "9780676762716"
+   ],
+   "key": "/works/OL32395026W",
+   "language": [
+    "eng"
+   ],
+   "publisher": [
+    "Random House Trade"
+   ],
+   "title": "Reading Group Guide to The Subtle Knife",
+   "subject": [
+    "Literature, study and teaching"
+   ],
+   "editions": {
+    "numFound": 1,
+    "start": 0,
+    "numFoundExact": true,
+    "docs": [
+     {
+      "key": "/books/OL11127817M",
+      "title": "Reading Group Guide to the Subtle Knife",
+      "language": [
+       "eng"
+      ],
+      "publisher": [
+       "Random House Trade"
+      ],
+      "publish_date": [
+       "July 1997"
+      ],
+      "isbn": [
+       "9780676762716",
+       "0676762719"
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

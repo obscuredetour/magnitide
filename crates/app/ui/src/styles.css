@@ -50,6 +50,7 @@
   --color-line: var(--line);
   --color-accent: var(--accent);
   --color-danger: var(--danger);
+  --color-success: var(--success);
   --shadow-card: var(--card-shadow);
   --shadow-lift: var(--lift-shadow);
 }

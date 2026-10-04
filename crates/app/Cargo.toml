@@ -20,6 +20,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-opener = { version = "2", default-features = false }
 ts-rs = "12.0.1"
 magnitide-core = { version = "0.1.0", path = "../core", features = ["ts"] }
+magnitide-sources = { version = "0.1.0", path = "../sources", features = ["ts"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

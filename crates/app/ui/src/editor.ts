@@ -58,20 +58,22 @@ export async function saveEdit(id: number, edit: BookEdit): Promise<string | nul
   }
 }
 
-/** Change or remove the cover now (not deferred to Save). */
-export async function changeCover(id: number, action: 'choose' | 'remove'): Promise<void> {
+/** Change or remove the cover now (not deferred to Save): from a file, or a metadata source's cover URL. */
+export async function changeCover(id: number, action: 'choose' | 'remove' | { url: string }): Promise<void> {
   try {
     if (action === 'choose') {
       const path = await api.chooseImageFile();
       if (!path) return;
       await api.setCoverFromFile(id, path);
-    } else {
+    } else if (action === 'remove') {
       await api.removeCover(id);
+    } else {
+      await api.setCoverFromUrl(id, action.url);
     }
     coverChanged(id);
     await refresh();
     setEditRevision((n) => n + 1);
-    toast(action === 'choose' ? 'Cover updated' : 'Cover removed');
+    toast(action === 'remove' ? 'Cover removed' : 'Cover updated');
   } catch (err) {
     toast(errorMessage(err), { error: true });
   }

@@ -6,6 +6,7 @@ import { Autocomplete } from './Autocomplete';
 import { changeCover, closeEditor, type Editing, saveEdit } from '../editor';
 import { items } from '../library';
 import { Cover } from './Cover';
+import { type Applied, MatchDialog } from './MatchDialog';
 
 const input =
   'h-8 w-full rounded-md border border-line bg-surface px-2.5 outline-none select-text focus:border-accent focus:ring-3 focus:ring-accent/15 disabled:opacity-50';
@@ -56,7 +57,25 @@ export function EditDialog(props: { editing: Editing }) {
   const [error, setError] = createSignal<string | null>(null);
   const [saving, setSaving] = createSignal(false);
 
+  const [matching, setMatching] = createSignal(false);
+
   const row = () => items().find((b) => b.id === id);
+
+  /** Take what was chosen in Find Metadata into the form (saved with Save). */
+  const applyFound = (a: Applied) => {
+    if (a.title !== undefined) {
+      setForm('title', a.title);
+      if (!sortTouched()) setForm('titleSort', '');
+    }
+    if (a.authors) setAuthors(joinAuthors(a.authors));
+    if (a.publisher !== undefined) setForm('publisher', a.publisher);
+    if (a.published !== undefined) setForm('published', a.published);
+    if (a.languages) setLanguages(joinList(a.languages));
+    if (a.tags) setTags(joinList(a.tags));
+    if (a.identifiers) setIdentifiers(joinIds(a.identifiers));
+    if (a.descriptionHtml !== undefined) description.innerHTML = a.descriptionHtml;
+    if (a.coverUrl) void changeCover(id, { url: a.coverUrl });
+  };
   // Existing names for autocomplete; the form works without them.
   const [names] = createResource(() => api.nameLists().catch(() => null));
 
@@ -106,9 +125,17 @@ export function EditDialog(props: { editing: Editing }) {
           void save();
         }}
       >
-        <div class="flex items-center justify-between border-b border-line px-6 py-4">
+        <div class="flex items-center gap-3 border-b border-line px-6 py-4">
           <h2 class="font-serif text-xl font-semibold">Edit Book</h2>
-          <span class="text-xs text-faint">⌘S to save · Esc to cancel</span>
+          <button
+            type="button"
+            class={smallButton + ' ml-1'}
+            title="Look this book up online (Open Library, Google Books) and choose what to take"
+            onClick={() => setMatching(true)}
+          >
+            Find Metadata…
+          </button>
+          <span class="ml-auto text-xs text-faint">⌘S to save · Esc to cancel</span>
         </div>
 
         <div class="flex min-h-0 flex-1 gap-6 overflow-y-auto px-6 py-5">
@@ -284,6 +311,25 @@ export function EditDialog(props: { editing: Editing }) {
           </button>
         </div>
       </form>
+      <Show when={matching()}>
+        <MatchDialog
+          id={id}
+          current={{
+            title: form.title,
+            authors: splitAuthors(authors()).filter(Boolean),
+            publisher: form.publisher,
+            published: form.published,
+            languages: splitList(languages()).filter(Boolean),
+            tags: splitList(tags()).filter(Boolean),
+            identifiers: splitIds(identifiers()),
+            descriptionHtml: description.textContent?.trim() ? description.innerHTML : null,
+            hasCover: row()?.hasCover ?? false,
+            isbn: splitIds(identifiers()).isbn ?? null,
+          }}
+          onApply={applyFound}
+          onClose={() => setMatching(false)}
+        />
+      </Show>
     </dialog>
   );
 }
