@@ -72,7 +72,8 @@ fn main() {
             commands::thumbnail_cache_info,
             commands::clear_thumbnail_cache,
             commands::import_calibre_library,
-            commands::rename_library
+            commands::rename_library,
+            commands::add_books
         ])
         .run(tauri::generate_context!())
         .expect("error while running Magnitide");

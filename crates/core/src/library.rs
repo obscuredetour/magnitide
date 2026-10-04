@@ -45,6 +45,9 @@ pub struct NewBook {
     pub title_sort: Option<String>,
     /// In display order; empty means "Unknown".
     pub authors: Vec<String>,
+    /// Sort names for authors new to the library ("Le Guin, Ursula K."), by
+    /// display name. Others get [`names::author_sort`]; existing authors keep theirs.
+    pub author_sorts: BTreeMap<String, String>,
     /// Name and index.
     pub series: Option<(String, f64)>,
     pub publisher: Option<String>,
@@ -231,7 +234,7 @@ impl Library {
         tx.prepare_cached("UPDATE books SET path = ? WHERE id = ?")?.execute(params![path, id])?;
 
         for (pos, name) in (0_i64..).zip(&authors) {
-            let author = author_id(tx, name)?;
+            let author = author_id(tx, name, book.author_sorts.get(*name).map(String::as_str))?;
             tx.prepare_cached("INSERT OR IGNORE INTO book_authors (book_id, author_id, position) VALUES (?, ?, ?)")?
                 .execute(params![id, author, pos])?;
         }
@@ -322,8 +325,8 @@ fn get_or_insert(tx: &Transaction<'_>, select: &str, insert: &str, params: &[&dy
     Ok(tx.last_insert_rowid())
 }
 
-fn author_id(tx: &Transaction<'_>, name: &str) -> Result<i64> {
-    let sort = names::author_sort(name);
+fn author_id(tx: &Transaction<'_>, name: &str, sort: Option<&str>) -> Result<i64> {
+    let sort = sort.map(str::to_owned).unwrap_or_else(|| names::author_sort(name));
     get_or_insert(
         tx,
         "SELECT id FROM authors WHERE name = ?",

@@ -3,6 +3,7 @@ import { For, Show } from 'solid-js';
 import { api, errorMessage, fileManagerName } from '../api';
 import { chooseLibrary, items, library, openLibrary, recentLibraries } from '../library';
 import { startImport } from '../importer';
+import { chooseAndAddBooks } from '../adder';
 import { toast } from '../toast';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from './Menu';
 
@@ -77,6 +78,9 @@ export function LibraryMenu() {
                 {lib().bookCount.toLocaleString()} books · loaded in {lib().loadMs} ms
               </div>
             </div>
+            <Show when={lib().kind === 'magnitide'}>
+              <MenuItem onSelect={() => void chooseAndAddBooks()}>Add Books…</MenuItem>
+            </Show>
             <Show when={lib().kind === 'calibre'}>
               <MenuItem onSelect={() => void startImport()}>Import into a Magnitide Library…</MenuItem>
             </Show>

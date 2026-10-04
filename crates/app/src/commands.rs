@@ -85,6 +85,53 @@ pub async fn open_library(app: AppHandle, state: State<'_, AppState>, path: Opti
     Ok(info)
 }
 
+/// Sent while books are being added. Event name matches `onAddProgress` in ui/src/api.ts.
+pub const ADD_PROGRESS_EVENT: &str = "add-progress";
+
+/// Add book files and folders (drag and drop, "Add Books…") to the open
+/// Magnitide library, then reload it. Progress arrives as `add-progress` events
+/// (same payload as import progress).
+#[tauri::command]
+pub async fn add_books(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> CmdResult<magnitide_core::import::AddReport> {
+    let lib = state.current().ok_or("No library is open")?;
+    let native = lib
+        .native
+        .clone()
+        .ok_or("This calibre library is read-only. Import it into a Magnitide library (library menu) to add books.")?;
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    let (report, catalog) = tauri::async_runtime::spawn_blocking(move || {
+        let mut native = native.lock().unwrap_or_else(|e| e.into_inner());
+        let mut last = Instant::now();
+        let report = magnitide_core::import::add_files(&mut native, &paths, |p| {
+            if p.done == 0 || p.done == p.total || last.elapsed().as_millis() >= 50 {
+                last = Instant::now();
+                let _ = app.emit(
+                    ADD_PROGRESS_EVENT,
+                    ImportProgress { done: p.done, total: p.total, title: p.title.to_owned() },
+                );
+            }
+        })?;
+        // Reload so every view (and search) sees the new books.
+        Ok::<_, magnitide_core::Error>((report, native.load_catalog()?))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+
+    state.replace(Loaded {
+        root: lib.root.clone(),
+        kind: lib.kind,
+        catalog,
+        native: lib.native.clone(),
+        thumb_dir: lib.thumb_dir.clone(),
+    });
+    Ok(report)
+}
+
 /// Rename the open Magnitide library. Returns the cleaned-up name.
 #[tauri::command]
 pub async fn rename_library(state: State<'_, AppState>, name: String) -> CmdResult<String> {

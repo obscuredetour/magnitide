@@ -10,6 +10,7 @@ pub mod html;
 pub mod import;
 pub mod library;
 pub mod lock;
+pub mod metadata;
 pub mod names;
 pub mod paths;
 

@@ -3,6 +3,7 @@ import { createEffect, createSignal, Match, on, onCleanup, onMount, Show, Switch
 import { BookTable } from './components/BookTable';
 import { CoverGrid, type ViewHandle } from './components/CoverGrid';
 import { DetailsPanel } from './components/DetailsPanel';
+import { DropOverlay } from './components/DropOverlay';
 import { EmptyState } from './components/EmptyState';
 import { ImportDialog } from './components/ImportDialog';
 import { NetworkWarning } from './components/NetworkWarning';
@@ -167,6 +168,7 @@ export function App() {
         </Match>
         <Match when={noLibrary()}>{(s) => <EmptyState message={s().message} />}</Match>
       </Switch>
+      <DropOverlay />
       <Show when={importState().phase !== 'idle'}>
         <ImportDialog />
       </Show>
