@@ -9,6 +9,8 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
+    // The title bar shows the app icon from crates/app/icons.
+    fs: { allow: ['.', '../icons'] },
   },
   build: {
     // Oldest engine we ship on: macOS WKWebView (Windows WebView2 is newer Chromium).
