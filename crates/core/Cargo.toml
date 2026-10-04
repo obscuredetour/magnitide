@@ -13,6 +13,7 @@ ts = ["dep:ts-rs"]
 ammonia = "4.2.1"
 calibre-compat = { version = "0.1.0", path = "../calibre-compat" }
 chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"] }
+flate2 = "1.1.10"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
 magnitide-catalog = { version = "0.1.0", path = "../catalog" }
 quick-xml = "0.42"

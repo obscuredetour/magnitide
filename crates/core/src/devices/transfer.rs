@@ -366,7 +366,9 @@ mod tests {
         let books: Vec<&Book> = cat.books.iter().collect();
         let report = send(&kindle, &books, lib.root(), None, None, &Converter::default(), |_, _, _| {});
         assert_eq!(report.sent, 1, "{report:?}");
-        assert_eq!(report.unsupported.len(), 2, "EPUB and DOCX only");
+        assert_eq!(report.unsupported.len(), 1, "DOCX can't be made into anything a Kindle reads");
+        // The EPUB is converted to AZW3 on the way; this fixture has no pages, so that fails, cleanly.
+        assert_eq!(report.failed.len(), 1, "{report:?}");
         assert!(root.join("documents/Frank Herbert/Dune - Frank Herbert.azw3").is_file());
 
         // Sending again doesn't overwrite.
@@ -413,20 +415,27 @@ mod tests {
         assert!(epub::read(&sent).is_some());
         assert_eq!(cat.get(dispossessed[0].id).unwrap().formats.len(), 1, "the library is unchanged");
 
-        // A Kindle and an EPUB-only book without calibre: unsupported, with a hint.
+        // A Kindle and an EPUB-only book: converted to AZW3 natively, no calibre needed.
         let kindle_root = tmp.path().join("Kindle");
         fs::create_dir_all(kindle_root.join("system")).unwrap();
         fs::create_dir_all(kindle_root.join("documents")).unwrap();
+        let sample = tmp.path().join("Sample Book - Ann Author.epub");
+        crate::convert::azw3::tests::sample_epub(&sample);
+        let mut lib = lib;
+        let id = add_files(&mut lib, &[sample], |_| {}).unwrap().added[0];
+        let cat = lib.load_catalog().unwrap();
+        let sample_book: Vec<&Book> = cat.books.iter().filter(|b| b.id == id).collect();
         let r = send(
             &detect(&kindle_root).unwrap(),
-            &dispossessed,
+            &sample_book,
             lib.root(),
             None,
             None,
             &Converter::default(),
             |_, _, _| {},
         );
-        assert_eq!((r.sent, r.unsupported.len(), r.needs_calibre), (0, 1, true), "{r:?}");
+        assert_eq!((r.sent, r.converted, r.unsupported.len()), (1, 1, 0), "{r:?}");
+        assert!(kindle_root.join("documents/Ann Author/Sample Book - Ann Author.azw3").is_file());
     }
 
     #[test]

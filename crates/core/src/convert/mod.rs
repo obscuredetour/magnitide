@@ -1,9 +1,10 @@
 //! Converting books between formats.
 //!
-//! EPUB → KEPUB is done natively ([`kepub`]). Everything else goes through
-//! calibre's `ebook-convert` command when calibre is installed (detected,
-//! never bundled): AZW3 and MOBI for Kindles, EPUB from other formats, and
-//! so on. Conversions read a book file and write a new one; the source is
+//! EPUB → KEPUB ([`kepub`]) and EPUB → AZW3 ([`azw3`]) are done natively.
+//! Everything else goes through calibre's `ebook-convert` command when
+//! calibre is installed (detected, never bundled): MOBI, EPUB from other
+//! formats, and so on. calibre also stands in if a native AZW3 conversion
+//! fails. Conversions read a book file and write a new one; the source is
 //! never changed.
 
 use std::path::{Path, PathBuf};
@@ -16,6 +17,7 @@ use crate::error::{Error, Result};
 use crate::import::store::add_formats;
 use crate::library::{BookId, Library};
 
+pub mod azw3;
 pub mod kepub;
 
 /// Formats calibre's `ebook-convert` reads (KEPUB as EPUB). KFX isn't one.
@@ -59,7 +61,7 @@ impl Converter {
             return None;
         }
         let ok = |from: &str| match (from, to) {
-            ("EPUB", "KEPUB") => true,
+            ("EPUB", "KEPUB") | ("EPUB" | "KEPUB", "AZW3") => true,
             // calibre to EPUB, then native.
             (_, "KEPUB") => self.calibre.is_some() && CALIBRE_INPUTS.contains(&from),
             _ => self.calibre.is_some() && CALIBRE_INPUTS.contains(&from) && CALIBRE_OUTPUTS.contains(&to),
@@ -78,6 +80,15 @@ impl Converter {
     pub fn convert(&self, src: &Path, from: &str, to: &str, dest: &Path) -> std::result::Result<(), String> {
         match (from, to) {
             ("EPUB", "KEPUB") => kepub::convert(src, dest).map(|_| ()).map_err(|e| e.to_string()),
+            ("EPUB" | "KEPUB", "AZW3") => match azw3::convert(src, dest) {
+                Ok(_) => Ok(()),
+                // calibre is more forgiving of unusual books, if it's here.
+                Err(e) if self.calibre.is_some() => {
+                    let _ = std::fs::remove_file(dest);
+                    self.calibre_convert(src, from, dest).map_err(|c| format!("{e}; calibre too: {c}"))
+                }
+                Err(e) => Err(e.to_string()),
+            },
             (_, "KEPUB") => {
                 let work = TempDir::new()?;
                 let epub = work.0.join("book.epub");
@@ -238,8 +249,9 @@ mod tests {
         let native = Converter::with_calibre(None);
         assert_eq!(native.source_for(&s(&["PDF", "EPUB"]), "KEPUB"), Some("EPUB"));
         assert_eq!(native.source_for(&s(&["PDF"]), "KEPUB"), None, "needs calibre");
-        assert_eq!(native.source_for(&s(&["EPUB"]), "AZW3"), None, "needs calibre");
-        assert_eq!(native.targets(&s(&["EPUB"])), ["KEPUB"]);
+        assert_eq!(native.source_for(&s(&["EPUB"]), "AZW3"), Some("EPUB"), "built in");
+        assert_eq!(native.source_for(&s(&["EPUB"]), "MOBI"), None, "needs calibre");
+        assert_eq!(native.targets(&s(&["EPUB"])), ["KEPUB", "AZW3"]);
 
         let calibre = Converter::with_calibre(Some("/x/ebook-convert".into()));
         assert_eq!(calibre.source_for(&s(&["PDF", "MOBI"]), "EPUB"), Some("MOBI"), "PDF is a last resort");

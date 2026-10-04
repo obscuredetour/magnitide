@@ -2285,6 +2285,7 @@ dependencies = [
  "ammonia",
  "calibre-compat",
  "chrono",
+ "flate2",
  "image",
  "libc",
  "magnitide-catalog",
