@@ -54,7 +54,7 @@ export function SettingsDialog(props: { onClose(): void }) {
     <dialog
       ref={dialog}
       aria-label="Settings"
-      class="m-auto h-[min(560px,calc(100vh-80px))] w-[min(760px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-2xl border border-line bg-surface p-0 text-fg shadow-lift backdrop:bg-black/40"
+      class="m-auto h-[min(560px,calc(100vh-80px))] w-[min(760px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-2xl border border-line bg-surface p-0 text-fg shadow-lift"
       onCancel={(e) => {
         // Esc: let Solid unmount the dialog instead of the browser closing it.
         e.preventDefault();

@@ -296,7 +296,7 @@ export function MatchDialog(props: { id: number; current: Current; onApply(appli
       <dialog
         ref={dialog}
         aria-label="Find metadata"
-        class="m-auto h-[min(680px,calc(100vh-48px))] w-[min(1000px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-2xl border border-line bg-surface p-0 text-fg shadow-lift backdrop:bg-black/40"
+        class="m-auto h-[min(680px,calc(100vh-48px))] w-[min(1000px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-2xl border border-line bg-surface p-0 text-fg shadow-lift"
         onCancel={(e) => {
           e.preventDefault();
           props.onClose();

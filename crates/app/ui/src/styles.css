@@ -102,3 +102,29 @@
     color: var(--muted);
   }
 }
+
+/* Every modal dialog dims and blurs the app behind it, so the dialog stands
+   out and stays readable. Literal colours: ::backdrop can't rely on
+   inheriting theme variables in every webview. */
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.38);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+  backdrop-filter: blur(8px) saturate(120%);
+  animation: backdrop-in 0.18s ease-out;
+}
+[data-theme='light'] dialog::backdrop {
+  background: rgb(24 24 28 / 0.2);
+}
+[data-theme='sepia'] dialog::backdrop {
+  background: rgb(60 40 20 / 0.2);
+}
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  dialog::backdrop {
+    animation: none;
+  }
+}

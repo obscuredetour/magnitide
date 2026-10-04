@@ -40,7 +40,7 @@ function ConfirmDialog(props: { request: Request }) {
     <dialog
       ref={dialog}
       aria-label={props.request.title}
-      class="m-auto w-[min(440px,calc(100vw-48px))] animate-menu-in rounded-2xl border border-line bg-surface p-0 text-fg shadow-lift backdrop:bg-black/40"
+      class="m-auto w-[min(440px,calc(100vw-48px))] animate-menu-in rounded-2xl border border-line bg-surface p-0 text-fg shadow-lift"
       onCancel={(e) => {
         e.preventDefault();
         done(false);

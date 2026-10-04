@@ -141,7 +141,7 @@ export function EditDialog(props: { editing: Editing }) {
     <dialog
       ref={dialog}
       aria-label="Edit book"
-      class="m-auto max-h-[calc(100vh-48px)] w-[min(820px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-2xl border border-line bg-surface p-0 text-fg shadow-lift backdrop:bg-black/40"
+      class="m-auto max-h-[calc(100vh-48px)] w-[min(820px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-2xl border border-line bg-surface p-0 text-fg shadow-lift"
       onCancel={(e) => {
         e.preventDefault();
         closeEditor();
