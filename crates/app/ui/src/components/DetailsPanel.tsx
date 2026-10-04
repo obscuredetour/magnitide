@@ -7,6 +7,7 @@ import { toast } from '../toast';
 import { devices, onDevice } from '../devices';
 import { removeFromDevice, sendToDevice } from '../transfer';
 import { writeBookFiles } from '../writeback';
+import { ConvertMenu } from './ConvertMenu';
 import { Cover } from './Cover';
 
 type Props = {
@@ -189,6 +190,9 @@ function Details(props: { book: BookDetails }) {
               </Show>
             )}
           </For>
+          <Show when={library()?.kind === 'magnitide'}>
+            <ConvertMenu ids={[b().id]} buttonClass={`${chip} cursor-pointer text-accent hover:bg-accent/15`} />
+          </Show>
         </div>
       </Show>
 

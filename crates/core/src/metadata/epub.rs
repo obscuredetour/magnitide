@@ -10,11 +10,11 @@ use zip::ZipArchive;
 
 use super::{Author, BookMetadata, language_code, parse_date};
 
-pub(super) type Zip = ZipArchive<BufReader<File>>;
-pub(super) type Res<T> = Result<T, Box<dyn std::error::Error>>;
+pub(crate) type Zip = ZipArchive<BufReader<File>>;
+pub(crate) type Res<T> = Result<T, Box<dyn std::error::Error>>;
 
 /// Limits that keep a hostile or broken file from exhausting memory.
-pub(super) const MAX_XML: u64 = 4 << 20;
+pub(crate) const MAX_XML: u64 = 4 << 20;
 const MAX_COVER: u64 = 30 << 20;
 
 /// Metadata from an EPUB, or None if it can't be read as one.
@@ -111,7 +111,7 @@ fn read_inner(path: &Path) -> Res<BookMetadata> {
 }
 
 /// The OPF package document's path inside the zip, from container.xml.
-pub(super) fn opf_path(zip: &mut Zip) -> Res<String> {
+pub(crate) fn opf_path(zip: &mut Zip) -> Res<String> {
     let container = String::from_utf8(read_entry(zip, "META-INF/container.xml", MAX_XML)?)?;
     let container = parse_xml(&container)?;
     Ok(container
@@ -139,7 +139,7 @@ fn cover_href(metadata: Node<'_, '_>, manifest: Node<'_, '_>) -> Option<String> 
 
 /// The manifest item the package declares as its cover: EPUB 3
 /// `properties="cover-image"`, else EPUB 2 `<meta name="cover" content="item-id">`.
-pub(super) fn declared_cover<'a, 'i>(metadata: Node<'a, 'i>, manifest: Node<'a, 'i>) -> Option<Node<'a, 'i>> {
+pub(crate) fn declared_cover<'a, 'i>(metadata: Node<'a, 'i>, manifest: Node<'a, 'i>) -> Option<Node<'a, 'i>> {
     let mut items = manifest.children().filter(|n| n.has_tag_name_local("item"));
     if let Some(item) =
         items.clone().find(|n| attr(*n, "properties").is_some_and(|p| p.split_whitespace().any(|p| p == "cover-image")))
@@ -156,7 +156,7 @@ pub(super) fn declared_cover<'a, 'i>(metadata: Node<'a, 'i>, manifest: Node<'a, 
 /// (scheme, value) for identifiers worth keeping: ISBNs and named schemes.
 /// Package uuids and calibre's internal ids are skipped. EPUB 3 has no
 /// scheme attribute, so there the scheme is a prefix: "google:abc".
-pub(super) fn identifier(scheme: Option<&str>, value: &str) -> Option<(String, String)> {
+pub(crate) fn identifier(scheme: Option<&str>, value: &str) -> Option<(String, String)> {
     let v = value.trim();
     let lower = v.to_ascii_lowercase();
     for prefix in ["urn:isbn:", "isbn:"] {
@@ -194,12 +194,12 @@ fn book_uuid(scheme: Option<&str>, value: &str) -> Option<String> {
     (uuidish && (named || value.trim().to_ascii_lowercase().starts_with("urn:uuid:") || scheme.is_none())).then_some(v)
 }
 
-pub(super) fn normalize_isbn(s: &str) -> String {
+pub(crate) fn normalize_isbn(s: &str) -> String {
     s.chars().filter(|c| c.is_ascii_digit() || *c == 'X' || *c == 'x').collect::<String>().to_uppercase()
 }
 
 /// An href inside the OPF, relative to the OPF's folder, as a zip entry name.
-pub(super) fn resolve(opf_path: &str, href: &str) -> String {
+pub(crate) fn resolve(opf_path: &str, href: &str) -> String {
     let href = percent_decode(href.split('#').next().unwrap_or(href));
     let base = opf_path.rsplit_once('/').map_or("", |(dir, _)| dir);
     let mut parts: Vec<&str> = if base.is_empty() { Vec::new() } else { base.split('/').collect() };
@@ -234,7 +234,7 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-pub(super) fn read_entry(zip: &mut Zip, name: &str, limit: u64) -> Res<Vec<u8>> {
+pub(crate) fn read_entry(zip: &mut Zip, name: &str, limit: u64) -> Res<Vec<u8>> {
     let entry = zip.by_name(name)?;
     if entry.size() > limit {
         return Err(format!("{name} is too large").into());
@@ -244,7 +244,7 @@ pub(super) fn read_entry(zip: &mut Zip, name: &str, limit: u64) -> Res<Vec<u8>> 
     Ok(buf)
 }
 
-pub(super) fn parse_xml(s: &str) -> Res<Document<'_>> {
+pub(crate) fn parse_xml(s: &str) -> Res<Document<'_>> {
     // Many OPFs carry a DOCTYPE; external entities are never resolved.
     Ok(Document::parse_with_options(
         s.trim_start_matches('\u{feff}'),
@@ -252,22 +252,22 @@ pub(super) fn parse_xml(s: &str) -> Res<Document<'_>> {
     )?)
 }
 
-pub(super) fn child<'a, 'i>(node: Node<'a, 'i>, local: &str) -> Option<Node<'a, 'i>> {
+pub(crate) fn child<'a, 'i>(node: Node<'a, 'i>, local: &str) -> Option<Node<'a, 'i>> {
     node.children().find(|n| n.has_tag_name_local(local))
 }
 
 /// Attribute by local name, whatever its namespace (opf:role, role, …).
-pub(super) fn attr<'a>(node: Node<'a, '_>, local: &str) -> Option<&'a str> {
+pub(crate) fn attr<'a>(node: Node<'a, '_>, local: &str) -> Option<&'a str> {
     node.attributes().find(|a| a.name() == local).map(|a| a.value())
 }
 
 /// All text inside a node, whitespace-collapsed.
-pub(super) fn text(node: Node<'_, '_>) -> String {
+pub(crate) fn text(node: Node<'_, '_>) -> String {
     let raw: String = node.descendants().filter(Node::is_text).filter_map(|n| n.text()).collect();
     raw.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-pub(super) trait LocalName {
+pub(crate) trait LocalName {
     fn has_tag_name_local(&self, local: &str) -> bool;
 }
 

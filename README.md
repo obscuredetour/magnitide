@@ -88,7 +88,8 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Metadata lookup from Open Library and Google Books (your own API key) with a field-by-field matching dialog: "Find Metadata…" in the edit window, sources in Settings → Metadata Sources. On request only; ranking is plain string matching, no AI
 - [x] E-reader detection (Kobo, Kindle, any calibre-managed USB device): plugged-in devices appear in the top bar, books on them get an "On Device" column, a cover badge and a line in the details panel, and the list can be filtered to books on or not on a device. Matched by calibre's uuid, ISBN, identical file, then title and author; Eject from the device menu
 - [x] File transfer: send selected books to a device (the format it reads best; EPUBs get the library's metadata, cover and id written into the copy), remove them (with KOReader's notes), and add a device's other files to the library
-- [ ] Format conversion: EPUB → KEPUB natively; AZW3 via an installed calibre `ebook-convert` at first
+- [x] Format conversion: "Convert…" in the details panel and selection bar adds the new format to the book. EPUB → KEPUB is built in (Kobo spans, like kepubify); AZW3, MOBI, PDF and others use calibre's `ebook-convert` when installed (detected, never bundled). Sending converts on the way when a device's default format is missing, or when a Kindle gets an EPUB-only book
+- [x] Send asks which format when a book has several the device reads; Settings → Devices sets a default per kind of device
 - [x] Multi-select (⌘-click, Shift-click, ⌘A) with a selection bar; "Merge…" for two records of the same book
 - [ ] Bulk metadata lookup and bulk edit for a selection
 - [ ] MTP devices (newer Kindles) and Kobo collections/shelves

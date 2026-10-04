@@ -9,6 +9,8 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open, save } from '@tauri-apps/plugin-dialog';
 
 import type { BookDetails } from './bindings/BookDetails';
+import type { ConversionInfo } from './bindings/ConversionInfo';
+import type { ConvertReport } from './bindings/ConvertReport';
 import type { CoverPreview } from './bindings/CoverPreview';
 import type { DeviceHit } from './bindings/DeviceHit';
 import type { DeviceInfo } from './bindings/DeviceInfo';
@@ -46,6 +48,8 @@ export type {
   AddReport,
   BookDetails,
   BookEdit,
+  ConversionInfo,
+  ConvertReport,
   CoverPreview,
   DeviceHit,
   DeviceInfo,
@@ -185,13 +189,23 @@ export const api = {
   ejectDevice: (id: string) => invoke<void>('eject_device', { id }),
 
   /** Copy books to a device (best format for it; EPUBs carry the library's metadata). Progress via onTransferProgress. */
-  sendToDevice: (id: string, bookIds: number[]) => invoke<SendReport>('send_to_device', { id, bookIds }),
+  sendToDevice: (id: string, bookIds: number[], format: string | null = null) =>
+    invoke<SendReport>('send_to_device', { id, bookIds, format }),
 
   /** Delete books' files (and KOReader's notes for them) from a device. */
   removeFromDevice: (id: string, bookIds: number[]) => invoke<RemoveReport>('remove_from_device', { id, bookIds }),
 
   /** Add device files that aren't in the library (paths from `DeviceInfo.unmatched`). */
   importFromDevice: (id: string, paths: string[]) => invoke<AddReport>('import_from_device', { id, paths }),
+
+  /** What can convert here (calibre's ebook-convert, if installed). */
+  conversionInfo: () => invoke<ConversionInfo>('conversion_info'),
+
+  /** Formats at least one of these books can be converted to. */
+  convertTargets: (bookIds: number[]) => invoke<string[]>('convert_targets', { bookIds }),
+
+  /** Convert books to `to`, adding it to each as a new format. Progress via onConvertProgress. */
+  convertBooks: (bookIds: number[], to: string) => invoke<ConvertReport>('convert_books', { bookIds, to }),
 
   /** Merge book `other` into `keep` (formats, missing cover, tags, identifiers), removing `other`. */
   mergeBooks: (keep: number, other: number) => invoke<MergeOutcome>('merge_books', { keep, other }),
@@ -276,6 +290,11 @@ export function onOpenSettings(handler: () => void): Promise<UnlistenFn> {
 /** An e-reader was connected or disconnected (or rescanned). Matches `DEVICES_CHANGED_EVENT` in devices.rs. */
 export function onDevicesChanged(handler: () => void): Promise<UnlistenFn> {
   return listen('devices-changed', handler);
+}
+
+/** Converting books. Event name matches `CONVERT_PROGRESS_EVENT` in commands.rs. */
+export function onConvertProgress(handler: (p: ImportProgress) => void): Promise<UnlistenFn> {
+  return listen<ImportProgress>('convert-progress', (e) => handler(e.payload));
 }
 
 /** Copying books to a device. Event name matches `TRANSFER_PROGRESS_EVENT` in devices.rs. */

@@ -2,8 +2,17 @@
 
 import { createEffect, createMemo, createRoot, createSignal, on } from 'solid-js';
 
-import { api, type BookRow, type DeviceHit, type DeviceInfo, errorMessage, onDevicesChanged } from './api';
+import {
+  api,
+  type BookRow,
+  type DeviceHit,
+  type DeviceInfo,
+  type DeviceKind,
+  errorMessage,
+  onDevicesChanged,
+} from './api';
 import { editRevision, items, library } from './library';
+import { storage } from './storage';
 import { toast } from './toast';
 
 const [devices, setDevices] = createSignal<DeviceInfo[]>([]);
@@ -44,6 +53,41 @@ export const shownItems = createRoot(() =>
     return items().filter((b) => on.has(b.id) === (filter === 'on'));
   }),
 );
+
+/** What each kind of device reads, best first (mirrors `readable` in devices/transfer.rs). */
+export const DEVICE_FORMATS: Record<DeviceKind, string[]> = {
+  kobo: ['KEPUB', 'EPUB', 'PDF', 'MOBI', 'CBZ', 'CBR', 'TXT', 'HTML', 'RTF'],
+  kindle: ['AZW3', 'MOBI', 'AZW', 'PDF', 'TXT'],
+  generic: ['EPUB', 'PDF', 'MOBI', 'AZW3', 'FB2', 'CBZ', 'CBR', 'TXT', 'KEPUB'],
+};
+
+export const DEVICE_KIND_NAMES: Record<DeviceKind, string> = {
+  kobo: 'Kobo',
+  kindle: 'Kindle',
+  generic: 'Other e-readers',
+};
+
+function storedFormats(): Partial<Record<DeviceKind, string>> {
+  try {
+    const parsed: unknown = JSON.parse(storage.get('deviceFormats') ?? '{}');
+    return parsed && typeof parsed === 'object' ? (parsed as Partial<Record<DeviceKind, string>>) : {};
+  } catch {
+    return {};
+  }
+}
+
+const [deviceFormats, setDeviceFormats] = createSignal(storedFormats());
+
+/** The format always sent to this kind of device, or null to ask when there's a choice. */
+export const preferredFormat = (kind: DeviceKind): string | null => deviceFormats()[kind] ?? null;
+
+export function setPreferredFormat(kind: DeviceKind, format: string | null): void {
+  const next = { ...deviceFormats() };
+  if (format) next[kind] = format;
+  else delete next[kind];
+  setDeviceFormats(next);
+  storage.set('deviceFormats', JSON.stringify(next));
+}
 
 let seq = 0;
 

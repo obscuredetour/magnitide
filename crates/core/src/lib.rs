@@ -3,6 +3,7 @@
 //! desktop app and the planned server share it. See docs/architecture.md.
 
 pub mod catalog;
+pub mod convert;
 pub mod db;
 pub mod devices;
 pub mod edit;

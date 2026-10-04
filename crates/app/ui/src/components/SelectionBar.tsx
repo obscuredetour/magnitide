@@ -4,6 +4,7 @@ import { booksOn, devices } from '../devices';
 import { items, library, selectedId, selectedIds, setSelectedId } from '../library';
 import { liftToasts } from '../toast';
 import { mergeBooks, removeFromDevice, sendToDevice } from '../transfer';
+import { ConvertMenu } from './ConvertMenu';
 
 const action =
   'cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium whitespace-nowrap hover:bg-white/15 disabled:cursor-default disabled:opacity-50';
@@ -40,6 +41,9 @@ export function SelectionBar() {
           );
         }}
       </For>
+      <Show when={library()?.kind === 'magnitide'}>
+        <ConvertMenu ids={ids()} buttonClass={action} above />
+      </Show>
       <Show when={library()?.kind === 'magnitide' && books().length === 2}>
         <button class={action} onClick={() => void mergeBooks(books()[0]!, books()[1]!)}>
           Merge…

@@ -122,7 +122,10 @@ fn main() {
             devices::send_to_device,
             devices::remove_from_device,
             devices::import_from_device,
-            commands::merge_books
+            commands::merge_books,
+            commands::conversion_info,
+            commands::convert_targets,
+            commands::convert_books
         ])
         .run(tauri::generate_context!())
         .expect("error while running Magnitide");
