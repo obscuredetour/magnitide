@@ -3,7 +3,7 @@
 
 pub mod calibre;
 pub mod files;
-mod store;
+pub(crate) mod store;
 
 pub use calibre::{ImportReport, Progress, import_calibre};
 pub use files::{AddProgress, AddReport, add_files};

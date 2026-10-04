@@ -223,6 +223,61 @@ pub async fn save_book_edit(
     write_library(&state, move |lib| lib.update_book(id, &edit)).await
 }
 
+/// Sent while books are converted. Matches `onConvertProgress` in ui/src/api.ts.
+pub const CONVERT_PROGRESS_EVENT: &str = "convert-progress";
+
+/// What can convert books here.
+#[derive(Serialize, TS)]
+#[ts(export)]
+pub struct ConversionInfo {
+    /// calibre's `ebook-convert`, if installed (needed for everything but EPUB → KEPUB).
+    calibre: Option<String>,
+}
+
+#[tauri::command]
+pub async fn conversion_info() -> CmdResult<ConversionInfo> {
+    let c = magnitide_core::convert::Converter::detect();
+    Ok(ConversionInfo { calibre: c.calibre().map(|p| p.display().to_string()) })
+}
+
+/// Formats at least one of these books can be converted to (that it lacks).
+#[tauri::command]
+pub async fn convert_targets(state: State<'_, AppState>, book_ids: Vec<i64>) -> CmdResult<Vec<String>> {
+    let lib = state.current().ok_or("No library is open")?;
+    let c = magnitide_core::convert::Converter::detect();
+    let mut out: Vec<String> = Vec::new();
+    for id in book_ids {
+        let Some(b) = lib.catalog.get(id) else { continue };
+        let have: Vec<String> = b.formats.iter().map(|f| f.format.clone()).collect();
+        for t in c.targets(&have) {
+            if !out.contains(&t) {
+                out.push(t);
+            }
+        }
+    }
+    // A stable order: the converter's.
+    let all = c.targets(&["EPUB".to_owned(), "MOBI".to_owned()]);
+    out.sort_by_key(|t| all.iter().position(|a| a == t).unwrap_or(usize::MAX));
+    Ok(out)
+}
+
+/// Convert books to `to` and add the result to each as a new format.
+#[tauri::command]
+pub async fn convert_books(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    book_ids: Vec<i64>,
+    to: String,
+) -> CmdResult<magnitide_core::convert::ConvertReport> {
+    write_library(&state, move |lib| {
+        let converter = magnitide_core::convert::Converter::detect();
+        lib.convert_books(&book_ids, &to, &converter, |done, total, title| {
+            let _ = app.emit(CONVERT_PROGRESS_EVENT, ImportProgress { done, total, title: title.to_owned() });
+        })
+    })
+    .await
+}
+
 /// Merge book `other` into book `keep` (formats, missing cover, tags and
 /// identifiers), then remove `other`.
 #[tauri::command]

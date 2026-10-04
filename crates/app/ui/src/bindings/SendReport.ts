@@ -6,9 +6,17 @@ export type SendReport = {
  */
 sent: number, bytes: number, 
 /**
+ * Of those, converted on the way (the library keeps its formats).
+ */
+converted: number, 
+/**
  * Books with no format this device reads ("Title (EPUB only)").
  */
 unsupported: Array<string>, 
+/**
+ * Some unsupported books could be converted if calibre were installed.
+ */
+needsCalibre: boolean, 
 /**
  * Books that couldn't be sent, with the reason; nothing left behind.
  */

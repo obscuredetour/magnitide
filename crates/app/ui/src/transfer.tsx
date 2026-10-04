@@ -1,10 +1,10 @@
 // Moving books between the library and devices, and merging duplicate books.
 
-import { createSignal, For } from 'solid-js';
+import { createSignal, For, Show } from 'solid-js';
 
-import { api, type BookRow, type DeviceInfo, errorMessage, onTransferProgress } from './api';
+import { api, type BookRow, type DeviceInfo, errorMessage, onConvertProgress, onTransferProgress } from './api';
 import { confirm } from './confirm';
-import { booksOn } from './devices';
+import { booksOn, DEVICE_KIND_NAMES, preferredFormat, setPreferredFormat } from './devices';
 import { items, library, refresh, setEditRevision, setLibrary, setSelectedId } from './library';
 import { toast } from './toast';
 import { plural } from './writeback';
@@ -28,25 +28,107 @@ async function exclusive(label: string, work: () => Promise<void>): Promise<void
   }
 }
 
+/**
+ * Which format to send: the device kind's default, or (when a book has more
+ * than one the device reads) the user's pick. Undefined: cancelled.
+ */
+async function chooseFormat(device: DeviceInfo, ids: number[]): Promise<string | null | undefined> {
+  const preferred = preferredFormat(device.kind);
+  if (preferred) return preferred;
+  const books = items().filter((b) => ids.includes(b.id));
+  const readable = (b: BookRow) => device.formats.filter((f) => b.formats.includes(f));
+  // KEPUB can always be made from EPUB, so on a Kobo an EPUB is a choice too.
+  const makeable = (b: BookRow) =>
+    device.kind === 'kobo' && b.formats.includes('EPUB') && !b.formats.includes('KEPUB') ? ['KEPUB'] : [];
+  const choices = (b: BookRow) => [...readable(b), ...makeable(b)];
+  if (!books.some((b) => choices(b).length > 1)) return null;
+  // Every format the device reads that some selected book has (or can get), best first.
+  const options = device.formats.filter((f) => books.some((b) => choices(b).includes(f)));
+  const converted = (f: string) => books.every((b) => !b.formats.includes(f));
+  const [pick, setPick] = createSignal(options[0]!);
+  const [remember, setRemember] = createSignal(false);
+  const one = books.length === 1 ? books[0] : undefined;
+  const ok = await confirm({
+    title: one ? `Send “${one.title}” as…` : `Send ${books.length} books as…`,
+    message: () => (
+      <>
+        <div class="space-y-1.5" role="radiogroup" aria-label="Format">
+          <For each={options}>
+            {(f, i) => (
+              <label class="flex cursor-pointer items-center gap-2 text-fg">
+                <input
+                  type="radio"
+                  name="send-format"
+                  class="accent-accent"
+                  checked={pick() === f}
+                  onChange={() => setPick(f)}
+                />
+                <span class="font-medium">{f}</span>
+                <span class="text-xs text-muted">
+                  {[
+                    i() === 0 && `reads best on ${device.name}`,
+                    converted(f) && 'converted from EPUB for the device',
+                    !one &&
+                      !converted(f) &&
+                      `${books.filter((b) => b.formats.includes(f)).length} of ${books.length} have it`,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+              </label>
+            )}
+          </For>
+        </div>
+        <Show when={!one}>
+          <p class="mt-2 text-xs">Books without it are converted when possible, else get the best format they have.</p>
+        </Show>
+        <label class="mt-3 flex cursor-pointer items-center gap-2 text-xs text-fg">
+          <input
+            type="checkbox"
+            class="accent-accent"
+            checked={remember()}
+            onChange={(e) => setRemember(e.currentTarget.checked)}
+          />
+          Always send this format to {DEVICE_KIND_NAMES[device.kind]} (change it in Settings → Devices)
+        </label>
+      </>
+    ),
+    confirm: 'Send',
+  });
+  if (!ok) return undefined;
+  if (remember()) setPreferredFormat(device.kind, pick());
+  return pick();
+}
+
 /** Copy books to a device; ones already there are skipped. */
-export function sendToDevice(device: DeviceInfo, ids: number[]): Promise<void> {
+export async function sendToDevice(device: DeviceInfo, ids: number[]): Promise<void> {
   const already = booksOn(device);
   const todo = ids.filter((id) => !already.has(id));
   if (!todo.length) {
     toast(ids.length === 1 ? `Already on ${device.name}` : `All of these are already on ${device.name}`);
-    return Promise.resolve();
+    return;
   }
+  if (busy) {
+    toast('Still working on the last transfer…');
+    return;
+  }
+  const format = await chooseFormat(device, todo);
+  if (format === undefined) return;
   return exclusive(`Sending to ${device.name}…`, async () => {
     const unlisten = await onTransferProgress((p) => {
       if (p.total > 1 && p.done < p.total)
         toast(`Sending ${p.done + 1} of ${p.total} to ${device.name}…`, { duration: Infinity });
     });
     try {
-      const r = await api.sendToDevice(device.id, todo);
+      const r = await api.sendToDevice(device.id, todo, format);
       for (const line of [...r.failed, ...r.unsupported, ...r.warnings]) console.info(line);
       const parts = [`Sent ${plural(r.sent, 'book', 'books')} to ${device.name}`];
+      if (r.converted) parts.push(`${r.converted} converted`);
       if (r.unsupported.length)
-        parts.push(`${plural(r.unsupported.length, 'book has', 'books have')} no format it reads`);
+        parts.push(
+          `${plural(r.unsupported.length, 'book has', 'books have')} no format it reads` +
+            (r.needsCalibre ? ' (install calibre to convert them)' : ''),
+        );
       if (r.failed.length) parts.push(r.failed.length === 1 ? r.failed[0]! : `${r.failed.length} failed`);
       const problem = r.failed.length > 0 || (r.sent === 0 && r.unsupported.length > 0);
       toast(parts.join(' · '), { error: problem, duration: problem ? 7000 : 3500 });
@@ -157,4 +239,30 @@ export async function mergeBooks(a: BookRow, b: BookRow): Promise<void> {
   } catch (err) {
     toast(errorMessage(err), { error: true });
   }
+}
+
+/** Convert books to a format, adding it to each. */
+export function convertBooks(ids: number[], to: string): Promise<void> {
+  if (library()?.kind !== 'magnitide') {
+    toast('This calibre library is read-only. Import it into a Magnitide library to convert books.', { error: true });
+    return Promise.resolve();
+  }
+  return exclusive(`Converting to ${to}…`, async () => {
+    const unlisten = await onConvertProgress((p) => {
+      if (p.total > 1 && p.done < p.total)
+        toast(`Converting ${p.done + 1} of ${p.total} to ${to}…`, { duration: Infinity });
+    });
+    try {
+      const r = await api.convertBooks(ids, to);
+      await refresh();
+      setEditRevision((n) => n + 1);
+      for (const line of r.failed) console.info(line);
+      const parts = [`Converted ${plural(r.converted, 'book', 'books')} to ${to}`];
+      if (r.already) parts.push(`${r.already} already had it`);
+      if (r.failed.length) parts.push(r.failed.length === 1 ? r.failed[0]! : `${r.failed.length} failed`);
+      toast(parts.join(' · '), { error: r.failed.length > 0, duration: r.failed.length ? 7000 : 3500 });
+    } finally {
+      unlisten();
+    }
+  });
 }

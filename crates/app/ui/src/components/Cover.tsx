@@ -1,4 +1,4 @@
-import { createEffect, createSignal, on, Show } from 'solid-js';
+import { createEffect, createSignal, Show } from 'solid-js';
 
 import { coverUrl, type CoverSize } from '../api';
 
@@ -20,17 +20,18 @@ export function Cover(props: Props) {
   const [failed, setFailed] = createSignal(false);
   const [loaded, setLoaded] = createSignal(false);
 
-  // The details panel reuses this component across books.
-  createEffect(
-    on(
-      () => props.id,
-      () => {
-        setFailed(false);
-        setLoaded(false);
-      },
-      { defer: true },
-    ),
-  );
+  // The details panel reuses this component across books. Only a different
+  // book resets it: the same book's details reloading (after an edit) keeps
+  // the same image, which won't fire `load` again. (Tracked by hand: `on`
+  // with `defer` doesn't record the first id, so it can't tell.)
+  let shown = props.id;
+  createEffect(() => {
+    const id = props.id;
+    if (id === shown) return;
+    shown = id;
+    setFailed(false);
+    setLoaded(false);
+  });
 
   return (
     <Show

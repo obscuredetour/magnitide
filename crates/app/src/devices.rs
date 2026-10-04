@@ -33,6 +33,8 @@ pub struct DeviceInfo {
     id: String,
     name: String,
     kind: DeviceKind,
+    /// Formats it reads, best first.
+    formats: Vec<String>,
     total_bytes: Option<u64>,
     free_bytes: Option<u64>,
     /// Book files on the device.
@@ -112,6 +114,7 @@ fn info(scan: &Scan, lib: Option<&crate::Loaded>) -> DeviceInfo {
         id: scan.device.root.display().to_string(),
         name: scan.device.name.clone(),
         kind: scan.device.kind,
+        formats: devices::transfer::readable(scan.device.kind).iter().map(|f| (*f).to_owned()).collect(),
         total_bytes: scan.space.map(|s| s.0),
         free_bytes: scan.space.map(|s| s.1),
         files: scan.files.len(),
@@ -152,6 +155,7 @@ pub async fn send_to_device(
     state: State<'_, AppState>,
     id: String,
     book_ids: Vec<i64>,
+    format: Option<String>,
 ) -> CmdResult<devices::transfer::SendReport> {
     let scan = state.device(&id)?;
     let lib = state.current().ok_or("No library is open")?;
@@ -160,12 +164,21 @@ pub async fn send_to_device(
         devices::match_books(&scan, &lib.catalog, &lib.root).into_iter().flatten().map(|(b, _)| b).collect();
     let app2 = app.clone();
     let report = tauri::async_runtime::spawn_blocking(move || {
+        let converter = magnitide_core::convert::Converter::detect();
         let books: Vec<&magnitide_catalog::Book> =
             book_ids.iter().filter(|b| !already.contains(b)).filter_map(|b| lib.catalog.get(*b)).collect();
         let free = devices::volumes::space(&scan.device.root).map(|s| s.1);
-        let report = devices::transfer::send(&scan.device, &books, &lib.root, free, |done, total, title| {
-            let _ = app2.emit(TRANSFER_PROGRESS_EVENT, ImportProgress { done, total, title: title.to_owned() });
-        });
+        let report = devices::transfer::send(
+            &scan.device,
+            &books,
+            &lib.root,
+            free,
+            format.as_deref(),
+            &converter,
+            |done, total, title| {
+                let _ = app2.emit(TRANSFER_PROGRESS_EVENT, ImportProgress { done, total, title: title.to_owned() });
+            },
+        );
         rescanned(&app2, &scan.device.root);
         report
     })

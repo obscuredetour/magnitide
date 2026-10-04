@@ -9,7 +9,11 @@ export type DeviceInfo = {
 /**
  * Its mount point; names it in commands.
  */
-id: string, name: string, kind: DeviceKind, totalBytes: number | null, freeBytes: number | null, 
+id: string, name: string, kind: DeviceKind, 
+/**
+ * Formats it reads, best first.
+ */
+formats: Array<string>, totalBytes: number | null, freeBytes: number | null, 
 /**
  * Book files on the device.
  */

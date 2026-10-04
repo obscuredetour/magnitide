@@ -2288,6 +2288,7 @@ dependencies = [
  "image",
  "libc",
  "magnitide-catalog",
+ "quick-xml",
  "reflink-copy",
  "roxmltree",
  "rusqlite",

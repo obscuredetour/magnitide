@@ -15,6 +15,7 @@ calibre-compat = { version = "0.1.0", path = "../calibre-compat" }
 chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"] }
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
 magnitide-catalog = { version = "0.1.0", path = "../catalog" }
+quick-xml = "0.42"
 reflink-copy = "0.1.30"
 roxmltree = "0.21.1"
 rusqlite = { version = "0.40.2", features = ["bundled"] }

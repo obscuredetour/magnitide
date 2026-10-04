@@ -1,7 +1,7 @@
 import { getVersion } from '@tauri-apps/api/app';
 import { createResource, createSignal, For, type JSX, Match, onMount, type ParentProps, Show, Switch } from 'solid-js';
 
-import { api, errorMessage, fileManagerName, type SourceId, type SourceStatus } from '../api';
+import { api, type DeviceKind, errorMessage, fileManagerName, type SourceId, type SourceStatus } from '../api';
 import {
   chooseLibrary,
   forgetRecentLibrary,
@@ -24,16 +24,18 @@ import {
   viewMode,
   zebraRows,
 } from '../view';
+import { DEVICE_FORMATS, DEVICE_KIND_NAMES, preferredFormat, setPreferredFormat } from '../devices';
 import { describeWrite, plural, setWriteOnSave, writeOnSave } from '../writeback';
 import { TABLE_COLUMNS } from './BookTable';
 import { CoverSizeSlider } from './CoverSizeSlider';
 
-type Section = 'appearance' | 'library' | 'list' | 'sources' | 'about';
+type Section = 'appearance' | 'library' | 'list' | 'devices' | 'sources' | 'about';
 
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'appearance', label: 'Appearance' },
   { id: 'library', label: 'Library' },
   { id: 'list', label: 'List View' },
+  { id: 'devices', label: 'Devices' },
   { id: 'sources', label: 'Metadata Sources' },
   { id: 'about', label: 'About' },
 ];
@@ -100,6 +102,9 @@ export function SettingsDialog(props: { onClose(): void }) {
             </Match>
             <Match when={section() === 'list'}>
               <ListSettings />
+            </Match>
+            <Match when={section() === 'devices'}>
+              <DeviceSettings />
             </Match>
             <Match when={section() === 'sources'}>
               <SourceSettings />
@@ -620,6 +625,59 @@ function SourceSettings() {
           </>
         )}
       </For>
+    </>
+  );
+}
+
+function DeviceSettings() {
+  const kinds: DeviceKind[] = ['kobo', 'kindle', 'generic'];
+  const [conversion] = createResource(() => api.conversionInfo().catch(() => ({ calibre: null })));
+  return (
+    <>
+      <Heading>Devices</Heading>
+      <p class="mb-4 text-xs text-muted">
+        When a book has more than one format a device reads, Magnitide asks which to send, unless you pick one here.
+        Books without it are converted on the way when possible (the library keeps its formats), else get the best
+        format they have.
+      </p>
+      <For each={kinds}>
+        {(kind) => (
+          <Row
+            label={DEVICE_KIND_NAMES[kind]}
+            description={`Reads ${DEVICE_FORMATS[kind].slice(0, 4).join(', ')}${kind === 'kindle' ? ' (not EPUB over USB)' : ''}…`}
+          >
+            <select
+              class="h-7 rounded-md border border-line bg-surface px-2 text-xs"
+              aria-label={`Format to send to ${DEVICE_KIND_NAMES[kind]}`}
+              value={preferredFormat(kind) ?? ''}
+              onChange={(e) => setPreferredFormat(kind, e.currentTarget.value || null)}
+            >
+              <option value="">Ask each time</option>
+              <For each={DEVICE_FORMATS[kind]}>{(f) => <option value={f}>{f}</option>}</For>
+            </select>
+          </Row>
+        )}
+      </For>
+      <Row
+        label="Converting"
+        description={
+          <Show when={conversion()} fallback="Checking…">
+            {(c) =>
+              c().calibre ? (
+                <>
+                  EPUB → KEPUB is built in; everything else uses calibre's converter at{' '}
+                  <span class="break-all">{c().calibre}</span>.
+                </>
+              ) : (
+                <>
+                  EPUB → KEPUB is built in. Install calibre to also convert to AZW3 and MOBI (for Kindles), PDF and
+                  more; Magnitide finds it by itself.
+                </>
+              )
+            }
+          </Show>
+        }
+      />
     </>
   );
 }
