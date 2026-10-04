@@ -134,6 +134,34 @@ impl Library {
         self.conn.execute("UPDATE books SET cover_file = NULL, modified_at = ? WHERE id = ?", params![now(), id])?;
         Ok(())
     }
+
+    /// Remove one format from a book; the book and its other formats stay.
+    /// `discard` disposes of the file (the app moves it to the Trash); it
+    /// isn't called when the file is already missing. If it fails, nothing
+    /// changes.
+    pub fn remove_format(
+        &mut self,
+        id: BookId,
+        format: &str,
+        discard: impl FnOnce(&Path) -> std::io::Result<()>,
+    ) -> Result<()> {
+        let dir = dir_for(&self.root, &self.book(id)?.path);
+        let tx = self.conn.transaction()?;
+        let filename: String = tx
+            .query_row("SELECT filename FROM files WHERE book_id = ? AND format = ?", params![id, format], |r| r.get(0))
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Error::InvalidBook(format!("this book has no {format} file")),
+                e => e.into(),
+            })?;
+        tx.execute("DELETE FROM files WHERE book_id = ? AND format = ?", params![id, format])?;
+        tx.execute("UPDATE books SET modified_at = ? WHERE id = ?", params![now(), id])?;
+        let file = dir.join(&filename);
+        if file.exists() {
+            discard(&file)?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
 }
 
 /// How an author sorts, for the edit form.
@@ -722,5 +750,41 @@ mod tests {
         lib.remove_cover(id).unwrap();
         assert!(!cover.exists());
         assert!(!lib.load_catalog().unwrap().get(id).unwrap().has_cover);
+    }
+
+    #[test]
+    fn removes_a_format() {
+        let (tmp, mut lib, id) = library_with_book();
+        let kepub = tmp.path().join("Old Title - Old Author.kepub");
+        fs::write(&kepub, "kepub bytes").unwrap();
+        add_files(&mut lib, &[kepub], |_| {}).unwrap();
+        let formats = |lib: &Library| -> Vec<String> {
+            lib.load_catalog().unwrap().get(id).unwrap().formats.iter().map(|f| f.format.clone()).collect()
+        };
+        assert_eq!(formats(&lib), ["EPUB", "KEPUB"]);
+        let epub = file_path(&lib, id);
+
+        // A failed discard changes nothing.
+        let refused = lib.remove_format(id, "EPUB", |_| Err(std::io::Error::other("no trash")));
+        assert!(refused.is_err());
+        assert!(epub.exists());
+        assert_eq!(formats(&lib), ["EPUB", "KEPUB"]);
+
+        let mut discarded = None;
+        lib.remove_format(id, "EPUB", |p| {
+            discarded = Some(p.to_owned());
+            fs::remove_file(p)
+        })
+        .unwrap();
+        assert_eq!(discarded.as_deref(), Some(epub.as_path()));
+        assert!(!epub.exists());
+        assert_eq!(formats(&lib), ["KEPUB"]);
+        assert!(matches!(lib.remove_format(id, "EPUB", |_| Ok(())), Err(Error::InvalidBook(_))));
+
+        // A file already gone from disk: only the record goes.
+        fs::remove_file(file_path(&lib, id)).unwrap();
+        lib.remove_format(id, "KEPUB", |_| panic!("nothing to discard")).unwrap();
+        assert!(formats(&lib).is_empty());
+        assert!(lib.book(id).is_ok(), "the book stays");
     }
 }

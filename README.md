@@ -37,7 +37,7 @@ is only ever read; cover thumbnails are cached in the app's cache folder
 (`~/Library/Caches/dev.magnitide.app` on macOS).
 
 Keys: `/` or ⌘F search · ⌘, settings · ⌘1 covers, ⌘2 list · arrows move · ⌘-click / Shift-click / ⌘A select several · Enter opens details · ⌘E edits · double-click or ⌘O opens the book in its default app · Esc closes.
-In the details panel, click a format to open that specific file.
+In the details panel, click a format to open that specific file, or its × to remove that format (the file goes to the Trash).
 Search accepts `author:`, `tag:`, `series:`, `title:`, `#custom:`, quotes and `-` to exclude.
 
 ## Development
@@ -95,6 +95,7 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] File transfer: send selected books to a device (the format it reads best; EPUBs get the library's metadata, cover and id written into the copy), remove them (with KOReader's notes), and add a device's other files to the library
 - [x] Format conversion: "Convert…" in the details panel and selection bar adds the new format to the book. EPUB → KEPUB (Kobo spans, like kepubify) and EPUB → AZW3 are built in; MOBI, PDF and others use calibre's `ebook-convert` when installed (detected, never bundled). Sending converts on the way when a device's default format is missing, or when a Kindle gets an EPUB-only book
 - [x] Send asks which format when a book has several the device reads; Settings → Devices sets a default per kind of device
+- [ ] Kindle covers: write cover thumbnails on send and restore the ones the Kindle deletes once online (calibre's workaround)
 - [x] Multi-select (⌘-click, Shift-click, ⌘A) with a selection bar; "Merge…" for two records of the same book
 - [x] Bulk editing (⌘E with several books selected): fields show what the books share or "Mixed", only changed fields are saved; add/remove tags, series numbering in list order; "Edit One by One" steps through the selection with Previous/Next
 - [x] Omnibus editions and several series per book: an "Omnibus" tick turns the number into a range ("Books 1–3"), "+ Another series" adds more, and "Collects" links an omnibus to the books it contains (shown both ways in the details panel). Magnitide-only; files and e-readers get the first series and number

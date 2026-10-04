@@ -164,6 +164,9 @@ export const api = {
 
   removeCover: (id: number) => invoke<void>('remove_cover', { id }),
 
+  /** Remove one format from a book; its file goes to the Trash. */
+  removeFormat: (id: number, format: string) => invoke<void>('remove_format', { id, format }),
+
   /** How many books "Tidy file names" would rename (changes nothing). */
   tidyPreview: () => invoke<TidyPreview>('tidy_preview'),
 
@@ -300,6 +303,9 @@ export const fileManagerName = /Mac/.test(navigator.userAgent)
   : /Windows/.test(navigator.userAgent)
     ? 'File Explorer'
     : 'Files';
+
+/** Where deleted files go on this platform. */
+export const trashName = /Windows/.test(navigator.userAgent) ? 'Recycle Bin' : 'Trash';
 
 /**
  * The macOS menu bar's "Settings… ⌘," item. Event name matches
