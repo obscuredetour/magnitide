@@ -75,13 +75,21 @@ export function CoverGrid(props: Props) {
     return rows ? PAD * 2 + rows * rowH - GAP_Y : 0;
   };
 
-  // When the layout changes (cover size, window width), keep the row that was
-  // at the top of the viewport there, instead of jumping somewhere unrelated.
+  // When the layout changes (cover size, window or panel width), keep the
+  // selected cover where it was on screen if it was showing, else the row that
+  // was at the top, instead of jumping somewhere unrelated.
   createEffect(
     on(metrics, (m, prev) => {
       if (!prev || (prev.cols === m.cols && prev.rowH === m.rowH)) return;
-      const firstIndex = Math.max(0, Math.floor((el.scrollTop - PAD) / prev.rowH)) * prev.cols;
-      el.scrollTop = Math.floor(firstIndex / m.cols) * m.rowH;
+      const rowTop = (index: number, g: { cols: number; rowH: number }) => PAD + Math.floor(index / g.cols) * g.rowH;
+      const selected = props.items.findIndex((it) => it.id === props.selectedId);
+      const before = selected >= 0 ? rowTop(selected, prev) - el.scrollTop : -1;
+      if (selected >= 0 && before >= 0 && before + prev.rowH - GAP_Y <= el.clientHeight) {
+        el.scrollTop = rowTop(selected, m) - before;
+      } else {
+        const firstIndex = Math.max(0, Math.floor((el.scrollTop - PAD) / prev.rowH)) * prev.cols;
+        el.scrollTop = Math.floor(firstIndex / m.cols) * m.rowH;
+      }
       setScrollTop(el.scrollTop);
     }),
   );
