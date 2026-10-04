@@ -56,51 +56,7 @@ pub fn read(path: &Path, format: &str) -> BookMetadata {
     meta
 }
 
-/// ISO 639-1 codes and the ISO 639-2 codes calibre (and Magnitide) store.
-const LANGUAGES: &[(&str, &str)] = &[
-    ("en", "eng"),
-    ("de", "deu"),
-    ("fr", "fra"),
-    ("es", "spa"),
-    ("it", "ita"),
-    ("nl", "nld"),
-    ("pt", "por"),
-    ("ru", "rus"),
-    ("ja", "jpn"),
-    ("zh", "zho"),
-    ("ko", "kor"),
-    ("sv", "swe"),
-    ("no", "nor"),
-    ("nb", "nor"),
-    ("da", "dan"),
-    ("fi", "fin"),
-    ("pl", "pol"),
-    ("cs", "ces"),
-    ("tr", "tur"),
-    ("el", "ell"),
-    ("he", "heb"),
-    ("ar", "ara"),
-    ("hi", "hin"),
-    ("uk", "ukr"),
-    ("hu", "hun"),
-    ("ro", "ron"),
-    ("ca", "cat"),
-    ("la", "lat"),
-];
-
-/// ISO 639-1 ("en", "en-GB") to the ISO 639-2 codes calibre uses ("eng").
-/// Already three-letter codes pass through; unknown ones are kept as given.
-pub fn language_code(code: &str) -> String {
-    let base = code.trim().split(['-', '_']).next().unwrap_or("").to_ascii_lowercase();
-    LANGUAGES.iter().find(|(two, _)| *two == base).map_or(base, |(_, three)| (*three).to_owned())
-}
-
-/// The reverse, for writing into files: EPUB wants BCP 47 tags, which use the
-/// two-letter code where one exists ("eng" → "en").
-pub fn language_tag(code: &str) -> String {
-    let code = code.trim().to_ascii_lowercase();
-    LANGUAGES.iter().find(|(_, three)| *three == code).map_or(code, |(two, _)| (*two).to_owned())
-}
+pub use magnitide_catalog::languages::{language_code, language_tag};
 
 /// "2021", "2021-11", "2021-11-23", "2021-11-23T07:00:00Z" → a date.
 pub fn parse_date(s: &str) -> Option<NaiveDate> {
@@ -117,17 +73,6 @@ pub fn parse_date(s: &str) -> Option<NaiveDate> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn maps_language_codes() {
-        assert_eq!(language_code("en-GB"), "eng");
-        assert_eq!(language_code("de"), "deu");
-        assert_eq!(language_code("eng"), "eng");
-        assert_eq!(language_code("tlh"), "tlh");
-        assert_eq!(language_tag("eng"), "en");
-        assert_eq!(language_tag("nor"), "no");
-        assert_eq!(language_tag("tlh"), "tlh");
-    }
 
     #[test]
     fn parses_partial_dates() {

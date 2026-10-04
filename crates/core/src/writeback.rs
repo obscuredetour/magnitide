@@ -164,19 +164,19 @@ impl Library {
         }
         let matches = epub::read(&t.path).is_some_and(|file| same_metadata(&file, &wanted.meta));
         if matches && !t.fresh {
-            self.conn.execute("UPDATE files SET metadata_written_at = ? WHERE id = ?", rusqlite::params![
-                now(),
-                t.file_id
-            ])?;
+            self.conn.execute(
+                "UPDATE files SET metadata_written_at = ? WHERE id = ?",
+                rusqlite::params![now(), t.file_id],
+            )?;
         }
         Ok(matches)
     }
 
     /// Books with at least one writable file.
     fn writable_books(&self) -> Result<Vec<BookId>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT DISTINCT book_id FROM files WHERE format IN ('EPUB', 'KEPUB') ORDER BY book_id",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT DISTINCT book_id FROM files WHERE format IN ('EPUB', 'KEPUB') ORDER BY book_id")?;
         let rows = stmt.query_map([], |r| r.get(0))?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
