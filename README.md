@@ -31,7 +31,7 @@ Click the library name in the top-left to open a different one. The library
 is only ever read; cover thumbnails are cached in the app's cache folder
 (`~/Library/Caches/dev.magnitide.app` on macOS).
 
-Keys: `/` or ⌘F search · ⌘1 covers, ⌘2 list · arrows move · Enter opens details · double-click or ⌘O opens the book in its default app · Esc closes.
+Keys: `/` or ⌘F search · ⌘, settings · ⌘1 covers, ⌘2 list · arrows move · Enter opens details · double-click or ⌘O opens the book in its default app · Esc closes.
 In the details panel, click a format to open that specific file.
 Search accepts `author:`, `tag:`, `series:`, `title:`, `#custom:`, quotes and `-` to exclude.
 
@@ -61,7 +61,7 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Cover grid, search, sort, details panel, open in default app
 - [x] Solid + TypeScript UI with types generated from Rust
 - [x] Toolbar (library menu, cover size, theme picker) and table view (sortable, resizable, choosable columns)
-- [ ] Settings panel (⌘,) gathering the per-device preferences: theme, cover size, view, table columns, UI scale
+- [x] Settings panel (⌘,): appearance, library, list columns, thumbnail cache, about
 - [ ] Drag and drop to add books (needs the write path: calibre's SQL functions, schema upgrades)
 - [ ] Metadata editing
 - [ ] Accessibility scaling: ⌘+ / ⌘− / ⌘0 zoom the whole UI (remembered), respecting the OS text size where available

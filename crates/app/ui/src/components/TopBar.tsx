@@ -57,6 +57,7 @@ type Props = {
   searchRef?: (el: HTMLInputElement) => void;
   /** Leave the search box (Esc on empty, Enter, ↓). */
   onLeaveSearch(): void;
+  onOpenSettings(): void;
 };
 
 export function TopBar(props: Props) {
@@ -146,6 +147,20 @@ export function TopBar(props: Props) {
           </svg>
         </button>
         <ThemeMenu />
+        <button
+          class="grid size-8 place-items-center rounded-lg text-muted hover:bg-line hover:text-fg"
+          title="Settings (⌘,)"
+          aria-label="Settings"
+          onClick={() => props.onOpenSettings()}
+        >
+          <svg class="size-[17px] fill-none stroke-current stroke-[1.5]" viewBox="0 0 20 20" aria-hidden="true">
+            <circle cx="10" cy="10" r="2.6" />
+            <path
+              d="M10 2.5v2.1M10 15.4v2.1M17.5 10h-2.1M4.6 10H2.5M15.3 4.7l-1.5 1.5M6.2 13.8l-1.5 1.5M15.3 15.3l-1.5-1.5M6.2 6.2 4.7 4.7"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
       </div>
     </header>
   );

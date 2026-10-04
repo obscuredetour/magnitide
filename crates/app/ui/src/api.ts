@@ -7,11 +7,12 @@ import { open } from '@tauri-apps/plugin-dialog';
 
 import type { BookDetails } from './bindings/BookDetails';
 import type { BookRow } from './bindings/BookRow';
+import type { CacheInfo } from './bindings/CacheInfo';
 import type { LibraryInfo } from './bindings/LibraryInfo';
 import type { SortDir } from './bindings/SortDir';
 import type { SortKey } from './bindings/SortKey';
 
-export type { BookDetails, BookRow, LibraryInfo, SortDir, SortKey };
+export type { BookDetails, BookRow, CacheInfo, LibraryInfo, SortDir, SortKey };
 export type { FormatInfo } from './bindings/FormatInfo';
 
 export const api = {
@@ -30,6 +31,11 @@ export const api = {
   revealBook: (id: number) => invoke<void>('reveal_book', { id }),
 
   showLibraryFolder: () => invoke<void>('show_library_folder'),
+
+  /** Size of the cover thumbnail cache (all libraries). */
+  thumbnailCacheInfo: () => invoke<CacheInfo>('thumbnail_cache_info'),
+
+  clearThumbnailCache: () => invoke<void>('clear_thumbnail_cache'),
 
   /** Native folder picker; null when cancelled. */
   async chooseLibraryFolder(): Promise<string | null> {

@@ -15,12 +15,14 @@ import { createEffect, For, Index, on, onMount, Show } from 'solid-js';
 
 import type { BookRow, SortKey } from '../api';
 import { sort, sortDir, toggleSort } from '../library';
-import { columnSizing, columnVisibility, setColumnSizing, setColumnVisibility } from '../view';
+import { columnSizing, effectiveColumnVisibility, setColumnSizing, setColumnVisibility } from '../view';
 import { Cover } from './Cover';
 import { Menu, MenuItem, MenuLabel } from './Menu';
 import type { ViewHandle } from './CoverGrid';
 
 const ROW_H = 40;
+/** Always shown: every row needs a title. */
+const LOCKED_COLUMN = 'title';
 
 // Sorting happens in Rust (so the grid and table agree), not in TanStack;
 // TanStack handles column sizing, resizing and visibility.
@@ -145,9 +147,6 @@ const columns: ColumnDef<typeof features, BookRow, any>[] = [
   }),
 ];
 
-/** Shown until the user changes it; everything else is one click away. */
-const DEFAULT_HIDDEN: Record<string, boolean> = { publisher: false, tags: false, size: false };
-
 const meta = (h: { column: { columnDef: { meta?: unknown } } }) => h.column.columnDef.meta as Meta;
 const apply = <T,>(updater: Updater<T>, prev: T): T =>
   typeof updater === 'function' ? (updater as (old: T) => T)(prev) : updater;
@@ -165,8 +164,6 @@ type Props = {
 export function BookTable(props: Props) {
   let scroller!: HTMLDivElement;
 
-  const visibility = () => ({ ...DEFAULT_HIDDEN, ...columnVisibility() });
-
   const table = createTable({
     features,
     columns,
@@ -180,11 +177,11 @@ export function BookTable(props: Props) {
         return columnSizing();
       },
       get columnVisibility() {
-        return visibility();
+        return effectiveColumnVisibility();
       },
     },
     onColumnSizingChange: (u) => setColumnSizing(apply(u, columnSizing())),
-    onColumnVisibilityChange: (u) => setColumnVisibility(apply(u, visibility())),
+    onColumnVisibilityChange: (u) => setColumnVisibility(apply(u, effectiveColumnVisibility())),
   });
 
   const virtualizer = createVirtualizer({
@@ -351,7 +348,7 @@ function ColumnPicker(props: { table: ReturnType<typeof createTable<typeof featu
             checkbox
             keepOpen
             checked={column.getIsVisible()}
-            disabled={column.id === 'title'}
+            disabled={column.id === LOCKED_COLUMN}
             onSelect={() => column.toggleVisibility()}
           >
             {(column.columnDef.meta as Meta).label}
@@ -361,3 +358,9 @@ function ColumnPicker(props: { table: ReturnType<typeof createTable<typeof featu
     </Menu>
   );
 }
+
+/** Table columns for the settings panel: id, label, and whether it can be hidden. */
+export const TABLE_COLUMNS = columns.map((c) => {
+  const id = c.id ?? ('accessorKey' in c ? String(c.accessorKey) : '');
+  return { id, label: (c.meta as Meta).label, locked: id === LOCKED_COLUMN };
+});

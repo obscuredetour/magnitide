@@ -55,6 +55,13 @@ function loadRecent(): RecentLibrary[] {
 /** Most recent first, including the open library. */
 export const [recentLibraries, setRecentLibraries] = createSignal<RecentLibrary[]>(loadRecent());
 
+/** Remove a library from the Recent list (doesn't touch the library itself). */
+export function forgetRecentLibrary(path: string): void {
+  const next = recentLibraries().filter((r) => r.path !== path);
+  setRecentLibraries(next);
+  storage.set('recentLibraries', JSON.stringify(next));
+}
+
 function rememberLibrary(info: LibraryInfo): void {
   const next = [{ path: info.path, name: info.name }, ...recentLibraries().filter((r) => r.path !== info.path)].slice(
     0,
