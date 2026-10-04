@@ -329,6 +329,23 @@ mod tests {
     }
 
     #[test]
+    fn reads_mobi_and_azw3_metadata_and_covers() {
+        let (_tmp, mut lib, drop) = setup();
+        let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+        fs::copy(fixtures.join("test.mobi"), drop.join("whatever.mobi")).unwrap();
+        let r = add_files(&mut lib, &[drop.join("whatever.mobi")], |_| {}).unwrap();
+        let b = lib.book(r.added[0]).unwrap();
+        assert_eq!(b.title, "Test Book: A Story");
+        assert_eq!(b.authors, ["Ursula K. Le Guin", "Second Author"]);
+        assert_eq!(b.identifiers.get("isbn").map(String::as_str), Some("9780061054884"));
+        assert!(b.cover_file.is_some(), "cover taken from the MOBI");
+        // The same book as AZW3 joins it.
+        fs::copy(fixtures.join("test.azw3"), drop.join("other name.azw3")).unwrap();
+        let r = add_files(&mut lib, &[drop.join("other name.azw3")], |_| {}).unwrap();
+        assert_eq!(r.formats_added_to, [b.id]);
+    }
+
+    #[test]
     fn a_broken_epub_falls_back_to_its_file_name() {
         let (_tmp, mut lib, drop) = setup();
         let file = drop.join("Broken Book - Some Author.epub");

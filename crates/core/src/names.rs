@@ -40,6 +40,21 @@ pub fn author_sort(name: &str) -> String {
     }
 }
 
+/// "King, Stephen" → ("Stephen King", sort "King, Stephen"); None for names
+/// that aren't surname-first ("Stephen King", "Martin Luther King, Jr.",
+/// "Smith, Jones, and Co.").
+pub fn from_surname_first(name: &str) -> Option<(String, String)> {
+    let (surname, given) = name.trim().split_once(',')?;
+    let (surname, given) = (surname.trim(), given.trim());
+    let norm = given.trim_end_matches('.').to_ascii_lowercase();
+    let ok = !surname.is_empty()
+        && !given.is_empty()
+        && !given.contains(',')
+        && !SUFFIXES.contains(&norm.as_str())
+        && surname.split_whitespace().count() <= 3;
+    ok.then(|| (format!("{given} {surname}"), format!("{surname}, {given}")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -58,5 +73,17 @@ mod tests {
         assert_eq!(author_sort("Martin Luther King Jr."), "King, Martin Luther Jr.");
         assert_eq!(author_sort("Le Guin, Ursula K."), "Le Guin, Ursula K.");
         assert_eq!(author_sort("Plato"), "Plato");
+    }
+
+    #[test]
+    fn turns_surname_first_names_around() {
+        assert_eq!(from_surname_first("King, Stephen"), Some(("Stephen King".into(), "King, Stephen".into())));
+        assert_eq!(
+            from_surname_first("Le Guin, Ursula K."),
+            Some(("Ursula K. Le Guin".into(), "Le Guin, Ursula K.".into()))
+        );
+        assert_eq!(from_surname_first("Stephen King"), None);
+        assert_eq!(from_surname_first("Martin Luther King, Jr."), None);
+        assert_eq!(from_surname_first("Smith, Jones, and Co."), None);
     }
 }
