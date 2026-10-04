@@ -11,6 +11,8 @@
     "lint": "tsc --noEmit && prettier --check src"
   },
   "dependencies": {
+    "@tanstack/solid-table": "^9.2.4",
+    "@tanstack/solid-virtual": "^3.13.40",
     "@tauri-apps/api": "^2.12.1",
     "@tauri-apps/plugin-dialog": "^2.8.1",
     "solid-js": "^1.9.15"

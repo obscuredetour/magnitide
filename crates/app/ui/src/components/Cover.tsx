@@ -8,6 +8,8 @@ type Props = {
   authors: string;
   hasCover: boolean;
   size: CoverSize;
+  /** Tiny rendering (e.g. table rows): the generated cover shows colour only. */
+  compact?: boolean;
 };
 
 /**
@@ -38,13 +40,15 @@ export function Cover(props: Props) {
           class="absolute inset-0 flex flex-col justify-between px-[12%] py-[14%] text-white/95 cover-placeholder"
           style={{ '--hue': String((props.id * 47) % 360) }}
         >
-          <div
-            class="line-clamp-5 font-serif leading-[1.2] font-semibold [overflow-wrap:anywhere]"
-            classList={{ 'text-[15px]': props.size === 'thumb', 'text-xl': props.size === 'full' }}
-          >
-            {props.title}
-          </div>
-          <div class="text-[11px] opacity-80">{props.authors}</div>
+          <Show when={!props.compact}>
+            <div
+              class="line-clamp-5 font-serif leading-[1.2] font-semibold [overflow-wrap:anywhere]"
+              classList={{ 'text-[15px]': props.size === 'thumb', 'text-xl': props.size === 'full' }}
+            >
+              {props.title}
+            </div>
+            <div class="text-[11px] opacity-80">{props.authors}</div>
+          </Show>
         </div>
       }
     >

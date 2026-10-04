@@ -2215,6 +2215,7 @@ dependencies = [
  "ammonia",
  "anyhow",
  "calibre-compat",
+ "chrono",
  "image",
  "open",
  "serde",

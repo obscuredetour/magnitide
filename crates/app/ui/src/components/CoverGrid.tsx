@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js';
 
-import type { GridItem } from '../api';
+import type { BookRow } from '../api';
 import { Cover } from './Cover';
 
 // Layout constants (CSS px).
@@ -10,23 +10,26 @@ const GAP_Y = 28;
 const TEXT_H = 38; // title + author lines under the cover
 const OVERSCAN = 3; // rows rendered above/below the viewport
 
-export type GridHandle = {
+/** What the app needs from either view (grid or table) for keyboard navigation. */
+export type ViewHandle = {
   /** Scroll so the item is fully visible. */
   reveal(id: number): void;
-  /** Columns in the current layout, for arrow-key navigation. */
+  /** Items per row, so ↑/↓ can move by a whole row. */
   columns(): number;
+  /** Whether ←/→ move between items (grid) or do nothing (table). */
+  horizontal: boolean;
   focus(): void;
 };
 
 type Props = {
-  items: GridItem[];
+  items: BookRow[];
   /** Target cover width (CSS px); tiles stretch to fill each row. */
   tileSize: number;
   selectedId: number | null;
   emptyMessage: string;
   onSelect(id: number): void;
   onOpen(id: number): void;
-  ref?: (handle: GridHandle) => void;
+  ref?: (handle: ViewHandle) => void;
 };
 
 /**
@@ -106,6 +109,7 @@ export function CoverGrid(props: Props) {
         else if (rowBottom > el.scrollTop + el.clientHeight - 8) el.scrollTop = rowBottom - el.clientHeight + 8;
       },
       columns: () => metrics().cols,
+      horizontal: true,
       focus: () => el.focus(),
     });
   });

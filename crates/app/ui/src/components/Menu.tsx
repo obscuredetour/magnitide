@@ -138,6 +138,10 @@ type ItemProps = ParentProps<{
   onSelect(): void;
   /** Makes this a radio item (with a check mark when true). */
   checked?: boolean;
+  /** With `checked`: an independent on/off item rather than one of a set. */
+  checkbox?: boolean;
+  /** Leave the menu open after selecting, e.g. to toggle several checkboxes. */
+  keepOpen?: boolean;
   disabled?: boolean;
   title?: string;
 }>;
@@ -147,14 +151,14 @@ export function MenuItem(props: ItemProps) {
   const isRadio = () => props.checked !== undefined;
   return (
     <button
-      role={isRadio() ? 'menuitemradio' : 'menuitem'}
+      role={isRadio() ? (props.checkbox ? 'menuitemcheckbox' : 'menuitemradio') : 'menuitem'}
       aria-checked={isRadio() ? props.checked : undefined}
       disabled={props.disabled}
       title={props.title}
       tabIndex={-1}
       class="flex w-full cursor-default items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left outline-none hover:bg-accent/15 focus:bg-accent/15 disabled:opacity-45 disabled:hover:bg-transparent"
       onClick={() => {
-        menu?.close();
+        if (!props.keepOpen) menu?.close();
         props.onSelect();
       }}
     >

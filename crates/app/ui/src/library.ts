@@ -3,18 +3,29 @@
 
 import { batch, createSignal } from 'solid-js';
 
-import { api, errorMessage, type GridItem, type LibraryInfo, type SortKey } from './api';
+import { api, type BookRow, errorMessage, type LibraryInfo, type SortDir, type SortKey } from './api';
 import { storage } from './storage';
 import { toast } from './toast';
 
-const SORT_KEYS: readonly SortKey[] = ['title', 'author', 'added', 'published', 'series', 'rating'];
-const isSortKey = (s: string | null): s is SortKey => SORT_KEYS.includes(s as SortKey);
+/** Each key's default direction. Mirrors `SortKey::natural_dir` in Rust. */
+export const NATURAL_DIR: Record<SortKey, SortDir> = {
+  title: 'asc',
+  author: 'asc',
+  series: 'asc',
+  publisher: 'asc',
+  rating: 'desc',
+  added: 'desc',
+  published: 'desc',
+  size: 'desc',
+};
+const isSortKey = (s: string | null): s is SortKey => s !== null && s in NATURAL_DIR;
+const isSortDir = (s: string | null): s is SortDir => s === 'asc' || s === 'desc';
 
 export type Status = { kind: 'loading' } | { kind: 'ready' } | { kind: 'no-library'; message: string };
 
 export const [status, setStatus] = createSignal<Status>({ kind: 'loading' });
 export const [library, setLibrary] = createSignal<LibraryInfo | null>(null);
-export const [items, setItems] = createSignal<GridItem[]>([]);
+export const [items, setItems] = createSignal<BookRow[]>([]);
 export const [query, setQuery] = createSignal('');
 export const [queryError, setQueryError] = createSignal<string | null>(null);
 export const [selectedId, setSelectedId] = createSignal<number | null>(null);
@@ -22,6 +33,10 @@ export const [detailsOpen, setDetailsOpen] = createSignal(false);
 
 const storedSort = storage.get('sort');
 export const [sort, setSortSignal] = createSignal<SortKey>(isSortKey(storedSort) ? storedSort : 'title');
+const storedDir = storage.get('sortDir');
+export const [sortDir, setSortDirSignal] = createSignal<SortDir>(
+  isSortDir(storedDir) ? storedDir : NATURAL_DIR[sort()],
+);
 
 export type RecentLibrary = { path: string; name: string };
 const MAX_RECENT = 6;
@@ -55,7 +70,7 @@ let refreshSeq = 0;
 export async function refresh(): Promise<void> {
   const seq = ++refreshSeq;
   try {
-    const result = await api.listBooks(query(), sort());
+    const result = await api.listBooks(query(), sort(), sortDir());
     if (seq !== refreshSeq) return;
     batch(() => {
       setItems(result);
@@ -66,10 +81,21 @@ export async function refresh(): Promise<void> {
   }
 }
 
-export function setSort(key: SortKey): void {
-  setSortSignal(key);
+/** Sort by `key`; without `dir`, in that key's natural direction. */
+export function setSort(key: SortKey, dir: SortDir = NATURAL_DIR[key]): void {
+  batch(() => {
+    setSortSignal(key);
+    setSortDirSignal(dir);
+  });
   storage.set('sort', key);
+  storage.set('sortDir', dir);
   void refresh();
+}
+
+/** Table header click: same column flips direction, a new column starts natural. */
+export function toggleSort(key: SortKey): void {
+  if (key === sort()) setSort(key, sortDir() === 'asc' ? 'desc' : 'asc');
+  else setSort(key);
 }
 
 export function search(text: string): void {

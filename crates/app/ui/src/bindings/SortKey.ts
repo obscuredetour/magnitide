@@ -6,4 +6,4 @@
  * Text keys compare case-insensitively. calibre uses ICU collation, so
  * accented and non-Latin titles may order slightly differently.
  */
-export type SortKey = "title" | "author" | "added" | "published" | "rating" | "series";
+export type SortKey = "title" | "author" | "series" | "rating" | "added" | "published" | "publisher" | "size";
