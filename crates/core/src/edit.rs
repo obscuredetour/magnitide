@@ -28,6 +28,10 @@ pub struct BookEdit {
     pub title_sort: String,
     /// In display order; empty means "Unknown".
     pub authors: Vec<String>,
+    /// Sort names to set, by author name ("Le Guin, Ursula K."); an empty
+    /// value goes back to the automatic one. An author's sort name is shared
+    /// by all their books. Authors not listed keep theirs.
+    pub author_sorts: BTreeMap<String, String>,
     pub series: Option<String>,
     pub series_index: f64,
     pub publisher: Option<String>,
@@ -62,6 +66,7 @@ impl Library {
             title: b.title,
             title_sort: b.title_sort,
             authors: b.authors,
+            author_sorts: BTreeMap::new(),
             series_index: b.series.as_ref().map_or(1.0, |s| s.1),
             series: b.series.map(|s| s.0),
             publisher: b.publisher,
@@ -120,11 +125,44 @@ impl Library {
     }
 }
 
+/// How an author sorts, for the edit form.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct AuthorSort {
+    pub name: String,
+    /// What they sort as now: their saved sort name, or the automatic one
+    /// for a new author.
+    pub sort: String,
+    /// The automatic sort name ("Le Guin, Ursula K." → "Guin, Ursula K. Le").
+    pub automatic: String,
+}
+
+impl Library {
+    /// How each named author sorts (known authors by their saved sort name).
+    pub fn author_sorts(&self, names_: &[String]) -> Result<Vec<AuthorSort>> {
+        let mut stmt = self.conn.prepare_cached("SELECT sort_name FROM authors WHERE name = ?")?;
+        names_
+            .iter()
+            .map(|n| n.trim())
+            .filter(|n| !n.is_empty())
+            .map(|name| {
+                let automatic = names::author_sort(name);
+                let saved: Option<String> =
+                    rusqlite::OptionalExtension::optional(stmt.query_row([name], |r| r.get(0)))?;
+                Ok(AuthorSort { name: name.to_owned(), sort: saved.unwrap_or_else(|| automatic.clone()), automatic })
+            })
+            .collect()
+    }
+}
+
 /// A [`BookEdit`] validated and normalized.
 struct Clean {
     title: String,
     title_sort: String,
     authors: Vec<String>,
+    /// Name → sort name to save (already resolved from "automatic").
+    author_sorts: BTreeMap<String, String>,
     series: Option<(String, f64)>,
     publisher: Option<String>,
     published: Option<NaiveDate>,
@@ -175,9 +213,23 @@ impl Clean {
             "" => names::title_sort(&title),
             s => s.to_owned(),
         };
+        let author_sorts = e
+            .author_sorts
+            .iter()
+            .map(|(name, sort)| {
+                let name = name.trim().to_owned();
+                let sort = match sort.trim() {
+                    "" => names::author_sort(&name),
+                    s => s.to_owned(),
+                };
+                (name, sort)
+            })
+            .filter(|(name, _)| !name.is_empty())
+            .collect();
         Ok(Self {
             title_sort,
             title,
+            author_sorts,
             authors,
             series: trimmed(&e.series).map(|s| (s, e.series_index)),
             publisher: trimmed(&e.publisher),
@@ -218,7 +270,12 @@ fn write_metadata(tx: &Transaction<'_>, id: BookId, c: &Clean) -> Result<()> {
 
     tx.execute("DELETE FROM book_authors WHERE book_id = ?", [id])?;
     for (pos, name) in (0_i64..).zip(&c.authors) {
-        let author = author_id(tx, name, None)?;
+        let sort = c.author_sorts.get(name).map(String::as_str);
+        let author = author_id(tx, name, sort)?;
+        if let Some(sort) = sort {
+            // An existing author keeps their row; their sort name changes everywhere.
+            tx.execute("UPDATE authors SET sort_name = ? WHERE id = ?", params![sort, author])?;
+        }
         tx.execute(
             "INSERT INTO book_authors (book_id, author_id, position) VALUES (?, ?, ?)",
             params![id, author, pos],
@@ -409,6 +466,38 @@ mod tests {
         let cat = lib.load_catalog().unwrap();
         let b = cat.get(id).unwrap();
         b.format_path(lib.root(), &b.formats[0])
+    }
+
+    #[test]
+    fn author_sort_names_can_be_overridden_and_reset() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut lib = Library::create(tmp.path().join("lib"), "Test").unwrap();
+        let src = tmp.path().join("The Dispossessed - Ursula K. Le Guin.epub");
+        fs::write(&src, "x").unwrap();
+        let id = crate::import::add_files(&mut lib, &[src], |_| {}).unwrap().added[0];
+        let names_ = |v: &[&str]| v.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+
+        let sorts = lib.author_sorts(&names_(&["Ursula K. Le Guin", "New Person", " "])).unwrap();
+        assert_eq!(sorts.len(), 2);
+        assert_eq!((sorts[0].sort.as_str(), sorts[0].automatic.as_str()), ("Guin, Ursula K. Le", "Guin, Ursula K. Le"));
+        assert_eq!(sorts[1].sort, "Person, New");
+
+        let mut edit = lib.book_edit(id).unwrap();
+        edit.author_sorts.insert("Ursula K. Le Guin".into(), " Le Guin, Ursula K. ".into());
+        lib.update_book(id, &edit).unwrap();
+        assert_eq!(lib.author_sorts(&names_(&["Ursula K. Le Guin"])).unwrap()[0].sort, "Le Guin, Ursula K.");
+        let cat = lib.load_catalog().unwrap();
+        assert_eq!(cat.get(id).unwrap().author_sort.as_deref(), Some("Le Guin, Ursula K."));
+
+        // A later edit that doesn't mention it keeps it; an empty value resets it.
+        let edit = lib.book_edit(id).unwrap();
+        assert!(edit.author_sorts.is_empty());
+        lib.update_book(id, &edit).unwrap();
+        assert_eq!(lib.author_sorts(&names_(&["Ursula K. Le Guin"])).unwrap()[0].sort, "Le Guin, Ursula K.");
+        let mut edit = lib.book_edit(id).unwrap();
+        edit.author_sorts.insert("Ursula K. Le Guin".into(), String::new());
+        lib.update_book(id, &edit).unwrap();
+        assert_eq!(lib.author_sorts(&names_(&["Ursula K. Le Guin"])).unwrap()[0].sort, "Guin, Ursula K. Le");
     }
 
     #[test]

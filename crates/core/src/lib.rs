@@ -21,7 +21,7 @@ pub mod paths;
 pub mod tidy;
 pub mod writeback;
 
-pub use edit::{BookEdit, EditOutcome};
+pub use edit::{AuthorSort, BookEdit, EditOutcome};
 pub use error::{Error, Result};
 pub use library::{Book, BookId, LOCAL_USER, Library, LibraryInfo, NewBook, UserId};
 pub use magnitide_catalog::Catalog;
