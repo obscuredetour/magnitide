@@ -665,13 +665,13 @@ function DeviceSettings() {
             {(c) =>
               c().calibre ? (
                 <>
-                  EPUB → KEPUB is built in; everything else uses calibre's converter at{' '}
+                  EPUB → KEPUB (Kobo) and EPUB → AZW3 (Kindle) are built in; everything else uses calibre's converter at{' '}
                   <span class="break-all">{c().calibre}</span>.
                 </>
               ) : (
                 <>
-                  EPUB → KEPUB is built in. Install calibre to also convert to AZW3 and MOBI (for Kindles), PDF and
-                  more; Magnitide finds it by itself.
+                  EPUB → KEPUB (Kobo) and EPUB → AZW3 (Kindle) are built in. Install calibre to also convert to MOBI,
+                  PDF and more, or from other formats; Magnitide finds it by itself.
                 </>
               )
             }
