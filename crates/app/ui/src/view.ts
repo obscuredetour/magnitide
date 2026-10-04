@@ -83,6 +83,29 @@ export function resetColumnSizing(): void {
   setColumnSizing({});
 }
 
+function storedOrder(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(storage.get('tableColumnOrder') ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Table column ids in display order; columns it doesn't name keep their default place after these. Empty: the default order. */
+const [columnOrder, setColumnOrderSignal] = createSignal<string[]>(storedOrder());
+export { columnOrder };
+
+export function setColumnOrder(order: string[]): void {
+  setColumnOrderSignal(order);
+  storage.set('tableColumnOrder', JSON.stringify(order));
+}
+
+/** Back to the default column order. */
+export function resetColumnOrder(): void {
+  setColumnOrder([]);
+}
+
 /** Alternating row colours in the list view; on unless turned off. */
 const [zebraRows, setZebraRowsSignal] = createSignal(storage.get('tableZebra') !== 'off');
 export { zebraRows };

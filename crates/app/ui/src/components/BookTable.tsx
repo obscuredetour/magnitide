@@ -2,6 +2,7 @@ import {
   type ColumnDef,
   columnResizingFeature,
   columnSizingFeature,
+  columnOrderingFeature,
   columnVisibilityFeature,
   createColumnHelper,
   createTable,
@@ -11,7 +12,7 @@ import {
   type Updater,
 } from '@tanstack/solid-table';
 import { createVirtualizer } from '@tanstack/solid-virtual';
-import { createEffect, For, Index, on, onMount, Show } from 'solid-js';
+import { createEffect, createSignal, For, Index, on, onMount, Show } from 'solid-js';
 import Check from 'lucide-solid/icons/check';
 import ChevronDown from 'lucide-solid/icons/chevron-down';
 import ChevronUp from 'lucide-solid/icons/chevron-up';
@@ -20,9 +21,18 @@ import Ellipsis from 'lucide-solid/icons/ellipsis';
 import type { BookRow, SortKey } from '../api';
 import { onDevice } from '../devices';
 import { sort, sortDir, toggleSort } from '../library';
-import { columnSizing, effectiveColumnVisibility, setColumnSizing, setColumnVisibility, zebraRows } from '../view';
+import {
+  columnOrder,
+  columnSizing,
+  effectiveColumnVisibility,
+  resetColumnOrder,
+  setColumnOrder,
+  setColumnSizing,
+  setColumnVisibility,
+  zebraRows,
+} from '../view';
 import { Cover } from './Cover';
-import { Menu, MenuItem, MenuLabel } from './Menu';
+import { Menu, MenuItem, MenuLabel, MenuSeparator } from './Menu';
 import type { ViewHandle } from './CoverGrid';
 import { Icon } from './Icon';
 
@@ -32,7 +42,12 @@ const LOCKED_COLUMN = 'title';
 
 // Sorting happens in Rust (so the grid and table agree), not in TanStack;
 // TanStack handles column sizing, resizing and visibility.
-const features = tableFeatures({ columnSizingFeature, columnResizingFeature, columnVisibilityFeature });
+const features = tableFeatures({
+  columnSizingFeature,
+  columnResizingFeature,
+  columnVisibilityFeature,
+  columnOrderingFeature,
+});
 
 type Meta = {
   /** The Rust sort key for this column; absent when it isn't sortable. */
@@ -221,10 +236,88 @@ export function BookTable(props: Props) {
       get columnVisibility() {
         return effectiveColumnVisibility();
       },
+      get columnOrder() {
+        return columnOrder();
+      },
     },
     onColumnSizingChange: (u) => setColumnSizing(apply(u, columnSizing())),
     onColumnVisibilityChange: (u) => setColumnVisibility(apply(u, effectiveColumnVisibility())),
+    onColumnOrderChange: (u) => setColumnOrder(apply(u, columnOrder())),
   });
+
+  // ---------- Reordering: drag a header sideways, or ⌥←/⌥→ on a focused one ----------
+  // Pointer events rather than HTML5 drag and drop, which the window's file
+  // drop (adding books) intercepts on some platforms.
+
+  let headerRow!: HTMLDivElement;
+  /** The header being dragged: its id, how far it's moved, and where it would land. */
+  const [drag, setDrag] = createSignal<{ id: string; dx: number; to: number; marker: number } | null>(null);
+  /** A drag ends in a click on the header; this keeps it from sorting. */
+  let suppressClick = false;
+
+  /** Move a visible column to position `to` among the visible ones; hidden columns keep their slots. */
+  function moveColumn(id: string, to: number): void {
+    const all = table.getAllLeafColumns().map((c) => c.id);
+    const visible = table.getVisibleLeafColumns().map((c) => c.id);
+    const from = visible.indexOf(id);
+    if (from < 0 || from === to) return;
+    const reordered = visible.filter((v) => v !== id);
+    reordered.splice(to, 0, id);
+    let next = 0;
+    setColumnOrder(all.map((c) => (visible.includes(c) ? reordered[next++]! : c)));
+  }
+
+  function startDrag(e: PointerEvent, id: string): void {
+    if (e.button !== 0) return;
+    const cells = [...headerRow.querySelectorAll<HTMLElement>('[role=columnheader]')].map((el) => ({
+      id: el.dataset.columnId!,
+      rect: el.getBoundingClientRect(),
+    }));
+    const self = cells.find((c) => c.id === id);
+    if (!self) return;
+    const others = cells.filter((c) => c.id !== id);
+    const rowLeft = headerRow.getBoundingClientRect().left;
+    const startX = e.clientX;
+    let started = false;
+    // On the window, so a quick drag that leaves the header still counts.
+    const move = (ev: PointerEvent) => {
+      const dx = ev.clientX - startX;
+      if (!started && Math.abs(dx) < 5) return;
+      started = true;
+      // It lands after every other column whose middle it has passed.
+      const centre = self.rect.left + self.rect.width / 2 + dx;
+      const to = others.filter((c) => c.rect.left + c.rect.width / 2 < centre).length;
+      const edge = to < others.length ? others[to]!.rect.left : others[others.length - 1]!.rect.right;
+      setDrag({ id, dx, to, marker: edge - rowLeft });
+    };
+    const end = () => {
+      removeEventListener('pointermove', move);
+      removeEventListener('pointerup', end);
+      removeEventListener('pointercancel', end);
+      const d = drag();
+      setDrag(null);
+      if (!started) return;
+      suppressClick = true;
+      setTimeout(() => (suppressClick = false));
+      if (d) moveColumn(d.id, d.to);
+    };
+    addEventListener('pointermove', move);
+    addEventListener('pointerup', end);
+    addEventListener('pointercancel', end);
+  }
+
+  function keyMove(e: KeyboardEvent, id: string): void {
+    if (!e.altKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const visible = table.getVisibleLeafColumns().map((c) => c.id);
+    const to = visible.indexOf(id) + (e.key === 'ArrowLeft' ? -1 : 1);
+    if (to < 0 || to >= visible.length) return;
+    moveColumn(id, to);
+    // Keep focus on the moved header (the cells are reused by position, and
+    // Solid has already updated them).
+    headerRow.querySelector<HTMLElement>(`[data-column-id="${id}"] button`)?.focus();
+  }
 
   const virtualizer = createVirtualizer({
     get count() {
@@ -269,12 +362,32 @@ export function BookTable(props: Props) {
       aria-rowcount={props.rows.length}
     >
       <div
+        ref={headerRow}
         class="sticky top-0 z-2 flex border-b border-line bg-bg/90 backdrop-blur"
         style={{ width: `${totalWidth()}px`, 'min-width': '100%' }}
         role="row"
       >
         {/* Index (not For): header objects are rebuilt on every resize, so reuse the DOM by position. */}
-        <Index each={table.getHeaderGroups()[0]?.headers}>{(h) => <HeaderCell header={h()} />}</Index>
+        <Index each={table.getHeaderGroups()[0]?.headers}>
+          {(h) => (
+            <HeaderCell
+              header={h()}
+              dragOffset={drag()?.id === h().column.id ? drag()!.dx : null}
+              onDragStart={(e) => startDrag(e, h().column.id)}
+              onKeyDown={(e) => keyMove(e, h().column.id)}
+              suppressClick={() => suppressClick}
+            />
+          )}
+        </Index>
+        {/* Where a dragged column would land. */}
+        <Show when={drag()}>
+          {(d) => (
+            <div
+              class="pointer-events-none absolute inset-y-1 z-3 w-0.5 -translate-x-1/2 rounded-chip bg-accent"
+              style={{ left: `${d().marker}px` }}
+            />
+          )}
+        </Show>
         <div class="sticky right-0 ml-auto flex items-center bg-[linear-gradient(to_right,transparent,var(--bg)_45%)] pr-2 pl-6">
           <ColumnPicker table={table} />
         </div>
@@ -333,24 +446,43 @@ export function BookTable(props: Props) {
   );
 }
 
-function HeaderCell(props: { header: Header<typeof features, BookRow, unknown> }) {
+function HeaderCell(props: {
+  header: Header<typeof features, BookRow, unknown>;
+  /** While this header is dragged: how far it has moved (px). */
+  dragOffset: number | null;
+  onDragStart(e: PointerEvent): void;
+  onKeyDown(e: KeyboardEvent): void;
+  suppressClick(): boolean;
+}) {
   const h = () => props.header;
   const key = () => meta(h()).sortKey;
   const active = () => key() !== undefined && key() === sort();
   return (
     <div
       role="columnheader"
+      data-column-id={h().column.id}
       aria-sort={active() ? (sortDir() === 'asc' ? 'ascending' : 'descending') : undefined}
       class="group/h relative flex h-8 flex-none items-center text-xs font-semibold text-muted"
-      style={{ width: `${h().getSize()}px` }}
+      classList={{ 'z-3 rounded-control bg-popover shadow-lift': props.dragOffset !== null }}
+      style={{
+        width: `${h().getSize()}px`,
+        transform: props.dragOffset !== null ? `translateX(${props.dragOffset}px)` : undefined,
+      }}
     >
+      {/* Every header can be dragged and moved; only some sort. */}
       <button
-        class="flex h-full w-full min-w-0 items-center gap-1 px-3 text-left enabled:hover:text-fg disabled:cursor-default"
-        classList={{ 'justify-end': meta(h()).align === 'end', 'text-fg': active() }}
-        disabled={key() === undefined}
+        class="flex h-full w-full min-w-0 cursor-default items-center gap-1 px-3 text-left"
+        classList={{
+          'justify-end': meta(h()).align === 'end',
+          'text-fg': active(),
+          'hover:text-fg': key() !== undefined,
+        }}
+        title={`${key() ? 'Click to sort; drag' : 'Drag'} to move (or ⌥← ⌥→)`}
+        onPointerDown={(e) => props.onDragStart(e)}
+        onKeyDown={(e) => props.onKeyDown(e)}
         onClick={() => {
           const k = key();
-          if (k) toggleSort(k);
+          if (k && !props.suppressClick()) toggleSort(k);
         }}
       >
         <span class="truncate">
@@ -383,6 +515,7 @@ function ColumnPicker(props: { table: ReturnType<typeof createTable<typeof featu
       button={<Icon of={Ellipsis} class="text-muted" />}
     >
       <MenuLabel>Columns</MenuLabel>
+      {/* In display order. */}
       <For each={props.table.getAllLeafColumns()}>
         {(column) => (
           <MenuItem
@@ -396,6 +529,10 @@ function ColumnPicker(props: { table: ReturnType<typeof createTable<typeof featu
           </MenuItem>
         )}
       </For>
+      <Show when={columnOrder().length}>
+        <MenuSeparator />
+        <MenuItem onSelect={() => resetColumnOrder()}>Reset Column Order</MenuItem>
+      </Show>
     </Menu>
   );
 }
