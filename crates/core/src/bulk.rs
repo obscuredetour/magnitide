@@ -151,7 +151,10 @@ impl Library {
                 e.series = Some(s.clone()).filter(|s| !s.trim().is_empty());
             }
             if let Some(start) = change.series_start {
-                e.series_index = start + i as f64;
+                let new = start + i as f64;
+                // An omnibus keeps its span: 1–3 renumbered from 4 becomes 4–6.
+                e.series_end = e.series_end.map(|end| new + (end - e.series_index));
+                e.series_index = new;
             }
             e.tags.retain(|t| !change.remove_tags.iter().any(|r| r.trim().eq_ignore_ascii_case(t.trim())));
             for t in &change.add_tags {

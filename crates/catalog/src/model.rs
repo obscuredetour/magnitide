@@ -17,6 +17,14 @@ pub struct Book {
     pub author_sort: Option<String>,
     pub series: Option<String>,
     pub series_index: f64,
+    /// Where an omnibus's range ends ("Books 1–3": index 1, end 3). Magnitide only.
+    pub series_end: Option<f64>,
+    /// Further series the book belongs to, after `series`. Magnitide only.
+    pub more_series: Vec<SeriesEntry>,
+    /// Books this omnibus contains, in order. Magnitide only.
+    pub collects: Vec<BookId>,
+    /// Omnibuses that contain this book.
+    pub collected_in: Vec<BookId>,
     pub tags: Vec<String>,
     pub publisher: Option<String>,
     /// calibre stores ratings as 0..=10 (half-stars). Divide by 2 for stars.
@@ -36,6 +44,32 @@ pub struct Book {
     pub formats: Vec<Format>,
     /// Keyed by lookup name including the '#', e.g. "#genre".
     pub custom: BTreeMap<String, CustomValue>,
+}
+
+/// A series a book belongs to, with its number (or range).
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct SeriesEntry {
+    pub name: String,
+    pub index: f64,
+    pub end: Option<f64>,
+}
+
+impl SeriesEntry {
+    /// "3", "2.5", "1–3".
+    pub fn number(&self) -> String {
+        format_number(self.index, self.end)
+    }
+}
+
+/// A series number or omnibus range for display: "3", "2.5", "1–3".
+pub fn format_number(index: f64, end: Option<f64>) -> String {
+    let n = |i: f64| if i.fract() == 0.0 { format!("{}", i as i64) } else { format!("{i}") };
+    match end {
+        Some(end) => format!("{}–{}", n(index), n(end)),
+        None => n(index),
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -88,7 +88,7 @@ impl Term {
             Some(Field::Title) => hit(&b.title),
             Some(Field::Authors) => any(&b.authors),
             Some(Field::Tags) => any(&b.tags),
-            Some(Field::Series) => opt(&b.series),
+            Some(Field::Series) => opt(&b.series) || b.more_series.iter().any(|s| hit(&s.name)),
             Some(Field::Publisher) => opt(&b.publisher),
             Some(Field::Languages) => any(&b.languages),
             Some(Field::Identifiers) => b.identifiers.iter().any(|(k, v)| hit(&format!("{k}:{v}"))),
@@ -100,6 +100,7 @@ impl Term {
                     || any(&b.authors)
                     || any(&b.tags)
                     || opt(&b.series)
+                    || b.more_series.iter().any(|s| hit(&s.name))
                     || opt(&b.publisher)
                     || b.identifiers.values().any(|v| hit(v))
                     || b.custom.values().any(|v| hit(&v.to_string()))

@@ -15,6 +15,8 @@ use rusqlite::{Connection, Transaction, params};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
+use magnitide_catalog::SeriesEntry;
+
 use crate::library::{BookId, LOCAL_USER, Library, author_id, now, publisher_id, series_id, tag_id};
 use crate::{html, images, names, paths};
 
@@ -34,6 +36,12 @@ pub struct BookEdit {
     pub author_sorts: BTreeMap<String, String>,
     pub series: Option<String>,
     pub series_index: f64,
+    /// Set for an omnibus: the range is `series_index`–`series_end`.
+    pub series_end: Option<f64>,
+    /// Further series, after the main one.
+    pub more_series: Vec<SeriesEntry>,
+    /// Books an omnibus contains, in order.
+    pub collects: Vec<BookId>,
     pub publisher: Option<String>,
     /// ISO date, "YYYY-MM-DD".
     pub published: Option<String>,
@@ -69,6 +77,9 @@ impl Library {
             author_sorts: BTreeMap::new(),
             series_index: b.series.as_ref().map_or(1.0, |s| s.1),
             series: b.series.map(|s| s.0),
+            series_end: b.series_end,
+            more_series: b.more_series,
+            collects: b.collects,
             publisher: b.publisher,
             published: b.published.map(|d| d.to_string()),
             rating: b.rating,
@@ -164,6 +175,9 @@ struct Clean {
     /// Name → sort name to save (already resolved from "automatic").
     author_sorts: BTreeMap<String, String>,
     series: Option<(String, f64)>,
+    series_end: Option<f64>,
+    more_series: Vec<SeriesEntry>,
+    collects: Vec<BookId>,
     publisher: Option<String>,
     published: Option<NaiveDate>,
     rating: Option<u8>,
@@ -209,6 +223,34 @@ impl Clean {
         if authors.is_empty() {
             authors.push("Unknown".into());
         }
+        let range_ok = |start: f64, end: Option<f64>| match end {
+            Some(end) if !end.is_finite() || end <= start => {
+                Err(Error::InvalidBook(format!("an omnibus range must end after it starts ({start}–{end})")))
+            }
+            _ => Ok(()),
+        };
+        let series = trimmed(&e.series);
+        let series_end = series.as_ref().and(e.series_end);
+        range_ok(e.series_index, series_end)?;
+        let mut more_series: Vec<SeriesEntry> = Vec::new();
+        for s in &e.more_series {
+            let name = s.name.trim();
+            let taken = |n: &str| n.eq_ignore_ascii_case(name);
+            if name.is_empty() || series.as_deref().is_some_and(taken) || more_series.iter().any(|m| taken(&m.name)) {
+                continue;
+            }
+            if !s.index.is_finite() || s.index < 0.0 {
+                return Err(Error::InvalidBook(format!("the number in “{name}” must be zero or more")));
+            }
+            range_ok(s.index, s.end)?;
+            more_series.push(SeriesEntry { name: name.to_owned(), index: s.index, end: s.end });
+        }
+        let mut collects: Vec<BookId> = Vec::new();
+        for id in &e.collects {
+            if !collects.contains(id) {
+                collects.push(*id);
+            }
+        }
         let title_sort = match e.title_sort.trim() {
             "" => names::title_sort(&title),
             s => s.to_owned(),
@@ -231,7 +273,10 @@ impl Clean {
             title,
             author_sorts,
             authors,
-            series: trimmed(&e.series).map(|s| (s, e.series_index)),
+            series: series.map(|s| (s, e.series_index)),
+            series_end,
+            more_series,
+            collects,
             publisher: trimmed(&e.publisher),
             published,
             rating: e.rating,
@@ -252,7 +297,7 @@ fn write_metadata(tx: &Transaction<'_>, id: BookId, c: &Clean) -> Result<()> {
     let series = c.series.as_ref().map(|(name, _)| series_id(tx, name)).transpose()?;
     let publisher = c.publisher.as_deref().map(|p| publisher_id(tx, p)).transpose()?;
     tx.execute(
-        "UPDATE books SET title = ?, title_sort = ?, series_id = ?, series_index = ?, publisher_id = ?,
+        "UPDATE books SET title = ?, title_sort = ?, series_id = ?, series_index = ?, series_end = ?, publisher_id = ?,
                           published = ?, description_html = ?, modified_at = ?
          WHERE id = ?",
         params![
@@ -260,6 +305,7 @@ fn write_metadata(tx: &Transaction<'_>, id: BookId, c: &Clean) -> Result<()> {
             c.title_sort,
             series,
             c.series.as_ref().map(|(_, i)| *i),
+            c.series_end,
             publisher,
             c.published.map(|d| d.to_string()),
             c.description,
@@ -279,6 +325,25 @@ fn write_metadata(tx: &Transaction<'_>, id: BookId, c: &Clean) -> Result<()> {
         tx.execute(
             "INSERT INTO book_authors (book_id, author_id, position) VALUES (?, ?, ?)",
             params![id, author, pos],
+        )?;
+    }
+    tx.execute("DELETE FROM book_more_series WHERE book_id = ?", [id])?;
+    for (pos, s) in (0_i64..).zip(&c.more_series) {
+        let sid = series_id(tx, &s.name)?;
+        tx.execute(
+            "INSERT INTO book_more_series (book_id, series_id, position, number, number_end) VALUES (?, ?, ?, ?, ?)",
+            params![id, sid, pos, s.index, s.end],
+        )?;
+    }
+    tx.execute("DELETE FROM book_collects WHERE omnibus_id = ?", [id])?;
+    for (pos, book) in (0_i64..).zip(c.collects.iter().filter(|b| **b != id)) {
+        let exists: bool = tx.query_row("SELECT count(*) FROM books WHERE id = ?", [book], |r| r.get::<_, i64>(0))? > 0;
+        if !exists {
+            return Err(Error::InvalidBook(format!("book {book}, which this one collects, isn't in the library")));
+        }
+        tx.execute(
+            "INSERT INTO book_collects (omnibus_id, book_id, position) VALUES (?, ?, ?)",
+            params![id, book, pos],
         )?;
     }
     tx.execute("DELETE FROM book_tags WHERE book_id = ?", [id])?;
@@ -301,12 +366,7 @@ fn write_metadata(tx: &Transaction<'_>, id: BookId, c: &Clean) -> Result<()> {
     )?;
 
     // Names no book uses any more.
-    tx.execute_batch(
-        "DELETE FROM authors WHERE id NOT IN (SELECT author_id FROM book_authors);
-         DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM book_tags);
-         DELETE FROM series WHERE id NOT IN (SELECT series_id FROM books WHERE series_id IS NOT NULL);
-         DELETE FROM publishers WHERE id NOT IN (SELECT publisher_id FROM books WHERE publisher_id IS NOT NULL);",
-    )?;
+    crate::library::prune_unused_names(tx)?;
     Ok(())
 }
 
@@ -466,6 +526,62 @@ mod tests {
         let cat = lib.load_catalog().unwrap();
         let b = cat.get(id).unwrap();
         b.format_path(lib.root(), &b.formats[0])
+    }
+
+    #[test]
+    fn omnibus_ranges_more_series_and_collects() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut lib = Library::create(tmp.path().join("lib"), "Test").unwrap();
+        let mut add = |name: &str| {
+            let src = tmp.path().join(format!("{name} - Philip Pullman.epub"));
+            fs::write(&src, name).unwrap();
+            crate::import::add_files(&mut lib, &[src], |_| {}).unwrap().added[0]
+        };
+        let (compass, knife, omnibus) = (add("The Golden Compass"), add("The Subtle Knife"), add("His Dark Materials"));
+        for (id, n) in [(compass, 1.0), (knife, 2.0)] {
+            let mut e = lib.book_edit(id).unwrap();
+            e.series = Some("His Dark Materials".into());
+            e.series_index = n;
+            lib.update_book(id, &e).unwrap();
+        }
+
+        let mut e = lib.book_edit(omnibus).unwrap();
+        e.series = Some("His Dark Materials".into());
+        e.series_index = 1.0;
+        e.series_end = Some(3.0);
+        e.more_series = vec![
+            SeriesEntry { name: "Omnibus Editions".into(), index: 12.0, end: None },
+            SeriesEntry { name: "his dark materials".into(), index: 9.0, end: None }, // same as the main one: dropped
+        ];
+        e.collects = vec![compass, knife, compass, omnibus];
+        lib.update_book(omnibus, &e).unwrap();
+
+        let back = lib.book_edit(omnibus).unwrap();
+        assert_eq!(back.series_end, Some(3.0));
+        assert_eq!(back.more_series, [SeriesEntry { name: "Omnibus Editions".into(), index: 12.0, end: None }]);
+        assert_eq!(back.collects, [compass, knife], "deduplicated, never itself");
+
+        let cat = lib.load_catalog().unwrap();
+        assert_eq!(cat.get(compass).unwrap().collected_in, [omnibus]);
+        assert_eq!(cat.get(omnibus).unwrap().collects, [compass, knife]);
+        // Sorted by series: the omnibus sits just before book 1.
+        let mut books: Vec<_> = cat.books.iter().collect();
+        magnitide_catalog::sort_books(&mut books, magnitide_catalog::SortKey::Series, magnitide_catalog::SortDir::Asc);
+        assert_eq!(books.iter().map(|b| b.id).collect::<Vec<_>>(), [omnibus, compass, knife]);
+        // Searchable by its other series.
+        let q = magnitide_catalog::Query::parse("series:omnibus").unwrap();
+        assert_eq!(cat.books.iter().filter(|b| q.matches(b)).count(), 1);
+
+        // A backwards range is refused.
+        let mut bad = lib.book_edit(omnibus).unwrap();
+        bad.series_end = Some(1.0);
+        assert!(lib.update_book(omnibus, &bad).is_err());
+        // No series, no range; and its extra series' name is still in use.
+        let mut e = lib.book_edit(omnibus).unwrap();
+        e.series = None;
+        lib.update_book(omnibus, &e).unwrap();
+        let back = lib.book_edit(omnibus).unwrap();
+        assert_eq!((back.series, back.series_end, back.more_series.len()), (None, None, 1));
     }
 
     #[test]

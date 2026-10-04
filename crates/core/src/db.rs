@@ -9,8 +9,11 @@ use crate::error::{Error, Result};
 
 /// Migrations in order. Migration `n` (1-based) moves the schema from
 /// version `n - 1` to `n`. Never edit a migration once released: add a new one.
-const MIGRATIONS: &[&str] =
-    &[include_str!("migrations/0001_initial.sql"), include_str!("migrations/0002_file_metadata_written.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("migrations/0001_initial.sql"),
+    include_str!("migrations/0002_file_metadata_written.sql"),
+    include_str!("migrations/0003_omnibus_series.sql"),
+];
 
 /// The schema version this build creates and understands.
 pub const SCHEMA_VERSION: u32 = MIGRATIONS.len() as u32;

@@ -2,7 +2,7 @@ import { createResource, createSignal, For, Show } from 'solid-js';
 
 import { api, type BookDetails, errorMessage, fileManagerName, type MatchedBy } from '../api';
 import { openEditor } from '../editor';
-import { editRevision, library, openBook, search } from '../library';
+import { editRevision, library, openBook, search, setSelectedId } from '../library';
 import { toast } from '../toast';
 import { devices, onDevice } from '../devices';
 import { removeFromDevice, sendToDevice } from '../transfer';
@@ -135,7 +135,26 @@ function Details(props: { book: BookDetails }) {
           )}
         </For>
       </p>
-      <Show when={b().series}>{(s) => <p class="mb-2.5 text-muted">{s()}</p>}</Show>
+      <Show when={b().series.length}>
+        <div class="mb-2.5 text-muted">
+          <For each={b().series}>{(s) => <p>{s}</p>}</For>
+        </div>
+      </Show>
+      <Show when={b().collectedIn.length}>
+        <p class="-mt-1 mb-2.5 text-xs text-muted">
+          Part of{' '}
+          <For each={b().collectedIn}>
+            {(o, i) => (
+              <>
+                {i() > 0 && ', '}
+                <button class="cursor-pointer text-accent hover:underline" onClick={() => setSelectedId(o.id)}>
+                  {o.title}
+                </button>
+              </>
+            )}
+          </For>
+        </p>
+      </Show>
       <Show when={stars()}>
         {(s) => (
           <div class="text-sm tracking-[1px] text-star" title={`${b().stars} of 5`}>
@@ -165,6 +184,21 @@ function Details(props: { book: BookDetails }) {
             )}
           </For>
         </div>
+      </Show>
+
+      <Show when={b().collects.length}>
+        <div class={sectionLabel}>Collects</div>
+        <ol class="mb-4 list-inside list-decimal space-y-0.5 text-sm">
+          <For each={b().collects}>
+            {(c) => (
+              <li>
+                <button class="cursor-pointer text-accent hover:underline" onClick={() => setSelectedId(c.id)}>
+                  {c.title}
+                </button>
+              </li>
+            )}
+          </For>
+        </ol>
       </Show>
 
       <Show when={b().formats.length}>

@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use chrono::{DateTime, NaiveDate, Utc};
-use magnitide_catalog::{Book, BookId, Catalog, CustomColumn, CustomValue, Datatype, Format};
+use magnitide_catalog::{Book, BookId, Catalog, CustomColumn, CustomValue, Datatype, Format, SeriesEntry};
 use rusqlite::{Connection, Row};
 
 use crate::error::Result;
@@ -21,7 +21,7 @@ impl Library {
         each_row(
             conn,
             "SELECT b.id, b.uuid, b.title, b.title_sort, s.name, b.series_index, p.name, b.published,
-                    b.description_html, b.path, b.cover_file, b.added_at, b.modified_at, ub.rating
+                    b.description_html, b.path, b.cover_file, b.added_at, b.modified_at, ub.rating, b.series_end
              FROM books b
              LEFT JOIN series s ON s.id = b.series_id
              LEFT JOIN publishers p ON p.id = b.publisher_id
@@ -36,6 +36,10 @@ impl Library {
                     sort: r.get(3)?,
                     series: r.get(4)?,
                     series_index: r.get::<_, Option<f64>>(5)?.unwrap_or(1.0),
+                    series_end: r.get(14)?,
+                    more_series: Vec::new(),
+                    collects: Vec::new(),
+                    collected_in: Vec::new(),
                     publisher: r.get(6)?,
                     pubdate: r.get::<_, Option<String>>(7)?.as_deref().and_then(date),
                     comments: r.get(8)?,
@@ -87,6 +91,26 @@ impl Library {
                 Ok(())
             },
         )?;
+        each_row(
+            conn,
+            "SELECT m.book_id, s.name, m.number, m.number_end FROM book_more_series m
+             JOIN series s ON s.id = m.series_id ORDER BY m.book_id, m.position",
+            [],
+            |r| {
+                if let Some(i) = with(r.get(0)?) {
+                    books[i].more_series.push(SeriesEntry { name: r.get(1)?, index: r.get(2)?, end: r.get(3)? });
+                }
+                Ok(())
+            },
+        )?;
+        each_row(conn, "SELECT omnibus_id, book_id FROM book_collects ORDER BY omnibus_id, position", [], |r| {
+            let (omnibus, book): (BookId, BookId) = (r.get(0)?, r.get(1)?);
+            if let (Some(o), Some(b)) = (with(omnibus), with(book)) {
+                books[o].collects.push(book);
+                books[b].collected_in.push(omnibus);
+            }
+            Ok(())
+        })?;
         each_row(conn, "SELECT book_id, lang FROM book_languages ORDER BY book_id, position", [], |r| {
             if let Some(i) = with(r.get(0)?) {
                 books[i].languages.push(r.get(1)?);
