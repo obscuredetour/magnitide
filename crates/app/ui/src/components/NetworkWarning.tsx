@@ -1,7 +1,9 @@
 import { createSignal, Show } from 'solid-js';
+import TriangleAlert from 'lucide-solid/icons/triangle-alert';
 
 import { library } from '../library';
 import { storage } from '../storage';
+import { Icon } from './Icon';
 
 const key = (path: string) => `networkWarningDismissed:${path}`;
 
@@ -26,10 +28,7 @@ export function NetworkWarning() {
         class="flex flex-none items-start gap-3 border-b border-line bg-[color-mix(in_srgb,var(--danger)_10%,var(--bg))] px-5 py-2.5 text-xs"
         role="status"
       >
-        <svg class="mt-px size-4 flex-none fill-none stroke-danger stroke-[1.8]" viewBox="0 0 20 20" aria-hidden="true">
-          <path d="M10 3 2 17h16L10 3Z" stroke-linejoin="round" />
-          <path d="M10 8.5v3.5M10 14.6v.1" stroke-linecap="round" />
-        </svg>
+        <Icon of={TriangleAlert} size={16} class="mt-px text-danger" />
         <p class="min-w-0 flex-1">
           <strong>This library is on a network share.</strong> Databases and file locks aren’t reliable over network
           shares, so open it from only one computer at a time. For shared access, Magnitide’s server mode (coming) is

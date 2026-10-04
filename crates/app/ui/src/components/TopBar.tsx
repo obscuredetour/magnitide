@@ -1,4 +1,11 @@
 import { onCleanup, Show } from 'solid-js';
+import ArrowDownWideNarrow from 'lucide-solid/icons/arrow-down-wide-narrow';
+import ArrowUpNarrowWide from 'lucide-solid/icons/arrow-up-narrow-wide';
+import LayoutGrid from 'lucide-solid/icons/layout-grid';
+import List from 'lucide-solid/icons/list';
+import Search from 'lucide-solid/icons/search';
+import Settings from 'lucide-solid/icons/settings';
+import X from 'lucide-solid/icons/x';
 
 import type { SortKey } from '../api';
 import { query, queryError, search, setSort, sort, sortDir } from '../library';
@@ -7,6 +14,7 @@ import { CoverSizeSlider } from './CoverSizeSlider';
 import { DeviceMenu } from './DeviceMenu';
 import { LibraryMenu } from './LibraryMenu';
 import { ThemeMenu } from './ThemeMenu';
+import { Icon } from './Icon';
 
 const SORT_OPTIONS: [SortKey, string][] = [
   ['title', 'Title'],
@@ -31,12 +39,7 @@ function ViewSwitcher() {
         title="Covers (⌘1)"
         onClick={() => setViewMode('grid')}
       >
-        <svg class="size-3.5 fill-current" viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="1" y="1" width="6" height="6" rx="1.2" />
-          <rect x="9" y="1" width="6" height="6" rx="1.2" />
-          <rect x="1" y="9" width="6" height="6" rx="1.2" />
-          <rect x="9" y="9" width="6" height="6" rx="1.2" />
-        </svg>
+        <Icon of={LayoutGrid} />
       </button>
       <button
         class={segment}
@@ -44,11 +47,7 @@ function ViewSwitcher() {
         title="List (⌘2)"
         onClick={() => setViewMode('table')}
       >
-        <svg class="size-3.5 fill-current" viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="1" y="2" width="14" height="2.4" rx="1" />
-          <rect x="1" y="6.8" width="14" height="2.4" rx="1" />
-          <rect x="1" y="11.6" width="14" height="2.4" rx="1" />
-        </svg>
+        <Icon of={List} />
       </button>
     </div>
   );
@@ -76,14 +75,7 @@ export function TopBar(props: Props) {
       </div>
 
       <div class="relative flex w-full max-w-[520px] items-center justify-self-center" data-tauri-drag-region>
-        <svg
-          class="pointer-events-none absolute left-2.5 size-[15px] fill-none stroke-faint stroke-[1.8] [stroke-linecap:round]"
-          viewBox="0 0 20 20"
-          aria-hidden="true"
-        >
-          <circle cx="8.5" cy="8.5" r="5.5" />
-          <path d="m13 13 4 4" />
-        </svg>
+        <Icon of={Search} class="pointer-events-none absolute left-2.5 text-faint" />
         <input
           ref={props.searchRef}
           type="search"
@@ -115,6 +107,18 @@ export function TopBar(props: Props) {
         <kbd class="pointer-events-none absolute right-2 rounded-[5px] border border-line px-1.5 font-sans text-[11px]/4 text-faint peer-focus:hidden peer-[:not(:placeholder-shown)]:hidden">
           /
         </kbd>
+        {query() && (
+          <button
+            class="absolute right-2 grid size-5 place-items-center rounded-md text-muted hover:bg-hover hover:text-fg"
+            aria-label="Clear search"
+            onClick={() => {
+              clearTimeout(timer);
+              search('');
+            }}
+          >
+            <Icon of={X} size={12} />
+          </button>
+        )}
       </div>
 
       <div class="flex items-center gap-3 justify-self-end">
@@ -142,13 +146,7 @@ export function TopBar(props: Props) {
           aria-label={sortDir() === 'asc' ? 'Sort ascending' : 'Sort descending'}
           onClick={() => setSort(sort(), sortDir() === 'asc' ? 'desc' : 'asc')}
         >
-          <svg
-            class="size-3 fill-none stroke-current stroke-[1.6] [stroke-linecap:round]"
-            viewBox="0 0 12 12"
-            aria-hidden="true"
-          >
-            <path d={sortDir() === 'asc' ? 'M6 10V2M3 5l3-3 3 3' : 'M6 2v8M3 7l3 3 3-3'} />
-          </svg>
+          <Icon of={sortDir() === 'asc' ? ArrowUpNarrowWide : ArrowDownWideNarrow} />
         </button>
         <ThemeMenu />
         <button
@@ -157,13 +155,7 @@ export function TopBar(props: Props) {
           aria-label="Settings"
           onClick={() => props.onOpenSettings()}
         >
-          <svg class="size-[17px] fill-none stroke-current stroke-[1.5]" viewBox="0 0 20 20" aria-hidden="true">
-            <circle cx="10" cy="10" r="2.6" />
-            <path
-              d="M10 2.5v2.1M10 15.4v2.1M17.5 10h-2.1M4.6 10H2.5M15.3 4.7l-1.5 1.5M6.2 13.8l-1.5 1.5M15.3 15.3l-1.5-1.5M6.2 6.2 4.7 4.7"
-              stroke-linecap="round"
-            />
-          </svg>
+          <Icon of={Settings} size={16} />
         </button>
       </div>
     </header>

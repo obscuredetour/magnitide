@@ -1,5 +1,6 @@
 import { createResource, createSignal, For, type JSX, onMount, type ParentProps, Show } from 'solid-js';
 import { createStore, unwrap } from 'solid-js/store';
+import X from 'lucide-solid/icons/x';
 
 import { api, type AuthorSort, type BookEdit, type BookRow } from '../api';
 import { Autocomplete } from './Autocomplete';
@@ -7,6 +8,7 @@ import { changeCover, closeEditor, type Editing, saveEdit } from '../editor';
 import { items } from '../library';
 import { Cover } from './Cover';
 import { type Applied, MatchDialog } from './MatchDialog';
+import { Icon } from './Icon';
 
 const input =
   'h-8 w-full rounded-md border border-line bg-field px-2.5 outline-none select-text focus:border-focus focus:ring-3 focus:ring-focus/20 disabled:opacity-50';
@@ -326,7 +328,7 @@ export function EditDialog(props: { editing: Editing }) {
                         aria-label="Remove this series"
                         onClick={() => setForm('moreSeries', (list) => list.filter((_, j) => j !== i()))}
                       >
-                        ×
+                        <Icon of={X} />
                       </button>
                     </div>
                   )}
@@ -609,7 +611,7 @@ function Collects(props: {
                 aria-label={`Unlink ${titles[bookId] ?? 'book'}`}
                 onClick={() => props.onChange(props.ids.filter((i) => i !== bookId))}
               >
-                ×
+                <Icon of={X} size={12} />
               </button>
             </span>
           )}

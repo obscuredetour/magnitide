@@ -1,8 +1,10 @@
 import { createSignal, onCleanup, onMount, Show } from 'solid-js';
+import Upload from 'lucide-solid/icons/upload';
 
 import { onDragDrop } from '../api';
 import { addPaths } from '../adder';
 import { library } from '../library';
+import { Icon } from './Icon';
 
 /** Covers the window while files are dragged over it; adds them on drop. */
 export function DropOverlay() {
@@ -29,18 +31,7 @@ export function DropOverlay() {
           class="flex w-[min(420px,100%)] flex-col items-center gap-2 rounded-2xl border-2 border-dashed px-8 py-10 text-center shadow-lift"
           classList={{ 'border-accent bg-popover': !readOnly(), 'border-line bg-element': readOnly() }}
         >
-          <svg
-            class="mb-1 size-10 fill-none stroke-[1.5]"
-            classList={{ 'stroke-accent': !readOnly(), 'stroke-muted': readOnly() }}
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path
-              d="M12 15V4m0 0-4 4m4-4 4 4M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
+          <Icon of={Upload} size={40} class={`mb-1 ${readOnly() ? 'text-muted' : 'text-accent'}`} />
           <Show
             when={!readOnly()}
             fallback={

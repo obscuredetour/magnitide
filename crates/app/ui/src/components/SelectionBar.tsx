@@ -1,4 +1,5 @@
 import { For, onCleanup, onMount, Show } from 'solid-js';
+import X from 'lucide-solid/icons/x';
 
 import { booksOn, devices } from '../devices';
 import { items, library, selectedId, selectedIds, setSelectedId } from '../library';
@@ -7,6 +8,7 @@ import { mergeBooks, removeFromDevice, sendToDevice } from '../transfer';
 import { selectedInOrder } from '../devices';
 import { editBooks } from '../editor';
 import { ConvertMenu } from './ConvertMenu';
+import { Icon } from './Icon';
 
 const action =
   'cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium whitespace-nowrap hover:bg-on-inverse/15 disabled:cursor-default disabled:opacity-50';
@@ -62,9 +64,7 @@ export function SelectionBar() {
         aria-label="Clear selection"
         onClick={() => setSelectedId(selectedId())}
       >
-        <svg class="size-2.5 stroke-current stroke-2 [stroke-linecap:round]" viewBox="0 0 20 20" aria-hidden="true">
-          <path d="m5 5 10 10M15 5 5 15" />
-        </svg>
+        <Icon of={X} size={12} />
       </button>
     </div>
   );

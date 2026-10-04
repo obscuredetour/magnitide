@@ -1,5 +1,6 @@
 import { getVersion } from '@tauri-apps/api/app';
 import { createResource, createSignal, For, type JSX, Match, onMount, type ParentProps, Show, Switch } from 'solid-js';
+import X from 'lucide-solid/icons/x';
 
 import { api, type DeviceKind, errorMessage, fileManagerName, type SourceId, type SourceStatus } from '../api';
 import {
@@ -29,6 +30,7 @@ import { DEVICE_FORMATS, DEVICE_KIND_NAMES, preferredFormat, setPreferredFormat 
 import { describeWrite, plural, setWriteOnSave, writeOnSave } from '../writeback';
 import { TABLE_COLUMNS } from './BookTable';
 import { CoverSizeSlider } from './CoverSizeSlider';
+import { Icon } from './Icon';
 
 type Section = 'appearance' | 'library' | 'list' | 'devices' | 'sources' | 'about';
 
@@ -90,9 +92,7 @@ export function SettingsDialog(props: { onClose(): void }) {
             aria-label="Close settings"
             onClick={() => props.onClose()}
           >
-            <svg class="size-3 stroke-muted stroke-2 [stroke-linecap:round]" viewBox="0 0 20 20" aria-hidden="true">
-              <path d="m5 5 10 10M15 5 5 15" />
-            </svg>
+            <Icon of={X} class="text-muted" />
           </button>
           <Switch>
             <Match when={section() === 'appearance'}>

@@ -48,7 +48,7 @@ pnpm --dir crates/app/ui lint                 # typecheck + formatting (`format`
 cargo run -p calibre-compat -- info    # CLI against the default library
 ```
 
-Styling is [Tailwind v4](https://tailwindcss.com) utilities in the components. Colours
+Styling is [Tailwind v4](https://tailwindcss.com) utilities in the components. Icons are [Lucide](https://lucide.dev), always through `components/Icon.tsx`. Colours
 and shadows come only from the theme (`crates/app/ui/src/themes/`, starting at `index.css`), in two layers:
 a palette named after [Catppuccin's](https://github.com/catppuccin/catppuccin/blob/main/docs/style-guide.md)
 (crust, mantle, base, surface 0–2, overlay 0–2, subtext 0–1, text, and the accents),
@@ -81,7 +81,7 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Settings panel (⌘,): appearance, library, list columns, thumbnail cache, about
 - [x] List view zebra stripes (setting, on by default)
 - [x] Theme roles: zebra stripes, hover, selection and highlight are theme variables (`--row-stripe`, `--hover`, `--selection`, `--highlight`), consistent across themes; Catppuccin (all four flavours), Dracula and Alucard built in
-- [ ] Add clear search button
+- [x] Clear search button (Jamie)
 - [ ] Table sidebar allow resizing of width by dragging its edge, but let's set a min-width to prevent it from collapsing too much
 - [x] Add slight app blur behind dialogs (every dialog dims and blurs the app behind it, tinted per theme)
 - [ ] Covers view should keep selected book in view after sidebar opens & grid resize

@@ -1,8 +1,10 @@
 import { For } from 'solid-js';
+import Contrast from 'lucide-solid/icons/contrast';
 
 import { setTheme, themeAttrs, themeChoice, themes } from '../theme';
 import { AccentPicker } from './AccentPicker';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from './Menu';
+import { Icon } from './Icon';
 
 /**
  * A theme's colours, rendered by scoping `data-theme` to the swatch itself;
@@ -28,12 +30,7 @@ export function ThemeMenu() {
       iconOnly
       align="end"
       buttonClass="grid size-8 place-items-center rounded-lg hover:bg-hover aria-expanded:bg-hover"
-      button={
-        <svg class="size-[17px] fill-none stroke-muted stroke-[1.6]" viewBox="0 0 20 20" aria-hidden="true">
-          <circle cx="10" cy="10" r="7" />
-          <path class="fill-muted stroke-none" d="M10 3a7 7 0 0 1 0 14Z" />
-        </svg>
-      }
+      button={<Icon of={Contrast} size={16} class="text-muted" />}
     >
       <MenuLabel>Theme</MenuLabel>
       <MenuItem checked={themeChoice() === 'system'} onSelect={() => setTheme('system')}>

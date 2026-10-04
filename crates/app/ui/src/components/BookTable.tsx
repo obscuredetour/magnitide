@@ -12,6 +12,10 @@ import {
 } from '@tanstack/solid-table';
 import { createVirtualizer } from '@tanstack/solid-virtual';
 import { createEffect, For, Index, on, onMount, Show } from 'solid-js';
+import Check from 'lucide-solid/icons/check';
+import ChevronDown from 'lucide-solid/icons/chevron-down';
+import ChevronUp from 'lucide-solid/icons/chevron-up';
+import Ellipsis from 'lucide-solid/icons/ellipsis';
 
 import type { BookRow, SortKey } from '../api';
 import { onDevice } from '../devices';
@@ -20,6 +24,7 @@ import { columnSizing, effectiveColumnVisibility, setColumnSizing, setColumnVisi
 import { Cover } from './Cover';
 import { Menu, MenuItem, MenuLabel } from './Menu';
 import type { ViewHandle } from './CoverGrid';
+import { Icon } from './Icon';
 
 const ROW_H = 40;
 /** Always shown: every row needs a title. */
@@ -172,13 +177,7 @@ function DeviceCheck(props: { id: number }) {
             .join('\n')}
           aria-label="On device"
         >
-          <svg
-            class="size-3.5 fill-none stroke-current stroke-[2.2] [stroke-linecap:round] [stroke-linejoin:round]"
-            viewBox="0 0 14 14"
-            aria-hidden="true"
-          >
-            <path d="m3 7.5 2.5 2.5L11 4" />
-          </svg>
+          <Icon of={Check} />
         </span>
       )}
     </Show>
@@ -358,9 +357,7 @@ function HeaderCell(props: { header: Header<typeof features, BookRow, unknown> }
           <FlexRender header={h()} />
         </span>
         <Show when={active()}>
-          <svg class="size-2.5 flex-none fill-none stroke-current stroke-2" viewBox="0 0 10 10" aria-hidden="true">
-            <path d={sortDir() === 'asc' ? 'm2 6.5 3-3 3 3' : 'm2 3.5 3 3 3-3'} />
-          </svg>
+          <Icon of={sortDir() === 'asc' ? ChevronUp : ChevronDown} size={12} />
         </Show>
       </button>
       {/* Drag to resize; double-click to reset. */}
@@ -383,13 +380,7 @@ function ColumnPicker(props: { table: ReturnType<typeof createTable<typeof featu
       iconOnly
       align="end"
       buttonClass="grid size-6 place-items-center rounded-md hover:bg-hover aria-expanded:bg-hover"
-      button={
-        <svg class="size-3.5 fill-muted" viewBox="0 0 16 16" aria-hidden="true">
-          <circle cx="3" cy="8" r="1.5" />
-          <circle cx="8" cy="8" r="1.5" />
-          <circle cx="13" cy="8" r="1.5" />
-        </svg>
-      }
+      button={<Icon of={Ellipsis} class="text-muted" />}
     >
       <MenuLabel>Columns</MenuLabel>
       <For each={props.table.getAllLeafColumns()}>

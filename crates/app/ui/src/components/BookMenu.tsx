@@ -4,11 +4,20 @@
 import { createResource, createSignal, For, Show } from 'solid-js';
 
 import { api, errorMessage, fileManagerName, trashName } from '../api';
-import { booksOn, devices } from '../devices';
+import { booksOn, devices, preferredFormat } from '../devices';
+import type { DeviceInfo } from '../api';
 import { editBooks, openEditor } from '../editor';
 import { items, library, openBook, setDetailsOpen } from '../library';
 import { toast } from '../toast';
-import { convertBooks, deleteBooks, mergeBooks, removeFormat, removeFromDevice, sendToDevice } from '../transfer';
+import {
+  convertBooks,
+  deleteBooks,
+  mergeBooks,
+  removeFormat,
+  removeFromDevice,
+  sendOptions,
+  sendToDevice,
+} from '../transfer';
 import { writeBookFiles } from '../writeback';
 import { ContextMenu, MenuItem, MenuSeparator, SubMenu } from './Menu';
 
@@ -78,10 +87,7 @@ function BookMenu(props: { request: Request; onClose(): void }) {
           return (
             <>
               <Show when={on() < ids.length}>
-                <MenuItem onSelect={() => void sendToDevice(d, ids)}>
-                  Send to {d.name}
-                  {on() && ids.length > 1 ? ` (${ids.length - on()})` : ''}
-                </MenuItem>
+                <SendItem device={d} ids={ids} count={on() && ids.length > 1 ? ids.length - on() : null} />
               </Show>
               <Show when={on()}>
                 <MenuItem onSelect={() => void removeFromDevice(d, ids)}>
@@ -130,5 +136,46 @@ function BookMenu(props: { request: Request; onClose(): void }) {
         </MenuItem>
       </Show>
     </ContextMenu>
+  );
+}
+
+/**
+ * "Send to <device>": a plain item when there's only one format to send, else
+ * a submenu of them (the default first) that sends the one picked.
+ */
+function SendItem(props: { device: DeviceInfo; ids: number[]; count: number | null }) {
+  /** How many would be sent (the rest are on the device already). */
+  const sending = () => props.count ?? props.ids.length;
+  const label = () => `Send to ${props.device.name}${props.count ? ` (${props.count})` : ''}`;
+  const options = () => {
+    const all = sendOptions(props.device, props.ids);
+    const preferred = preferredFormat(props.device.kind);
+    // The default first, then best first.
+    return [...all.filter((o) => o.format === preferred), ...all.filter((o) => o.format !== preferred)];
+  };
+  return (
+    <Show
+      when={options().length > 1}
+      fallback={<MenuItem onSelect={() => void sendToDevice(props.device, props.ids)}>{label()}</MenuItem>}
+    >
+      <SubMenu label={label()}>
+        <For each={options()}>
+          {(o) => (
+            <MenuItem onSelect={() => void sendToDevice(props.device, props.ids, o.format)}>
+              {o.format}
+              <span class="ml-auto pl-4 text-xs text-faint">
+                {[
+                  o.format === preferredFormat(props.device.kind) && 'default',
+                  o.converted && 'converted',
+                  !o.converted && sending() > 1 && o.have < sending() && `${o.have} of ${sending()} have it`,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
+            </MenuItem>
+          )}
+        </For>
+      </SubMenu>
+    </Show>
   );
 }
