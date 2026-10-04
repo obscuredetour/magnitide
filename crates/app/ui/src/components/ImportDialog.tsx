@@ -34,7 +34,7 @@ export function ImportDialog() {
     <dialog
       ref={dialog}
       aria-label="Import calibre library"
-      class="m-auto w-[min(520px,calc(100vw-48px))] animate-menu-in rounded-2xl border border-line bg-surface p-6 text-fg shadow-lift backdrop:bg-black/40"
+      class="m-auto w-[min(520px,calc(100vw-48px))] animate-menu-in rounded-2xl border border-line bg-surface p-6 text-fg shadow-lift"
       onCancel={(e) => {
         e.preventDefault();
         dismissImport(); // ignored while running

@@ -71,7 +71,7 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [ ] (Jamie) Tweak zebra stripe colours: inconsistent across themes. The stripe is `bg-surface-2/40` in `crates/app/ui/src/components/BookTable.tsx`; a per-theme `--row-stripe` variable in `themes.css` would let each theme set its own
 - [ ] Add clear search button
 - [ ] Table sidebar allow resizing of width by dragging its edge, but let's set a min-width to prevent it from collapsing too much
-- [ ] Add slight app blur behind dialogs
+- [x] Add slight app blur behind dialogs (every dialog dims and blurs the app behind it, tinted per theme)
 - [ ] Covers view should keep selected book in view after sidebar opens & grid resize
 - [ ] Make "Send to device" & "Convert" actions more discoverable/prominent (they currently look like the format badges)
 - [ ] Implement table column reordering
