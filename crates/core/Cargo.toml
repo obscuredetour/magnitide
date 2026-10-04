@@ -1,0 +1,17 @@
+[package]
+name = "magnitide-core"
+version = "0.1.0"
+edition = "2024"
+description = "The Magnitide library: native schema, migrations, queries, edits and import"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+calibre-compat = { version = "0.1.0", path = "../calibre-compat" }
+chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"] }
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+thiserror = "2.0.21"
+uuid = { version = "1.27.0", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

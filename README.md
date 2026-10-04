@@ -2,11 +2,14 @@
 
 An AI-free ebook library manager that works with existing calibre libraries.
 
+How the pieces fit, and the decisions behind them: [docs/architecture.md](docs/architecture.md).
+
 ## Crates
 
 | Crate | What it is |
 |---|---|
 | [`app`](crates/app) | The desktop app: Tauri 2, with a Solid + TypeScript UI in [`crates/app/ui`](crates/app/ui). Currently a read-only cover grid with search and a details panel |
+| [`core`](crates/core) | `magnitide-core`: the native Magnitide library (schema, migrations, edits; import next). No Tauri code, so the planned server can share it |
 | [`calibre-compat`](crates/calibre-compat) | Read-only access to calibre libraries (`metadata.db` + book folders), plus a CLI to inspect them |
 
 ## Setup
@@ -62,8 +65,11 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Solid + TypeScript UI with types generated from Rust
 - [x] Toolbar (library menu, cover size, theme picker) and table view (sortable, resizable, choosable columns)
 - [x] Settings panel (⌘,): appearance, library, list columns, thumbnail cache, about
-- [ ] Drag and drop to add books (needs the write path: calibre's SQL functions, schema upgrades)
+- [ ] Native Magnitide library: schema v1 and core crate (in progress), calibre import, open native libraries in the app
+- [ ] Drag and drop to add books
 - [ ] Metadata editing
 - [ ] Accessibility scaling: ⌘+ / ⌘− / ⌘0 zoom the whole UI (remembered), respecting the OS text size where available
 - [ ] Plugin host for DeDRM (embedded Python)
 - [ ] Built-in reader
+- [ ] Export to a calibre library
+- [ ] Server mode: web UI and OPDS, then accounts, KOReader sync, Kobo sync
