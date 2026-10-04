@@ -20,8 +20,8 @@ pub type UserId = i64;
 pub const LOCAL_USER: UserId = 1;
 
 pub struct Library {
-    root: PathBuf,
-    conn: Connection,
+    pub(crate) root: PathBuf,
+    pub(crate) conn: Connection,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -110,9 +110,10 @@ impl Library {
         for (key, value) in
             [("uuid", uuid::Uuid::new_v4().to_string()), ("name", name.to_owned()), ("created_at", created.clone())]
         {
-            tx.execute("INSERT INTO library_info (key, value) VALUES (?, ?)", params![key, value])?;
+            tx.prepare_cached("INSERT INTO library_info (key, value) VALUES (?, ?)")?.execute(params![key, value])?;
         }
-        tx.execute("INSERT INTO users (id, name, created_at) VALUES (?, 'local', ?)", params![LOCAL_USER, created])?;
+        tx.prepare_cached("INSERT INTO users (id, name, created_at) VALUES (?, 'local', ?)")?
+            .execute(params![LOCAL_USER, created])?;
         tx.commit()?;
         Ok(Self { root: root.to_path_buf(), conn })
     }
@@ -135,14 +136,18 @@ impl Library {
 
     pub fn info(&self) -> Result<LibraryInfo> {
         let get = |key: &str| -> Result<String> {
-            Ok(self.conn.query_row("SELECT value FROM library_info WHERE key = ?", [key], |r| r.get(0))?)
+            Ok(self
+                .conn
+                .prepare_cached("SELECT value FROM library_info WHERE key = ?")?
+                .query_row([key], |r| r.get(0))?)
         };
         Ok(LibraryInfo {
             uuid: get("uuid")?,
             name: get("name")?,
             created_at: get("created_at")?,
             schema_version: db::schema_version(&self.conn)?,
-            book_count: self.conn.query_row("SELECT count(*) FROM books", [], |r| r.get::<_, i64>(0))? as u64,
+            book_count: self.conn.prepare_cached("SELECT count(*) FROM books")?.query_row([], |r| r.get::<_, i64>(0))?
+                as u64,
         })
     }
 
@@ -150,6 +155,15 @@ impl Library {
     /// (`Author/Title (id)`) but creates nothing on disk: adding files is the
     /// import pipeline's job, so it can clean up if copying fails.
     pub fn add_book(&mut self, book: &NewBook) -> Result<BookId> {
+        let tx = self.conn.transaction()?;
+        let (id, _) = Self::insert_book(&tx, book)?;
+        tx.commit()?;
+        Ok(id)
+    }
+
+    /// Insert a book's metadata within `tx`, returning its id and folder.
+    /// Lets callers (import) commit the book together with its files.
+    pub(crate) fn insert_book(tx: &Transaction<'_>, book: &NewBook) -> Result<(BookId, String)> {
         let title = book.title.trim();
         if title.is_empty() {
             return Err(Error::InvalidBook("a book needs a title".into()));
@@ -165,69 +179,64 @@ impl Library {
                 a => a,
             };
 
-        let tx = self.conn.transaction()?;
         let now = now();
         let added = book.added_at.map(timestamp).unwrap_or_else(|| now.clone());
         let uuid = book.uuid.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        let series_id = book.series.as_ref().map(|(name, _)| series_id(&tx, name)).transpose()?;
+        let series_id = book.series.as_ref().map(|(name, _)| series_id(tx, name)).transpose()?;
         let publisher_id = book
             .publisher
             .as_deref()
             .map(|p| p.trim())
             .filter(|p| !p.is_empty())
-            .map(|p| publisher_id(&tx, p))
+            .map(|p| publisher_id(tx, p))
             .transpose()?;
 
         // The folder name needs the id, so insert with a unique placeholder first.
-        tx.execute(
+        tx.prepare_cached(
             "INSERT INTO books (uuid, title, title_sort, path, series_id, series_index, publisher_id, published,
                                 description_html, added_at, modified_at)
              VALUES (?1, ?2, ?3, ?1, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            params![
-                uuid,
-                title,
-                book.title_sort.clone().unwrap_or_else(|| names::title_sort(title)),
-                series_id,
-                book.series.as_ref().map(|(_, i)| *i),
-                publisher_id,
-                book.published.map(|d| d.to_string()),
-                book.description_html,
-                added,
-                now,
-            ],
-        )?;
+        )?
+        .execute(params![
+            uuid,
+            title,
+            book.title_sort.clone().unwrap_or_else(|| names::title_sort(title)),
+            series_id,
+            book.series.as_ref().map(|(_, i)| *i),
+            publisher_id,
+            book.published.map(|d| d.to_string()),
+            book.description_html,
+            added,
+            now,
+        ])?;
         let id = tx.last_insert_rowid();
-        tx.execute("UPDATE books SET path = ? WHERE id = ?", params![paths::book_dir(authors[0], title, id), id])?;
+        let path = paths::book_dir(authors[0], title, id);
+        tx.prepare_cached("UPDATE books SET path = ? WHERE id = ?")?.execute(params![path, id])?;
 
         for (pos, name) in (0_i64..).zip(&authors) {
-            let author = author_id(&tx, name)?;
-            tx.execute(
-                "INSERT OR IGNORE INTO book_authors (book_id, author_id, position) VALUES (?, ?, ?)",
-                params![id, author, pos],
-            )?;
+            let author = author_id(tx, name)?;
+            tx.prepare_cached("INSERT OR IGNORE INTO book_authors (book_id, author_id, position) VALUES (?, ?, ?)")?
+                .execute(params![id, author, pos])?;
         }
         for tag in book.tags.iter().map(|t| t.trim()).filter(|t| !t.is_empty()) {
-            let tag_id = tag_id(&tx, tag)?;
-            tx.execute("INSERT OR IGNORE INTO book_tags (book_id, tag_id) VALUES (?, ?)", params![id, tag_id])?;
+            let tag_id = tag_id(tx, tag)?;
+            tx.prepare_cached("INSERT OR IGNORE INTO book_tags (book_id, tag_id) VALUES (?, ?)")?
+                .execute(params![id, tag_id])?;
         }
         for (pos, lang) in (0_i64..).zip(&book.languages) {
-            tx.execute(
-                "INSERT OR IGNORE INTO book_languages (book_id, lang, position) VALUES (?, ?, ?)",
-                params![id, lang, pos],
-            )?;
+            tx.prepare_cached("INSERT OR IGNORE INTO book_languages (book_id, lang, position) VALUES (?, ?, ?)")?
+                .execute(params![id, lang, pos])?;
         }
         for (scheme, value) in &book.identifiers {
-            tx.execute(
-                "INSERT OR REPLACE INTO identifiers (book_id, scheme, value) VALUES (?, ?, ?)",
-                params![id, scheme, value],
-            )?;
+            tx.prepare_cached("INSERT OR REPLACE INTO identifiers (book_id, scheme, value) VALUES (?, ?, ?)")?
+                .execute(params![id, scheme, value])?;
         }
-        tx.execute(
-            "INSERT INTO user_books (user_id, book_id, rating) VALUES (?, ?, ?)",
-            params![LOCAL_USER, id, book.rating],
-        )?;
-        tx.commit()?;
-        Ok(id)
+        tx.prepare_cached("INSERT INTO user_books (user_id, book_id, rating) VALUES (?, ?, ?)")?.execute(params![
+            LOCAL_USER,
+            id,
+            book.rating
+        ])?;
+        Ok((id, path))
     }
 
     pub fn book(&self, id: BookId) -> Result<Book> {
@@ -289,10 +298,10 @@ impl Library {
 /// Look up a name in a name table, inserting it if new. Matching is
 /// case-insensitive (the columns are COLLATE NOCASE); the first spelling wins.
 fn get_or_insert(tx: &Transaction<'_>, select: &str, insert: &str, params: &[&dyn rusqlite::ToSql]) -> Result<i64> {
-    if let Some(id) = tx.query_row(select, [params[0]], |r| r.get(0)).optional()? {
+    if let Some(id) = tx.prepare_cached(select)?.query_row([params[0]], |r| r.get(0)).optional()? {
         return Ok(id);
     }
-    tx.execute(insert, params)?;
+    tx.prepare_cached(insert)?.execute(params)?;
     Ok(tx.last_insert_rowid())
 }
 

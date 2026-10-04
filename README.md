@@ -65,7 +65,7 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Solid + TypeScript UI with types generated from Rust
 - [x] Toolbar (library menu, cover size, theme picker) and table view (sortable, resizable, choosable columns)
 - [x] Settings panel (⌘,): appearance, library, list columns, thumbnail cache, about
-- [ ] Native Magnitide library: schema v1 and core crate (in progress), calibre import, open native libraries in the app
+- [ ] Native Magnitide library: schema v1 and calibre import done in `core` (`cargo run --release -p magnitide-core --example import_calibre -- <calibre> <dest>`); next: open native libraries and import from the app
 - [ ] Drag and drop to add books
 - [ ] Metadata editing
 - [ ] Accessibility scaling: ⌘+ / ⌘− / ⌘0 zoom the whole UI (remembered), respecting the OS text size where available
