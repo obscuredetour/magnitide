@@ -91,3 +91,20 @@ export function setZebraRows(on: boolean): void {
   setZebraRowsSignal(on);
   storage.set('tableZebra', on ? 'on' : 'off');
 }
+
+/** Width of the details panel in CSS px (it also never squeezes the list below 320px). */
+export const DETAILS_WIDTH = { min: 300, max: 640, initial: 380 } as const;
+
+const clampDetails = (n: number) => Math.min(DETAILS_WIDTH.max, Math.max(DETAILS_WIDTH.min, Math.round(n)));
+const storedDetails = Number(storage.get('detailsWidth'));
+const [detailsWidth, setDetailsWidthSignal] = createSignal(
+  storedDetails ? clampDetails(storedDetails) : DETAILS_WIDTH.initial,
+);
+export { detailsWidth };
+
+/** Set the details panel's width; `save` stores it (at the end of a drag, not on every move). */
+export function setDetailsWidth(n: number, save = true): void {
+  const w = clampDetails(n);
+  setDetailsWidthSignal(w);
+  if (save) storage.set('detailsWidth', String(w));
+}

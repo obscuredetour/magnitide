@@ -3,6 +3,7 @@ import X from 'lucide-solid/icons/x';
 
 import { api, type BookDetails, errorMessage, fileManagerName, type MatchedBy } from '../api';
 import { openEditor } from '../editor';
+import { DETAILS_WIDTH, detailsWidth, setDetailsWidth } from '../view';
 import { editRevision, library, openBook, search, setSelectedId } from '../library';
 import { toast } from '../toast';
 import { devices, onDevice } from '../devices';
@@ -55,7 +56,7 @@ const chipButton = `${chip} cursor-pointer hover:bg-highlight hover:text-accent`
 const sectionLabel = 'mt-[22px] mb-2 text-[11px] font-semibold tracking-[.06em] text-muted uppercase';
 
 export function DetailsPanel(props: Props) {
-  let scroller!: HTMLElement;
+  let scroller!: HTMLDivElement;
   // Keyed on id, so switching books never shows a stale response.
   // Refetched after an edit, too (editRevision).
   const [book] = createResource(
@@ -69,30 +70,90 @@ export function DetailsPanel(props: Props) {
 
   return (
     <aside
-      class="relative w-[380px] flex-none animate-slide-in overflow-y-auto border-l border-line bg-panel select-text max-[760px]:absolute max-[760px]:inset-y-0 max-[760px]:right-0 max-[760px]:w-[min(380px,100%)] max-[760px]:shadow-lift"
-      ref={scroller}
+      class="relative flex-none animate-slide-in border-l border-line bg-panel select-text max-[760px]:absolute max-[760px]:inset-y-0 max-[760px]:right-0 max-[760px]:w-[min(380px,100%)]! max-[760px]:max-w-full! max-[760px]:shadow-lift"
+      // The list keeps at least 320px beside it.
+      style={{ width: `${detailsWidth()}px`, 'max-width': 'calc(100% - 320px)' }}
       aria-label="Book details"
     >
-      <div class="sticky top-2.5 z-1 float-right mt-2.5 mr-2.5 flex items-center gap-1.5">
-        <Show when={library()?.kind === 'magnitide'}>
+      <ResizeHandle />
+      <div class="h-full overflow-y-auto" ref={scroller}>
+        <div class="sticky top-2.5 z-1 float-right mt-2.5 mr-2.5 flex items-center gap-1.5">
+          <Show when={library()?.kind === 'magnitide'}>
+            <button
+              class="h-7 cursor-pointer rounded-chip bg-element px-3 text-xs font-medium hover:bg-hover"
+              title="Edit (⌘E)"
+              onClick={() => void openEditor(props.id)}
+            >
+              Edit
+            </button>
+          </Show>
           <button
-            class="h-7 cursor-pointer rounded-chip bg-element px-3 text-xs font-medium hover:bg-hover"
-            title="Edit (⌘E)"
-            onClick={() => void openEditor(props.id)}
+            class="grid size-7 place-items-center rounded-full bg-element hover:bg-hover"
+            title="Close (Esc)"
+            onClick={() => props.onClose()}
           >
-            Edit
+            <Icon of={X} class="text-muted" />
           </button>
-        </Show>
-        <button
-          class="grid size-7 place-items-center rounded-full bg-element hover:bg-hover"
-          title="Close (Esc)"
-          onClick={() => props.onClose()}
-        >
-          <Icon of={X} class="text-muted" />
-        </button>
+        </div>
+        <Show when={book()}>{(b) => <Details book={b()} />}</Show>
       </div>
-      <Show when={book()}>{(b) => <Details book={b()} />}</Show>
     </aside>
+  );
+}
+
+/**
+ * The panel's left edge: drag to resize, double-click for the default width,
+ * or focus it and use ←/→ (Shift for bigger steps). Hidden while the panel
+ * overlays a narrow window.
+ */
+function ResizeHandle() {
+  const step = (e: KeyboardEvent) => (e.shiftKey ? 64 : 16);
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize the details panel"
+      aria-valuenow={detailsWidth()}
+      aria-valuemin={DETAILS_WIDTH.min}
+      aria-valuemax={DETAILS_WIDTH.max}
+      tabIndex={0}
+      title="Drag to resize · double-click to reset"
+      class="group/resize absolute inset-y-0 -left-1 z-2 w-2 cursor-col-resize outline-none max-[760px]:hidden"
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        const handle = e.currentTarget;
+        handle.setPointerCapture(e.pointerId);
+        handle.dataset.dragging = '';
+        const startX = e.clientX;
+        const startW = detailsWidth();
+        // Dragging left widens the panel.
+        const move = (ev: PointerEvent) => setDetailsWidth(startW + startX - ev.clientX, false);
+        const end = () => {
+          delete handle.dataset.dragging;
+          setDetailsWidth(detailsWidth());
+          handle.removeEventListener('pointermove', move);
+          handle.removeEventListener('pointerup', end);
+          handle.removeEventListener('pointercancel', end);
+        };
+        handle.addEventListener('pointermove', move);
+        handle.addEventListener('pointerup', end);
+        handle.addEventListener('pointercancel', end);
+      }}
+      onDblClick={() => setDetailsWidth(DETAILS_WIDTH.initial)}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowLeft') setDetailsWidth(detailsWidth() + step(e));
+        else if (e.key === 'ArrowRight') setDetailsWidth(detailsWidth() - step(e));
+        else if (e.key === 'Home') setDetailsWidth(DETAILS_WIDTH.min);
+        else if (e.key === 'End') setDetailsWidth(DETAILS_WIDTH.max);
+        else return;
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+    >
+      {/* The visible line: on hover, while dragging, and when focused from the keyboard. */}
+      <div class="mx-auto h-full w-0.5 bg-accent opacity-0 transition-opacity group-hover/resize:opacity-60 group-focus-visible/resize:opacity-100 group-data-dragging/resize:opacity-100" />
+    </div>
   );
 }
 
