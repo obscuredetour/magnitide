@@ -25,6 +25,10 @@ pub enum Error {
     #[error("invalid name: {0}")]
     InvalidName(String),
 
+    /// Writing metadata into a book file failed; the file is unchanged.
+    #[error("couldn't write metadata into {file}: {reason}")]
+    WriteFile { file: String, reason: String },
+
     #[error("import failed: {0}")]
     Import(String),
 

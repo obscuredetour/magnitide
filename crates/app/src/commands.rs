@@ -129,6 +129,46 @@ pub async fn tidy_file_names(state: State<'_, AppState>) -> CmdResult<magnitide_
     write_library(&state, |lib| lib.tidy_file_names(|_, _| {})).await
 }
 
+/// Whether a book's files hold its current metadata; null for calibre libraries.
+#[tauri::command]
+pub async fn file_metadata_status(
+    state: State<'_, AppState>,
+    id: i64,
+) -> CmdResult<Option<magnitide_core::writeback::FileMetadataStatus>> {
+    let Some(native) = state.current().ok_or("No library is open")?.native.clone() else { return Ok(None) };
+    tauri::async_runtime::spawn_blocking(move || {
+        native.lock().unwrap_or_else(|e| e.into_inner()).file_metadata_status(id).map(Some)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
+/// Write a book's metadata and cover into its EPUB files (those that differ).
+#[tauri::command]
+pub async fn write_metadata_to_files(
+    state: State<'_, AppState>,
+    id: i64,
+) -> CmdResult<magnitide_core::writeback::WriteReport> {
+    write_library(&state, move |lib| lib.write_metadata_to_files(id)).await
+}
+
+/// How many books "Write metadata to files" would rewrite.
+#[tauri::command]
+pub async fn writeback_preview(state: State<'_, AppState>) -> CmdResult<magnitide_core::writeback::WritebackPreview> {
+    let native = native(&state)?;
+    tauri::async_runtime::spawn_blocking(move || native.lock().unwrap_or_else(|e| e.into_inner()).writeback_preview())
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+/// Write every book's metadata into its EPUB files that differ from the library.
+#[tauri::command]
+pub async fn write_all_metadata(state: State<'_, AppState>) -> CmdResult<magnitide_core::writeback::WriteReport> {
+    write_library(&state, |lib| lib.write_all_metadata(|_, _| {})).await
+}
+
 /// Names already used in the library, for autocomplete in the edit form.
 #[derive(Serialize, TS)]
 #[ts(export)]

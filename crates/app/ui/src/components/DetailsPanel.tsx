@@ -1,9 +1,10 @@
-import { createResource, For, Show } from 'solid-js';
+import { createResource, createSignal, For, Show } from 'solid-js';
 
 import { api, type BookDetails, errorMessage, fileManagerName } from '../api';
 import { openEditor } from '../editor';
 import { editRevision, library, openBook, search } from '../library';
 import { toast } from '../toast';
+import { writeBookFiles } from '../writeback';
 import { Cover } from './Cover';
 
 type Props = {
@@ -87,6 +88,12 @@ export function DetailsPanel(props: Props) {
 
 function Details(props: { book: BookDetails }) {
   const b = () => props.book;
+  // Reads the book's files, so it's fetched separately from the details.
+  const [fileStatus] = createResource(
+    () => [b().id, editRevision()] as const,
+    ([id]) => api.fileMetadataStatus(id).catch(() => null),
+  );
+  const [writing, setWriting] = createSignal(false);
   const stars = () => {
     const s = b().stars;
     return s ? '★'.repeat(Math.floor(s)) + (s % 1 >= 0.5 ? '½' : '') : null;
@@ -174,6 +181,24 @@ function Details(props: { book: BookDetails }) {
             )}
           </For>
         </div>
+      </Show>
+
+      <Show when={fileStatus() === 'outdated'}>
+        <p class="-mt-1.5 mb-4 text-xs text-muted">
+          The EPUB’s built-in metadata differs from the library.{' '}
+          <button
+            class="cursor-pointer text-accent hover:underline disabled:opacity-60"
+            disabled={writing()}
+            title="Write the library’s metadata and cover into the EPUB, for e-readers and other apps"
+            onClick={async () => {
+              setWriting(true);
+              await writeBookFiles(b().id);
+              setWriting(false);
+            }}
+          >
+            {writing() ? 'Writing…' : 'Write to file'}
+          </button>
+        </p>
       </Show>
 
       <Show when={b().commentsHtml}>

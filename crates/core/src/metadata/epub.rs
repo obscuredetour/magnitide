@@ -10,11 +10,11 @@ use zip::ZipArchive;
 
 use super::{Author, BookMetadata, language_code, parse_date};
 
-type Zip = ZipArchive<BufReader<File>>;
-type Res<T> = Result<T, Box<dyn std::error::Error>>;
+pub(super) type Zip = ZipArchive<BufReader<File>>;
+pub(super) type Res<T> = Result<T, Box<dyn std::error::Error>>;
 
 /// Limits that keep a hostile or broken file from exhausting memory.
-const MAX_XML: u64 = 4 << 20;
+pub(super) const MAX_XML: u64 = 4 << 20;
 const MAX_COVER: u64 = 30 << 20;
 
 /// Metadata from an EPUB, or None if it can't be read as one.
@@ -24,14 +24,7 @@ pub fn read(path: &Path) -> Option<BookMetadata> {
 
 fn read_inner(path: &Path) -> Res<BookMetadata> {
     let mut zip = ZipArchive::new(BufReader::new(File::open(path)?))?;
-    let container = String::from_utf8(read_entry(&mut zip, "META-INF/container.xml", MAX_XML)?)?;
-    let container = parse_xml(&container)?;
-    let opf_path = container
-        .descendants()
-        .find(|n| n.has_tag_name_local("rootfile"))
-        .and_then(|n| attr(n, "full-path"))
-        .ok_or("no rootfile in container.xml")?
-        .to_owned();
+    let opf_path = opf_path(&mut zip)?;
     let opf = String::from_utf8(read_entry(&mut zip, &opf_path, MAX_XML)?)?;
     let doc = parse_xml(&opf)?;
     let package = doc.root_element();
@@ -115,40 +108,52 @@ fn read_inner(path: &Path) -> Res<BookMetadata> {
     Ok(out)
 }
 
-/// The cover image's href: EPUB 3 `properties="cover-image"`, else EPUB 2
-/// `<meta name="cover" content="item-id">`, else an image item with "cover"
-/// in its id or file name.
-fn cover_href(metadata: Node<'_, '_>, manifest: Node<'_, '_>) -> Option<String> {
-    let items: Vec<Node<'_, '_>> = manifest.children().filter(|n| n.has_tag_name_local("item")).collect();
-    let is_image = |n: &Node<'_, '_>| attr(*n, "media-type").is_some_and(|t| t.starts_with("image/"));
-    let href = |n: &Node<'_, '_>| attr(*n, "href").map(str::to_owned);
+/// The OPF package document's path inside the zip, from container.xml.
+pub(super) fn opf_path(zip: &mut Zip) -> Res<String> {
+    let container = String::from_utf8(read_entry(zip, "META-INF/container.xml", MAX_XML)?)?;
+    let container = parse_xml(&container)?;
+    Ok(container
+        .descendants()
+        .find(|n| n.has_tag_name_local("rootfile"))
+        .and_then(|n| attr(n, "full-path"))
+        .ok_or("no rootfile in container.xml")?
+        .to_owned())
+}
 
+/// The cover image's href: the declared cover, else an image item with
+/// "cover" in its id or file name.
+fn cover_href(metadata: Node<'_, '_>, manifest: Node<'_, '_>) -> Option<String> {
+    let declared = declared_cover(metadata, manifest);
+    let item = declared.or_else(|| {
+        manifest.children().filter(|n| n.has_tag_name_local("item")).find(|n| {
+            let id = attr(*n, "id").unwrap_or("").to_lowercase();
+            let h = attr(*n, "href").unwrap_or("").to_lowercase();
+            attr(*n, "media-type").is_some_and(|t| t.starts_with("image/")) && (id.contains("cover") || h.contains("cover"))
+        })
+    })?;
+    attr(item, "href").map(str::to_owned)
+}
+
+/// The manifest item the package declares as its cover: EPUB 3
+/// `properties="cover-image"`, else EPUB 2 `<meta name="cover" content="item-id">`.
+pub(super) fn declared_cover<'a, 'i>(metadata: Node<'a, 'i>, manifest: Node<'a, 'i>) -> Option<Node<'a, 'i>> {
+    let mut items = manifest.children().filter(|n| n.has_tag_name_local("item"));
     if let Some(item) =
-        items.iter().find(|n| attr(**n, "properties").is_some_and(|p| p.split_whitespace().any(|p| p == "cover-image")))
+        items.clone().find(|n| attr(*n, "properties").is_some_and(|p| p.split_whitespace().any(|p| p == "cover-image")))
     {
-        return href(item);
+        return Some(item);
     }
     let cover_id = metadata
         .children()
         .find(|n| n.has_tag_name_local("meta") && attr(*n, "name") == Some("cover"))
-        .and_then(|n| attr(n, "content"));
-    if let Some(item) = cover_id.and_then(|id| items.iter().find(|n| attr(**n, "id") == Some(id))) {
-        return href(item);
-    }
-    items
-        .iter()
-        .filter(|n| is_image(n))
-        .find(|n| {
-            let id = attr(**n, "id").unwrap_or("").to_lowercase();
-            let h = attr(**n, "href").unwrap_or("").to_lowercase();
-            id.contains("cover") || h.contains("cover")
-        })
-        .and_then(href)
+        .and_then(|n| attr(n, "content"))?;
+    items.find(|n| attr(*n, "id") == Some(cover_id))
 }
 
 /// (scheme, value) for identifiers worth keeping: ISBNs and named schemes.
-/// Package uuids and calibre's internal ids are skipped.
-fn identifier(scheme: Option<&str>, value: &str) -> Option<(String, String)> {
+/// Package uuids and calibre's internal ids are skipped. EPUB 3 has no
+/// scheme attribute, so there the scheme is a prefix: "google:abc".
+pub(super) fn identifier(scheme: Option<&str>, value: &str) -> Option<(String, String)> {
     let v = value.trim();
     let lower = v.to_ascii_lowercase();
     for prefix in ["urn:isbn:", "isbn:"] {
@@ -159,7 +164,17 @@ fn identifier(scheme: Option<&str>, value: &str) -> Option<(String, String)> {
     if lower.starts_with("urn:uuid:") || v.is_empty() {
         return None;
     }
-    let scheme = scheme?.trim().to_ascii_lowercase();
+    let (scheme, v) = match scheme {
+        Some(s) => (s.trim().to_ascii_lowercase(), v),
+        None => {
+            let (s, rest) = v.split_once(':')?;
+            let named = !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+            if !named || matches!(s.to_ascii_lowercase().as_str(), "urn" | "http" | "https") || rest.trim().is_empty() {
+                return None;
+            }
+            (s.to_ascii_lowercase(), rest.trim())
+        }
+    };
     match scheme.as_str() {
         "" | "uuid" | "calibre" => None,
         "isbn" => Some(("isbn".into(), normalize_isbn(v))),
@@ -167,12 +182,12 @@ fn identifier(scheme: Option<&str>, value: &str) -> Option<(String, String)> {
     }
 }
 
-fn normalize_isbn(s: &str) -> String {
+pub(super) fn normalize_isbn(s: &str) -> String {
     s.chars().filter(|c| c.is_ascii_digit() || *c == 'X' || *c == 'x').collect::<String>().to_uppercase()
 }
 
 /// An href inside the OPF, relative to the OPF's folder, as a zip entry name.
-fn resolve(opf_path: &str, href: &str) -> String {
+pub(super) fn resolve(opf_path: &str, href: &str) -> String {
     let href = percent_decode(href.split('#').next().unwrap_or(href));
     let base = opf_path.rsplit_once('/').map_or("", |(dir, _)| dir);
     let mut parts: Vec<&str> = if base.is_empty() { Vec::new() } else { base.split('/').collect() };
@@ -207,7 +222,7 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-fn read_entry(zip: &mut Zip, name: &str, limit: u64) -> Res<Vec<u8>> {
+pub(super) fn read_entry(zip: &mut Zip, name: &str, limit: u64) -> Res<Vec<u8>> {
     let entry = zip.by_name(name)?;
     if entry.size() > limit {
         return Err(format!("{name} is too large").into());
@@ -217,7 +232,7 @@ fn read_entry(zip: &mut Zip, name: &str, limit: u64) -> Res<Vec<u8>> {
     Ok(buf)
 }
 
-fn parse_xml(s: &str) -> Res<Document<'_>> {
+pub(super) fn parse_xml(s: &str) -> Res<Document<'_>> {
     // Many OPFs carry a DOCTYPE; external entities are never resolved.
     Ok(Document::parse_with_options(
         s.trim_start_matches('\u{feff}'),
@@ -225,22 +240,22 @@ fn parse_xml(s: &str) -> Res<Document<'_>> {
     )?)
 }
 
-fn child<'a, 'i>(node: Node<'a, 'i>, local: &str) -> Option<Node<'a, 'i>> {
+pub(super) fn child<'a, 'i>(node: Node<'a, 'i>, local: &str) -> Option<Node<'a, 'i>> {
     node.children().find(|n| n.has_tag_name_local(local))
 }
 
 /// Attribute by local name, whatever its namespace (opf:role, role, …).
-fn attr<'a>(node: Node<'a, '_>, local: &str) -> Option<&'a str> {
+pub(super) fn attr<'a>(node: Node<'a, '_>, local: &str) -> Option<&'a str> {
     node.attributes().find(|a| a.name() == local).map(|a| a.value())
 }
 
 /// All text inside a node, whitespace-collapsed.
-fn text(node: Node<'_, '_>) -> String {
+pub(super) fn text(node: Node<'_, '_>) -> String {
     let raw: String = node.descendants().filter(Node::is_text).filter_map(|n| n.text()).collect();
     raw.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-trait LocalName {
+pub(super) trait LocalName {
     fn has_tag_name_local(&self, local: &str) -> bool;
 }
 

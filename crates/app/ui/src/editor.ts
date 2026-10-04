@@ -5,6 +5,7 @@ import { createSignal } from 'solid-js';
 import { api, type BookEdit, coverChanged, errorMessage } from './api';
 import { library, refresh, setEditRevision } from './library';
 import { toast } from './toast';
+import { writeOnSave } from './writeback';
 
 export type Editing = { id: number; edit: BookEdit };
 
@@ -34,10 +35,23 @@ export function closeEditor(): void {
 export async function saveEdit(id: number, edit: BookEdit): Promise<string | null> {
   try {
     const outcome = await api.saveBookEdit(id, edit);
+    let message = outcome.moved || outcome.renamedFiles ? 'Saved · files renamed to match' : 'Saved';
+    // The edit is saved either way; a failed file write is only a warning.
+    let warning: string | null = null;
+    if (writeOnSave()) {
+      try {
+        const r = await api.writeMetadataToFiles(id);
+        if (r.failed.length) warning = r.failed.join('; ');
+        else if (r.written) message += ' · EPUB updated';
+      } catch (err) {
+        warning = errorMessage(err);
+      }
+    }
     await refresh();
     setEditRevision((n) => n + 1);
     setEditing(null);
-    toast(outcome.moved || outcome.renamedFiles ? 'Saved · files renamed to match' : 'Saved');
+    if (warning) toast(`Saved, but the file couldn’t be updated: ${warning}`, { error: true, duration: 6000 });
+    else toast(message);
     return null;
   } catch (err) {
     return errorMessage(err);

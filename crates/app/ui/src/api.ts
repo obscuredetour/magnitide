@@ -14,9 +14,12 @@ import type { BookRow } from './bindings/BookRow';
 import type { BookEdit } from './bindings/BookEdit';
 import type { CacheInfo } from './bindings/CacheInfo';
 import type { EditOutcome } from './bindings/EditOutcome';
+import type { FileMetadataStatus } from './bindings/FileMetadataStatus';
 import type { NameLists } from './bindings/NameLists';
 import type { TidyPreview } from './bindings/TidyPreview';
 import type { TidyReport } from './bindings/TidyReport';
+import type { WritebackPreview } from './bindings/WritebackPreview';
+import type { WriteReport } from './bindings/WriteReport';
 import type { ImportProgress } from './bindings/ImportProgress';
 import type { ImportReport } from './bindings/ImportReport';
 import type { LibraryKind } from './bindings/LibraryKind';
@@ -30,6 +33,7 @@ export type {
   BookEdit,
   EditOutcome,
   BookRow,
+  FileMetadataStatus,
   CacheInfo,
   ImportProgress,
   ImportReport,
@@ -40,6 +44,8 @@ export type {
   SortKey,
   TidyPreview,
   TidyReport,
+  WritebackPreview,
+  WriteReport,
 };
 export type { FormatInfo } from './bindings/FormatInfo';
 
@@ -107,6 +113,18 @@ export const api = {
 
   /** Rename books whose folder or file names don't match their metadata. */
   tidyFileNames: () => invoke<TidyReport>('tidy_file_names'),
+
+  /** Whether a book's files hold its current metadata; null for calibre libraries. */
+  fileMetadataStatus: (id: number) => invoke<FileMetadataStatus | null>('file_metadata_status', { id }),
+
+  /** Write a book's metadata and cover into its EPUB files (only those that differ). */
+  writeMetadataToFiles: (id: number) => invoke<WriteReport>('write_metadata_to_files', { id }),
+
+  /** How many books "Write metadata to files" would rewrite (changes nothing). */
+  writebackPreview: () => invoke<WritebackPreview>('writeback_preview'),
+
+  /** Write every book's metadata into its EPUB files that differ from the library. */
+  writeAllMetadata: () => invoke<WriteReport>('write_all_metadata'),
 
   /** Names already in the library (authors, tags, series, publishers), for autocomplete. */
   nameLists: () => invoke<NameLists>('name_lists'),

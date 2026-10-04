@@ -76,6 +76,15 @@ My Library/
   access goes through the server, not a mounted share.
 - **Paths on disk come only from the database.** Requests from the UI or the
   network name a book id (and maybe a format), never a path.
+- **Metadata can be written back into book files** (EPUB and KEPUB for now),
+  on request or optionally on every save. Only the OPF's `<metadata>` is
+  regenerated; the rest of the OPF and every other zip entry are kept byte
+  for byte (copied without recompressing), and elements Magnitide doesn't
+  manage, including the package's unique identifier, survive. The new file
+  is written beside the original, read back, then renamed over it. Files are
+  rewritten only when they differ from the library, because a rewrite changes
+  the fingerprint some reading-progress sync keys on;
+  `files.metadata_written_at` records when a file last matched.
 
 ### calibre libraries
 
@@ -133,6 +142,8 @@ a library file directly.
 - The UI runs under a strict Content Security Policy; links in book content
   never navigate the app window.
 - Only database-derived paths are ever read, opened or revealed.
+- The network is only used on an explicit action (metadata lookup, later
+  sync); the webview itself never contacts third-party hosts.
 
 ## Decisions
 
@@ -147,3 +158,4 @@ a library file directly.
 | 2026-10-03 | Server mode planned; OPDS first, then accounts, kosync, Kobo sync. |
 | 2026-10-03 | Extension points are core traits; WASM for third-party plugins later; DeDRM via desktop-only Python host. |
 | 2026-10-04 | Shared in-memory catalog crate for every library kind; the app holds an open Magnitide library (and its lock) while it's shown. |
+| 2026-10-04 | EPUB write-back splices the OPF's `<metadata>` instead of regenerating the package; writing on every save is opt-in. |
