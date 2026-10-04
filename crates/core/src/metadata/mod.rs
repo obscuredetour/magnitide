@@ -1,8 +1,8 @@
 //! Reading metadata from book files being added to a library.
 //!
-//! EPUB (and KEPUB, which is EPUB) is read fully, cover included. Other
-//! formats fall back to the file name for now; MOBI/AZW3 and PDF readers
-//! are on the roadmap.
+//! EPUB (and KEPUB, which is EPUB) is read fully, cover included; so are
+//! MOBI, AZW and AZW3. Other formats fall back to the file name; a PDF
+//! reader is on the roadmap.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -12,6 +12,7 @@ use chrono::NaiveDate;
 pub mod epub;
 pub mod epub_write;
 pub mod filename;
+pub mod mobi;
 
 /// What a book file says about itself. Everything is optional: files in
 /// the wild are often incomplete.
@@ -48,6 +49,7 @@ pub fn read(path: &Path, format: &str) -> BookMetadata {
     let from_name = filename::parse(path);
     let mut meta = match format {
         "EPUB" | "KEPUB" => epub::read(path).unwrap_or_default(),
+        "MOBI" | "AZW" | "AZW3" | "AZW4" | "PRC" | "PDB" => mobi::read(path).unwrap_or_default(),
         _ => BookMetadata::default(),
     };
     if meta.title.is_none() {

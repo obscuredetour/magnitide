@@ -79,7 +79,9 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Native Magnitide library (schema v1) and calibre import, in the app with progress (also `cargo run --release -p magnitide-core --example import_calibre -- <calibre> <dest>`)
 - [x] Library safety: single-writer lock (`.magnitide.lock`), warning for libraries on network shares
 - [x] Drag and drop (and "Add Books…") to add books: EPUB metadata and covers, file-name fallback, formats grouped, duplicates skipped
-- [ ] Metadata readers for MOBI/AZW3 and PDF (drag and drop uses file names for these today)
+- [x] MOBI/AZW/AZW3 metadata and covers (adding books, device matching); "Surname, Given" authors turned around
+- [ ] PDF metadata reader (drag and drop uses file names for PDFs today)
+- [ ] Native EPUB → AZW3 converter, then MOBI/AZW3 → EPUB (drop the calibre requirement for Kindles)
 - [x] Adding a new format of a book already in the library (same title and first author) adds it to that book instead of creating another
 - [x] Metadata editing (⌘E): all built-in fields, rich-text description, cover change/remove; folder and file names follow title and first author (all-or-nothing with the database)
 - [x] Autocomplete for authors, tags, series and publishers in the edit form
