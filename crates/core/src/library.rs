@@ -317,7 +317,12 @@ impl Library {
 
 /// Look up a name in a name table, inserting it if new. Matching is
 /// case-insensitive (the columns are COLLATE NOCASE); the first spelling wins.
-fn get_or_insert(tx: &Transaction<'_>, select: &str, insert: &str, params: &[&dyn rusqlite::ToSql]) -> Result<i64> {
+pub(crate) fn get_or_insert(
+    tx: &Transaction<'_>,
+    select: &str,
+    insert: &str,
+    params: &[&dyn rusqlite::ToSql],
+) -> Result<i64> {
     if let Some(id) = tx.prepare_cached(select)?.query_row([params[0]], |r| r.get(0)).optional()? {
         return Ok(id);
     }
@@ -325,7 +330,7 @@ fn get_or_insert(tx: &Transaction<'_>, select: &str, insert: &str, params: &[&dy
     Ok(tx.last_insert_rowid())
 }
 
-fn author_id(tx: &Transaction<'_>, name: &str, sort: Option<&str>) -> Result<i64> {
+pub(crate) fn author_id(tx: &Transaction<'_>, name: &str, sort: Option<&str>) -> Result<i64> {
     let sort = sort.map(str::to_owned).unwrap_or_else(|| names::author_sort(name));
     get_or_insert(
         tx,
@@ -335,7 +340,7 @@ fn author_id(tx: &Transaction<'_>, name: &str, sort: Option<&str>) -> Result<i64
     )
 }
 
-fn series_id(tx: &Transaction<'_>, name: &str) -> Result<i64> {
+pub(crate) fn series_id(tx: &Transaction<'_>, name: &str) -> Result<i64> {
     let sort = names::title_sort(name);
     get_or_insert(
         tx,
@@ -345,11 +350,11 @@ fn series_id(tx: &Transaction<'_>, name: &str) -> Result<i64> {
     )
 }
 
-fn publisher_id(tx: &Transaction<'_>, name: &str) -> Result<i64> {
+pub(crate) fn publisher_id(tx: &Transaction<'_>, name: &str) -> Result<i64> {
     get_or_insert(tx, "SELECT id FROM publishers WHERE name = ?", "INSERT INTO publishers (name) VALUES (?)", &[&name])
 }
 
-fn tag_id(tx: &Transaction<'_>, name: &str) -> Result<i64> {
+pub(crate) fn tag_id(tx: &Transaction<'_>, name: &str) -> Result<i64> {
     get_or_insert(tx, "SELECT id FROM tags WHERE name = ?", "INSERT INTO tags (name) VALUES (?)", &[&name])
 }
 

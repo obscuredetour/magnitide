@@ -4,9 +4,11 @@
 
 pub mod catalog;
 pub mod db;
+pub mod edit;
 pub mod error;
 pub mod fsinfo;
 pub mod html;
+mod images;
 pub mod import;
 pub mod library;
 pub mod lock;
@@ -14,6 +16,7 @@ pub mod metadata;
 pub mod names;
 pub mod paths;
 
+pub use edit::{BookEdit, EditOutcome};
 pub use error::{Error, Result};
 pub use library::{Book, BookId, LOCAL_USER, Library, LibraryInfo, NewBook, UserId};
 pub use magnitide_catalog::Catalog;

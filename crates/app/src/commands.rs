@@ -97,16 +97,10 @@ pub async fn add_books(
     state: State<'_, AppState>,
     paths: Vec<String>,
 ) -> CmdResult<magnitide_core::import::AddReport> {
-    let lib = state.current().ok_or("No library is open")?;
-    let native = lib
-        .native
-        .clone()
-        .ok_or("This calibre library is read-only. Import it into a Magnitide library (library menu) to add books.")?;
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    let (report, catalog) = tauri::async_runtime::spawn_blocking(move || {
-        let mut native = native.lock().unwrap_or_else(|e| e.into_inner());
+    write_library(&state, move |lib| {
         let mut last = Instant::now();
-        let report = magnitide_core::import::add_files(&mut native, &paths, |p| {
+        magnitide_core::import::add_files(lib, &paths, |p| {
             if p.done == 0 || p.done == p.total || last.elapsed().as_millis() >= 50 {
                 last = Instant::now();
                 let _ = app.emit(
@@ -114,9 +108,67 @@ pub async fn add_books(
                     ImportProgress { done: p.done, total: p.total, title: p.title.to_owned() },
                 );
             }
-        })?;
-        // Reload so every view (and search) sees the new books.
-        Ok::<_, magnitide_core::Error>((report, native.load_catalog()?))
+        })
+    })
+    .await
+}
+
+/// A book's editable fields, for the edit form.
+#[tauri::command]
+pub async fn book_edit(state: State<'_, AppState>, id: i64) -> CmdResult<magnitide_core::BookEdit> {
+    let native = native(&state)?;
+    tauri::async_runtime::spawn_blocking(move || native.lock().unwrap_or_else(|e| e.into_inner()).book_edit(id))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+/// Save an edit. Renames the book's folder and files when its title or first
+/// author changes; all-or-nothing with the database.
+#[tauri::command]
+pub async fn save_book_edit(
+    state: State<'_, AppState>,
+    id: i64,
+    edit: magnitide_core::BookEdit,
+) -> CmdResult<magnitide_core::EditOutcome> {
+    write_library(&state, move |lib| lib.update_book(id, &edit)).await
+}
+
+/// Replace a book's cover with an image file (stored as JPEG).
+#[tauri::command]
+pub async fn set_cover_from_file(state: State<'_, AppState>, id: i64, path: String) -> CmdResult<()> {
+    write_library(&state, move |lib| {
+        let bytes = std::fs::read(&path)?;
+        lib.set_cover(id, &bytes)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn remove_cover(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
+    write_library(&state, move |lib| lib.remove_cover(id)).await
+}
+
+const READ_ONLY: &str =
+    "This calibre library is read-only. Import it into a Magnitide library (library menu) to change it.";
+
+/// The open Magnitide library, or an error for calibre libraries.
+fn native(state: &State<'_, AppState>) -> CmdResult<Arc<Mutex<magnitide_core::Library>>> {
+    state.current().ok_or("No library is open")?.native.clone().ok_or_else(|| READ_ONLY.to_owned())
+}
+
+/// Run a change against the open Magnitide library off the main thread, then
+/// reload its catalog so every view (and search) sees the result.
+async fn write_library<T: Send + 'static>(
+    state: &State<'_, AppState>,
+    change: impl FnOnce(&mut magnitide_core::Library) -> magnitide_core::Result<T> + Send + 'static,
+) -> CmdResult<T> {
+    let lib = state.current().ok_or("No library is open")?;
+    let native = lib.native.clone().ok_or_else(|| READ_ONLY.to_owned())?;
+    let (out, catalog) = tauri::async_runtime::spawn_blocking(move || {
+        let mut native = native.lock().unwrap_or_else(|e| e.into_inner());
+        let out = change(&mut native)?;
+        Ok::<_, magnitide_core::Error>((out, native.load_catalog()?))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -129,22 +181,17 @@ pub async fn add_books(
         native: lib.native.clone(),
         thumb_dir: lib.thumb_dir.clone(),
     });
-    Ok(report)
+    Ok(out)
 }
 
 /// Rename the open Magnitide library. Returns the cleaned-up name.
 #[tauri::command]
 pub async fn rename_library(state: State<'_, AppState>, name: String) -> CmdResult<String> {
-    let lib = state.current().ok_or("No library is open")?;
-    let native = lib.native.clone().ok_or("calibre libraries are read-only; import one to rename it.")?;
-    tauri::async_runtime::spawn_blocking(move || {
-        let mut native = native.lock().unwrap_or_else(|e| e.into_inner());
-        native.set_name(&name)?;
-        Ok::<_, magnitide_core::Error>(native.info()?.name)
+    write_library(&state, move |lib| {
+        lib.set_name(&name)?;
+        Ok(lib.info()?.name)
     })
     .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())
 }
 
 /// Sent while an import runs. Event name matches `onImportProgress` in ui/src/api.ts.

@@ -9,12 +9,12 @@
 //!   created is removed. A folder that was already there is never deleted.
 
 use std::fs;
-use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 use rusqlite::{Transaction, params};
 
 use crate::error::{Error, Result};
+use crate::images::as_jpeg;
 use crate::library::{BookId, Library, NewBook, now};
 use crate::paths;
 
@@ -121,15 +121,4 @@ fn clone_or_copy(src: &Path, dest: &Path, out: &mut Stored) -> Result<u64> {
         }
     }
     Ok(fs::metadata(dest)?.len())
-}
-
-/// The library layout names covers `cover.jpg`; EPUB covers are often PNG.
-fn as_jpeg(bytes: &[u8]) -> std::result::Result<Vec<u8>, image::ImageError> {
-    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
-        return Ok(bytes.to_vec());
-    }
-    let img = image::load_from_memory(bytes)?;
-    let mut out = Cursor::new(Vec::new());
-    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 90).encode_image(&img.to_rgb8())?;
-    Ok(out.into_inner())
 }
