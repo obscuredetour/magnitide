@@ -36,7 +36,7 @@ Click the library name in the top-left to open a different one. The library
 is only ever read; cover thumbnails are cached in the app's cache folder
 (`~/Library/Caches/dev.magnitide.app` on macOS).
 
-Keys: `/` or ⌘F search · ⌘, settings · ⌘1 covers, ⌘2 list · arrows move · Enter opens details · ⌘E edits · double-click or ⌘O opens the book in its default app · Esc closes.
+Keys: `/` or ⌘F search · ⌘, settings · ⌘1 covers, ⌘2 list · arrows move · ⌘-click / Shift-click / ⌘A select several · Enter opens details · ⌘E edits · double-click or ⌘O opens the book in its default app · Esc closes.
 In the details panel, click a format to open that specific file.
 Search accepts `author:`, `tag:`, `series:`, `title:`, `#custom:`, quotes and `-` to exclude.
 
@@ -70,6 +70,8 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] List view zebra stripes (setting, on by default)
 - [ ] (Jamie) Tweak zebra stripe colours: inconsistent across themes. The stripe is `bg-surface-2/40` in `crates/app/ui/src/components/BookTable.tsx`; a per-theme `--row-stripe` variable in `themes.css` would let each theme set its own
 - [ ] Add clear search button
+- [ ] Table sidebar allow resizing of width by dragging its edge, but let's set a min-width to prevent it from collapsing too much
+- [ ] Add slight app blur behind dialogs
 - [ ] Covers view should keep selected book in view after sidebar opens & grid resize
 - [ ] Implement table column reordering
 - [ ] Implement right click context menu for books
@@ -85,9 +87,11 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Write metadata and covers back into EPUB/KEPUB files (details panel "Write to file", Settings → Library for every book, optional write on save); only files that differ are rewritten
 - [x] Metadata lookup from Open Library and Google Books (your own API key) with a field-by-field matching dialog: "Find Metadata…" in the edit window, sources in Settings → Metadata Sources. On request only; ranking is plain string matching, no AI
 - [x] E-reader detection (Kobo, Kindle, any calibre-managed USB device): plugged-in devices appear in the top bar, books on them get an "On Device" column, a cover badge and a line in the details panel, and the list can be filtered to books on or not on a device. Matched by calibre's uuid, ISBN, identical file, then title and author; Eject from the device menu
-- [ ] File transfer between a mounted device and the library (send, import, delete); MTP devices (newer Kindles) later
+- [x] File transfer: send selected books to a device (the format it reads best; EPUBs get the library's metadata, cover and id written into the copy), remove them (with KOReader's notes), and add a device's other files to the library
 - [ ] Format conversion: EPUB → KEPUB natively; AZW3 via an installed calibre `ebook-convert` at first
-- [ ] Multi-select, then bulk metadata lookup and bulk send to device
+- [x] Multi-select (⌘-click, Shift-click, ⌘A) with a selection bar; "Merge…" for two records of the same book
+- [ ] Bulk metadata lookup and bulk edit for a selection
+- [ ] MTP devices (newer Kindles) and Kobo collections/shelves
 - [ ] Accessibility scaling: ⌘+ / ⌘− / ⌘0 zoom the whole UI (remembered), respecting the OS text size where available
 - [ ] Plugin host for DeDRM (embedded Python)
 - [ ] Built-in reader

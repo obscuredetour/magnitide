@@ -8,7 +8,9 @@ import { EditDialog } from './components/EditDialog';
 import { EmptyState } from './components/EmptyState';
 import { ImportDialog } from './components/ImportDialog';
 import { NetworkWarning } from './components/NetworkWarning';
+import { SelectionBar } from './components/SelectionBar';
 import { SettingsDialog } from './components/Settings';
+import { ConfirmHost } from './confirm';
 import { TopBar } from './components/TopBar';
 import { shownItems, watchDevices } from './devices';
 import {
@@ -18,8 +20,12 @@ import {
   query,
   selectedId,
   setDetailsOpen,
+  selectAll,
+  selectedIds,
+  selectRange,
   setSelectedId,
   status,
+  toggleSelected,
 } from './library';
 import { onOpenSettings } from './api';
 import { editingBook, openEditor } from './editor';
@@ -41,6 +47,13 @@ export function App() {
     setSelectedId(id);
     if (open) setDetailsOpen(true);
     if (reveal) view?.reveal(id);
+  };
+
+  /** A click in a view: ⌘ adds or removes, Shift selects a range, else select just this one. */
+  const click = (id: number, e: MouseEvent) => {
+    if (e.metaKey || e.ctrlKey) toggleSelected(id);
+    else if (e.shiftKey) selectRange(id, shownItems());
+    else select(id);
   };
 
   // Opening/closing the panel or switching views changes the layout; keep the selection in view.
@@ -91,8 +104,13 @@ export function App() {
     if (inField) return;
 
     const id = selectedId();
-    if (e.key === 'Escape') {
-      setDetailsOpen(false);
+    if (e.key === 'a' && cmd) {
+      e.preventDefault();
+      selectAll(shownItems());
+    } else if (e.key === 'Escape') {
+      // First back to one book, then close the panel.
+      if (selectedIds().size > 1) setSelectedId(id);
+      else setDetailsOpen(false);
     } else if (e.key === 'e' && cmd && id !== null) {
       e.preventDefault();
       void openEditor(id);
@@ -152,8 +170,9 @@ export function App() {
                     items={shownItems()}
                     tileSize={coverSize()}
                     selectedId={selectedId()}
+                    selectedIds={selectedIds()}
                     emptyMessage={emptyMessage()}
-                    onSelect={(id) => select(id)}
+                    onSelect={click}
                     onOpen={(id) => void openBook(id)}
                   />
                 }
@@ -162,13 +181,17 @@ export function App() {
                   ref={(h) => (view = h)}
                   rows={shownItems()}
                   selectedId={selectedId()}
+                  selectedIds={selectedIds()}
                   emptyMessage={emptyMessage()}
-                  onSelect={(id) => select(id)}
+                  onSelect={click}
                   onOpen={(id) => void openBook(id)}
                 />
               </Show>
               <Show when={detailsOpen() && selectedId()}>
                 {(id) => <DetailsPanel id={id()} onClose={() => setDetailsOpen(false)} />}
+              </Show>
+              <Show when={selectedIds().size > 1}>
+                <SelectionBar />
               </Show>
             </div>
           </main>
@@ -183,6 +206,7 @@ export function App() {
       <Show when={settingsOpen()}>
         <SettingsDialog onClose={() => setSettingsOpen(false)} />
       </Show>
+      <ConfirmHost />
       <Toast />
     </>
   );

@@ -223,6 +223,17 @@ pub async fn save_book_edit(
     write_library(&state, move |lib| lib.update_book(id, &edit)).await
 }
 
+/// Merge book `other` into book `keep` (formats, missing cover, tags and
+/// identifiers), then remove `other`.
+#[tauri::command]
+pub async fn merge_books(
+    state: State<'_, AppState>,
+    keep: i64,
+    other: i64,
+) -> CmdResult<magnitide_core::merge::MergeOutcome> {
+    write_library(&state, move |lib| lib.merge_books(keep, other)).await
+}
+
 /// Replace a book's cover with an image file (stored as JPEG).
 #[tauri::command]
 pub async fn set_cover_from_file(state: State<'_, AppState>, id: i64, path: String) -> CmdResult<()> {
@@ -289,9 +300,9 @@ pub const IMPORT_PROGRESS_EVENT: &str = "import-progress";
 #[derive(Clone, Serialize, TS)]
 #[ts(export)]
 pub struct ImportProgress {
-    done: usize,
-    total: usize,
-    title: String,
+    pub(crate) done: usize,
+    pub(crate) total: usize,
+    pub(crate) title: String,
 }
 
 /// Import the open calibre library into a Magnitide library at `dest`

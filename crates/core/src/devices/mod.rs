@@ -23,6 +23,7 @@ use serde::Serialize;
 use crate::import::files::format_of;
 use crate::metadata;
 
+pub mod transfer;
 pub mod volumes;
 
 /// Stop listing a device after this many book files.

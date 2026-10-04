@@ -3,6 +3,9 @@ import { createSignal, Show } from 'solid-js';
 type ToastState = { message: string; error: boolean };
 
 const [current, setCurrent] = createSignal<ToastState | null>(null);
+/** Something sits at the bottom of the window (the selection bar): show toasts above it. */
+const [lifted, setLifted] = createSignal(false);
+export { setLifted as liftToasts };
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 /** Show a short message. `duration` (ms) defaults to longer for errors; Infinity keeps it up until replaced. */
@@ -18,8 +21,10 @@ export function Toast() {
     <Show when={current()}>
       {(t) => (
         <div
-          class="fixed bottom-6 left-1/2 z-20 max-w-[min(560px,calc(100%-32px))] -translate-x-1/2 animate-toast-in rounded-[10px] px-4 py-[9px] text-white shadow-lift select-text"
+          class="fixed left-1/2 z-20 max-w-[min(560px,calc(100%-32px))] -translate-x-1/2 animate-toast-in rounded-[10px] px-4 py-[9px] text-white shadow-lift select-text"
           classList={{
+            'bottom-6': !lifted(),
+            'bottom-20': lifted(),
             'bg-[rgb(30_30_33/0.92)]': !t().error,
             'bg-[color-mix(in_srgb,var(--danger)_88%,black)]': t().error,
           }}

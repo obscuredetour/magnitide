@@ -31,7 +31,7 @@ const DC: &str = "http://purl.org/dc/elements/1.1/";
 const OPF: &str = "http://www.idpf.org/2007/opf";
 
 /// Write `meta` into the EPUB at `path`. `title_sort` goes in alongside the
-/// title. `meta.cover`, if set, must be JPEG bytes; None leaves the file's
+/// title. `meta.uuids` are added as identifiers if the file lacks them. `meta.cover`, if set, must be JPEG bytes; None leaves the file's
 /// cover alone. Empty `meta.languages` keeps the file's languages (EPUB
 /// requires one).
 pub fn write(path: &Path, meta: &BookMetadata, title_sort: Option<&str>) -> Res<()> {
@@ -268,6 +268,22 @@ fn rewrite_opf(
             (true, _) => format!("<{dc}:identifier>{scheme}:{value}</{dc}:identifier>"),
             (false, "isbn") => format!(r#"<{dc}:identifier {opf_prefix}:scheme="ISBN">{value}</{dc}:identifier>"#),
             (false, _) => format!(r#"<{dc}:identifier {opf_prefix}:scheme="{scheme}">{value}</{dc}:identifier>"#),
+        });
+    }
+    // Book ids (sending to a device), unless the file already carries them.
+    let carried: Vec<String> = metadata
+        .children()
+        .filter(|n| n.has_tag_name_local("identifier"))
+        .map(|n| text(n).to_ascii_lowercase())
+        .collect();
+    for uuid in &meta.uuids {
+        if carried.iter().any(|c| c.ends_with(&uuid.to_ascii_lowercase())) {
+            continue;
+        }
+        lines.push(if epub3 {
+            format!("<{dc}:identifier>urn:uuid:{}</{dc}:identifier>", esc(uuid))
+        } else {
+            format!(r#"<{dc}:identifier {opf_prefix}:scheme="calibre">{}</{dc}:identifier>"#, esc(uuid))
         });
     }
     for tag in &meta.tags {
@@ -600,6 +616,22 @@ mod tests {
         let all = entries(&path);
         let added = all.iter().find(|e| e.0 == "OEBPS/magnitide-cover.jpg").unwrap();
         assert_eq!(added.1, CompressionMethod::Stored);
+    }
+
+    #[test]
+    fn adds_book_uuids_once() {
+        let dir = tempfile::tempdir().unwrap();
+        for (name, opf) in [("2.epub", EPUB2_OPF), ("3.epub", EPUB3_OPF)] {
+            let path = dir.path().join(name);
+            make_epub(&path, opf, None);
+            let uuid = "0f0f0f0f-1111-4222-8333-444444444444".to_owned();
+            let want = BookMetadata { uuids: vec![uuid.clone()], ..wanted() };
+            write(&path, &want, None).unwrap();
+            write(&path, &want, None).unwrap();
+            let got = read(&path).unwrap();
+            assert!(got.uuids.contains(&uuid), "{name}: {:?}", got.uuids);
+            assert_eq!(opf_text(&path).matches(&uuid).count(), 1, "{name}: written once");
+        }
     }
 
     #[test]

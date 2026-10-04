@@ -14,6 +14,9 @@ import type { DeviceHit } from './bindings/DeviceHit';
 import type { DeviceInfo } from './bindings/DeviceInfo';
 import type { DeviceKind } from './bindings/DeviceKind';
 import type { MatchedBy } from './bindings/MatchedBy';
+import type { MergeOutcome } from './bindings/MergeOutcome';
+import type { RemoveReport } from './bindings/RemoveReport';
+import type { SendReport } from './bindings/SendReport';
 import type { Lookup } from './bindings/Lookup';
 import type { Match as MetadataMatch } from './bindings/Match';
 import type { MatchKind } from './bindings/MatchKind';
@@ -49,6 +52,9 @@ export type {
   DeviceKind,
   Lookup,
   MatchedBy,
+  MergeOutcome,
+  RemoveReport,
+  SendReport,
   MatchKind,
   MetadataMatch,
   SearchResult,
@@ -178,6 +184,18 @@ export const api = {
   /** Eject (unmount) a device so it can be unplugged. */
   ejectDevice: (id: string) => invoke<void>('eject_device', { id }),
 
+  /** Copy books to a device (best format for it; EPUBs carry the library's metadata). Progress via onTransferProgress. */
+  sendToDevice: (id: string, bookIds: number[]) => invoke<SendReport>('send_to_device', { id, bookIds }),
+
+  /** Delete books' files (and KOReader's notes for them) from a device. */
+  removeFromDevice: (id: string, bookIds: number[]) => invoke<RemoveReport>('remove_from_device', { id, bookIds }),
+
+  /** Add device files that aren't in the library (paths from `DeviceInfo.unmatched`). */
+  importFromDevice: (id: string, paths: string[]) => invoke<AddReport>('import_from_device', { id, paths }),
+
+  /** Merge book `other` into `keep` (formats, missing cover, tags, identifiers), removing `other`. */
+  mergeBooks: (keep: number, other: number) => invoke<MergeOutcome>('merge_books', { keep, other }),
+
   /** Open a device in the file manager. */
   revealDevice: (id: string) => invoke<void>('reveal_device', { id }),
 
@@ -258,6 +276,11 @@ export function onOpenSettings(handler: () => void): Promise<UnlistenFn> {
 /** An e-reader was connected or disconnected (or rescanned). Matches `DEVICES_CHANGED_EVENT` in devices.rs. */
 export function onDevicesChanged(handler: () => void): Promise<UnlistenFn> {
   return listen('devices-changed', handler);
+}
+
+/** Copying books to a device. Event name matches `TRANSFER_PROGRESS_EVENT` in devices.rs. */
+export function onTransferProgress(handler: (p: ImportProgress) => void): Promise<UnlistenFn> {
+  return listen<ImportProgress>('transfer-progress', (e) => handler(e.payload));
 }
 
 /** Import progress. Event name matches `IMPORT_PROGRESS_EVENT` in `crates/app/src/commands.rs`. */

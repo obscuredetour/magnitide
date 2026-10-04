@@ -28,7 +28,60 @@ export const [library, setLibrary] = createSignal<LibraryInfo | null>(null);
 export const [items, setItems] = createSignal<BookRow[]>([]);
 export const [query, setQuery] = createSignal('');
 export const [queryError, setQueryError] = createSignal<string | null>(null);
-export const [selectedId, setSelectedId] = createSignal<number | null>(null);
+/** The book shown in the details panel and moved by the arrow keys. */
+const [selectedId, setPrimary] = createSignal<number | null>(null);
+/** Every selected book (⌘-click, Shift-click, ⌘A); always includes `selectedId`. */
+const [selectedIds, setSelection] = createSignal<ReadonlySet<number>>(new Set());
+export { selectedId, selectedIds };
+/** Where a Shift-click range starts. */
+let anchor: number | null = null;
+
+/** Select one book (or none), replacing any multiple selection. */
+export function setSelectedId(id: number | null): void {
+  batch(() => {
+    setPrimary(id);
+    setSelection(new Set(id === null ? [] : [id]));
+  });
+  anchor = id;
+}
+
+/** ⌘-click: add or remove one book. */
+export function toggleSelected(id: number): void {
+  const next = new Set(selectedIds());
+  if (next.delete(id)) {
+    batch(() => {
+      setSelection(next);
+      if (selectedId() === id) setPrimary([...next].at(-1) ?? null);
+    });
+  } else {
+    next.add(id);
+    batch(() => {
+      setSelection(next);
+      setPrimary(id);
+    });
+    anchor = id;
+  }
+}
+
+/** Shift-click: everything from the last clicked book to this one, in `list` order. */
+export function selectRange(id: number, list: readonly BookRow[]): void {
+  const from = list.findIndex((b) => b.id === (anchor ?? id));
+  const to = list.findIndex((b) => b.id === id);
+  if (from < 0 || to < 0) return setSelectedId(id);
+  const [a, b] = from < to ? [from, to] : [to, from];
+  batch(() => {
+    setSelection(new Set(list.slice(a, b + 1).map((r) => r.id)));
+    setPrimary(id);
+  });
+}
+
+export function selectAll(list: readonly BookRow[]): void {
+  if (!list.length) return;
+  batch(() => {
+    setSelection(new Set(list.map((b) => b.id)));
+    if (selectedId() === null) setPrimary(list[0]!.id);
+  });
+}
 export const [detailsOpen, setDetailsOpen] = createSignal(false);
 /** Bumped after any edit, so views showing a book's details fetch them again. */
 export const [editRevision, setEditRevision] = createSignal(0);
