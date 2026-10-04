@@ -16,6 +16,7 @@ import {
   status,
 } from './library';
 import { Toast } from './toast';
+import { coverSize } from './view';
 
 export function App() {
   let grid: GridHandle | undefined;
@@ -101,6 +102,7 @@ export function App() {
             <CoverGrid
               ref={(h) => (grid = h)}
               items={items()}
+              tileSize={coverSize()}
               selectedId={selectedId()}
               emptyMessage={query().trim() ? `No books match “${query().trim()}”.` : 'This library has no books yet.'}
               onSelect={(id) => select(id)}

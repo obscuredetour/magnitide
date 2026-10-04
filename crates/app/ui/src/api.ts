@@ -25,6 +25,11 @@ export const api = {
   /** Opens in the system's default app; resolves to the format that was opened. */
   openBook: (id: number, format: string | null = null) => invoke<string>('open_book', { id, format }),
 
+  /** Show the book in the file manager with its most readable file selected. */
+  revealBook: (id: number) => invoke<void>('reveal_book', { id }),
+
+  showLibraryFolder: () => invoke<void>('show_library_folder'),
+
   /** Native folder picker; null when cancelled. */
   async chooseLibraryFolder(): Promise<string | null> {
     const picked = await open({ directory: true, multiple: false, title: 'Choose a calibre library folder' });
@@ -46,3 +51,10 @@ export function coverUrl(size: CoverSize, id: number): string {
 export function errorMessage(err: unknown): string {
   return typeof err === 'string' ? err : err instanceof Error ? err.message : String(err);
 }
+
+/** The platform's file manager, for labels like "Show in Finder". */
+export const fileManagerName = /Mac/.test(navigator.userAgent)
+  ? 'Finder'
+  : /Windows/.test(navigator.userAgent)
+    ? 'File Explorer'
+    : 'Files';

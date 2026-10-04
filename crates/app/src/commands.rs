@@ -218,6 +218,33 @@ pub async fn open_book(state: State<'_, AppState>, id: i64, format: Option<Strin
     })
 }
 
+/// Show a book in Finder / File Explorer / the file manager, with its most
+/// readable file selected (or its folder, if no files are present).
+#[tauri::command]
+pub async fn reveal_book(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
+    let lib = state.current().ok_or("No library is open")?;
+    let b = lib.snap.get(id).ok_or_else(|| format!("No book with id {id}"))?;
+    let present: Vec<_> = b.formats.iter().filter(|f| b.format_path(&lib.root, f).is_file()).collect();
+    let names: Vec<&str> = present.iter().map(|f| f.format.as_str()).collect();
+    let target = by_preference(&names)
+        .first()
+        .and_then(|fmt| present.iter().find(|f| f.format == *fmt))
+        .map(|f| b.format_path(&lib.root, f))
+        .unwrap_or_else(|| b.dir(&lib.root));
+    tauri_plugin_opener::reveal_item_in_dir(&target).map_err(|e| format!("Couldn’t show the book’s files: {e}"))
+}
+
+/// Open the library's folder in Finder / File Explorer / the file manager.
+#[tauri::command]
+pub async fn show_library_folder(state: State<'_, AppState>) -> CmdResult<()> {
+    let lib = state.current().ok_or("No library is open")?;
+    let root = lib.root.clone();
+    tauri::async_runtime::spawn_blocking(move || open::that(&root))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("Couldn’t open the library folder: {e}"))
+}
+
 /// Comments are HTML from arbitrary sources (metadata downloads, publishers).
 /// Anything that could run script or load remote content is stripped.
 fn sanitize(html: &str) -> String {

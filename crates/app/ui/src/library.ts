@@ -23,6 +23,32 @@ export const [detailsOpen, setDetailsOpen] = createSignal(false);
 const storedSort = storage.get('sort');
 export const [sort, setSortSignal] = createSignal<SortKey>(isSortKey(storedSort) ? storedSort : 'title');
 
+export type RecentLibrary = { path: string; name: string };
+const MAX_RECENT = 6;
+
+function loadRecent(): RecentLibrary[] {
+  try {
+    const parsed: unknown = JSON.parse(storage.get('recentLibraries') ?? '[]');
+    return Array.isArray(parsed)
+      ? parsed.filter((r): r is RecentLibrary => typeof r?.path === 'string' && typeof r?.name === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Most recent first, including the open library. */
+export const [recentLibraries, setRecentLibraries] = createSignal<RecentLibrary[]>(loadRecent());
+
+function rememberLibrary(info: LibraryInfo): void {
+  const next = [{ path: info.path, name: info.name }, ...recentLibraries().filter((r) => r.path !== info.path)].slice(
+    0,
+    MAX_RECENT,
+  );
+  setRecentLibraries(next);
+  storage.set('recentLibraries', JSON.stringify(next));
+}
+
 let refreshSeq = 0;
 
 /** Re-run the current search and sort. Stale responses are dropped. */
@@ -57,6 +83,7 @@ export async function openLibrary(path: string | null): Promise<boolean> {
     const info = await api.openLibrary(path);
     for (const w of info.warnings) console.warn(w);
     storage.set('libraryPath', info.path);
+    rememberLibrary(info);
     batch(() => {
       setLibrary(info);
       setSelectedId(null);
