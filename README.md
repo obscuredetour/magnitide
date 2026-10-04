@@ -6,12 +6,12 @@ How the pieces fit, and the decisions behind them: [docs/architecture.md](docs/a
 
 ## Crates
 
-| Crate | What it is |
-|---|---|
-| [`app`](crates/app) | The desktop app: Tauri 2, with a Solid + TypeScript UI in [`crates/app/ui`](crates/app/ui). Currently a read-only cover grid with search and a details panel |
-| [`core`](crates/core) | `magnitide-core`: the native Magnitide library (schema, migrations, edits), calibre import, adding book files with EPUB metadata. No Tauri code, so the planned server can share it |
-| [`catalog`](crates/catalog) | `magnitide-catalog`: the in-memory book model, search and sort that every kind of library loads into |
-| [`calibre-compat`](crates/calibre-compat) | Read-only access to calibre libraries (`metadata.db` + book folders), plus a CLI to inspect them |
+| Crate                                     | What it is                                                                                                                                                                          |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`app`](crates/app)                       | The desktop app: Tauri 2, with a Solid + TypeScript UI in [`crates/app/ui`](crates/app/ui). Currently a read-only cover grid with search and a details panel                        |
+| [`core`](crates/core)                     | `magnitide-core`: the native Magnitide library (schema, migrations, edits), calibre import, adding book files with EPUB metadata. No Tauri code, so the planned server can share it |
+| [`catalog`](crates/catalog)               | `magnitide-catalog`: the in-memory book model, search and sort that every kind of library loads into                                                                                |
+| [`calibre-compat`](crates/calibre-compat) | Read-only access to calibre libraries (`metadata.db` + book folders), plus a CLI to inspect them                                                                                    |
 
 ## Setup
 
@@ -68,6 +68,9 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Settings panel (⌘,): appearance, library, list columns, thumbnail cache, about
 - [x] List view zebra stripes (setting, on by default)
 - [ ] (Jamie) Tweak zebra stripe colours: inconsistent across themes. The stripe is `bg-surface-2/40` in `crates/app/ui/src/components/BookTable.tsx`; a per-theme `--row-stripe` variable in `themes.css` would let each theme set its own
+- [ ] Add clear search button
+- [ ] Covers view should keep selected book in view after sidebar opens
+- [ ] Implement right click context menu for books
 - [x] Native Magnitide library (schema v1) and calibre import, in the app with progress (also `cargo run --release -p magnitide-core --example import_calibre -- <calibre> <dest>`)
 - [x] Library safety: single-writer lock (`.magnitide.lock`), warning for libraries on network shares
 - [x] Drag and drop (and "Add Books…") to add books: EPUB metadata and covers, file-name fallback, formats grouped, duplicates skipped
@@ -77,7 +80,12 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Autocomplete for authors, tags, series and publishers in the edit form
 - [ ] Editing custom fields
 - [x] File name clean-up: names follow edits, and Settings → Library → "Tidy file names" fixes drifted books and reports files missing from disk
-- [ ] Write edited metadata back into book files (EPUB OPF), so other apps and devices see it
+- [x] Write metadata and covers back into EPUB/KEPUB files (details panel "Write to file", Settings → Library for every book, optional write on save); only files that differ are rewritten
+- [ ] Metadata lookup from Open Library and Google Books, with a field-by-field matching dialog (on request only; no AI)
+- [ ] E-reader detection (Kindle, Kobo, generic USB storage): scan mounted devices, "On device" column and cover badge
+- [ ] File transfer between a mounted device and the library (send, import, delete); MTP devices (newer Kindles) later
+- [ ] Format conversion: EPUB → KEPUB natively; AZW3 via an installed calibre `ebook-convert` at first
+- [ ] Multi-select, then bulk metadata lookup and bulk send to device
 - [ ] Accessibility scaling: ⌘+ / ⌘− / ⌘0 zoom the whole UI (remembered), respecting the OS text size where available
 - [ ] Built-in reader
 - [ ] Export to a calibre library

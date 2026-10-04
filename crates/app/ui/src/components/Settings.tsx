@@ -24,6 +24,7 @@ import {
   viewMode,
   zebraRows,
 } from '../view';
+import { describeWrite, plural, setWriteOnSave, writeOnSave } from '../writeback';
 import { TABLE_COLUMNS } from './BookTable';
 import { CoverSizeSlider } from './CoverSizeSlider';
 
@@ -257,6 +258,7 @@ function LibrarySettings() {
       <Show when={library()?.kind === 'magnitide'}>
         <LibraryName />
         <TidyNames />
+        <WriteBack />
       </Show>
       <Show when={library()?.kind === 'calibre'}>
         <Row
@@ -457,6 +459,78 @@ function TidyNames() {
           </ul>
         </div>
       </Show>
+    </>
+  );
+}
+
+function WriteBack() {
+  const [preview, { refetch }] = createResource(() => api.writebackPreview().catch(() => null));
+  const [confirming, setConfirming] = createSignal(false);
+  const [running, setRunning] = createSignal(false);
+
+  const run = async () => {
+    setConfirming(false);
+    setRunning(true);
+    try {
+      const r = await api.writeAllMetadata();
+      await refresh();
+      setEditRevision((n) => n + 1);
+      for (const f of r.failed) console.warn(f);
+      toast(describeWrite(r), { error: r.failed.length > 0, duration: 5000 });
+      await refetch();
+    } catch (err) {
+      toast(errorMessage(err), { error: true });
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const description = () => {
+    const p = preview();
+    if (p === undefined) return 'Checking…';
+    if (p === null) return 'Couldn’t check the library.';
+    return p.files
+      ? `${plural(p.books, 'book has', 'books have')} EPUB files whose built-in metadata or cover differs from the library (${plural(p.files, 'file', 'files')}). Writing updates them for e-readers and other apps.`
+      : 'Every EPUB’s built-in metadata and cover match the library.';
+  };
+
+  return (
+    <>
+      <Row label="Write metadata to EPUB files" description={description()}>
+        <Show
+          when={confirming()}
+          fallback={
+            <button class={button} disabled={running() || !preview()?.files} onClick={() => setConfirming(true)}>
+              {running() ? 'Writing…' : 'Write…'}
+            </button>
+          }
+        >
+          <button class={button} onClick={() => setConfirming(false)}>
+            Cancel
+          </button>
+          <button class={button + ' border-accent text-accent'} onClick={() => void run()}>
+            Write {plural(preview()?.files ?? 0, 'file', 'files')}
+          </button>
+        </Show>
+      </Row>
+      <Show when={confirming()}>
+        <p class="mb-2 rounded-lg bg-bg p-3 text-xs text-muted">
+          Files are rewritten in place. Apps that track reading progress by a file’s fingerprint (KOReader sync, for
+          one) may treat a rewritten book as new.
+        </p>
+      </Show>
+      <Row
+        label="Also write when saving edits"
+        description="Keep EPUB files in step with every edit. Off by default, since each save rewrites the file."
+      >
+        <input
+          type="checkbox"
+          class="size-4 accent-accent"
+          aria-label="Also write when saving edits"
+          checked={writeOnSave()}
+          onChange={(e) => setWriteOnSave(e.currentTarget.checked)}
+        />
+      </Row>
     </>
   );
 }

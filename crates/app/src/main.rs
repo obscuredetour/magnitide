@@ -80,7 +80,11 @@ fn main() {
             commands::remove_cover,
             commands::tidy_preview,
             commands::tidy_file_names,
-            commands::name_lists
+            commands::name_lists,
+            commands::file_metadata_status,
+            commands::write_metadata_to_files,
+            commands::writeback_preview,
+            commands::write_all_metadata
         ])
         .run(tauri::generate_context!())
         .expect("error while running Magnitide");

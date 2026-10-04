@@ -363,7 +363,7 @@ pub(crate) fn sync_names(
     Ok(Synced { renames, outcome, left: moved.then_some(old_dir), missing })
 }
 
-fn dir_for(root: &Path, rel: &str) -> PathBuf {
+pub(crate) fn dir_for(root: &Path, rel: &str) -> PathBuf {
     rel.split('/').fold(root.to_path_buf(), |p, c| p.join(c))
 }
 
