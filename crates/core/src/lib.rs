@@ -4,6 +4,8 @@
 
 pub mod db;
 pub mod error;
+pub mod html;
+pub mod import;
 pub mod library;
 pub mod names;
 pub mod paths;

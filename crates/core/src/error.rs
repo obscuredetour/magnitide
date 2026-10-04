@@ -22,6 +22,9 @@ pub enum Error {
     #[error("invalid book: {0}")]
     InvalidBook(String),
 
+    #[error("import failed: {0}")]
+    Import(String),
+
     #[error(transparent)]
     Sqlite(#[from] rusqlite::Error),
 
