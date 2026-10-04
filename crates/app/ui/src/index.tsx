@@ -5,7 +5,8 @@ import { render } from 'solid-js/web';
 
 import { App } from './App';
 
-// The macOS overlay title bar needs room for the traffic-light buttons.
+// The macOS overlay title bar needs room for the traffic-light buttons
+// (positioned by trafficLightPosition in tauri.conf.json to centre on the 52px toolbar).
 document.documentElement.classList.toggle('is-mac', /Mac/.test(navigator.userAgent));
 
 render(() => <App />, document.getElementById('root')!);

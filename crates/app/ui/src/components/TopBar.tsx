@@ -66,7 +66,7 @@ export function TopBar(props: Props) {
 
   return (
     <header
-      class="fixed inset-x-0 top-0 z-10 grid h-[52px] grid-cols-[minmax(0,1fr)_minmax(160px,2fr)_minmax(max-content,1fr)] items-center gap-4 border-b border-line bg-bg/80 px-4 backdrop-blur-[18px] backdrop-saturate-[1.6] mac:pl-[84px]"
+      class="fixed inset-x-0 top-0 z-10 grid h-[52px] grid-cols-[minmax(0,1fr)_minmax(160px,2fr)_minmax(max-content,1fr)] items-center gap-4 border-b border-line bg-bg/80 px-4 backdrop-blur-[18px] backdrop-saturate-[1.6] mac:pl-[92px]"
       data-tauri-drag-region
     >
       <LibraryMenu />
