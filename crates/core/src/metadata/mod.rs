@@ -31,6 +31,9 @@ pub struct BookMetadata {
     pub tags: Vec<String>,
     /// Image bytes in whatever format the file stores.
     pub cover: Option<Vec<u8>>,
+    /// Book uuids the file carries (calibre writes its book uuid), lower
+    /// case. Read only; used to recognize a book's copies.
+    pub uuids: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

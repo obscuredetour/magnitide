@@ -4,6 +4,7 @@ import type { SortKey } from '../api';
 import { query, queryError, search, setSort, sort, sortDir } from '../library';
 import { setViewMode, viewMode } from '../view';
 import { CoverSizeSlider } from './CoverSizeSlider';
+import { DeviceMenu } from './DeviceMenu';
 import { LibraryMenu } from './LibraryMenu';
 import { ThemeMenu } from './ThemeMenu';
 
@@ -69,7 +70,10 @@ export function TopBar(props: Props) {
       class="fixed inset-x-0 top-0 z-10 grid h-[52px] grid-cols-[minmax(0,1fr)_minmax(160px,2fr)_minmax(max-content,1fr)] items-center gap-4 border-b border-line bg-bg/80 px-4 backdrop-blur-[18px] backdrop-saturate-[1.6] mac:pl-[92px]"
       data-tauri-drag-region
     >
-      <LibraryMenu />
+      <div class="flex min-w-0 items-center gap-1 justify-self-start" data-tauri-drag-region>
+        <LibraryMenu />
+        <DeviceMenu />
+      </div>
 
       <div class="relative flex w-full max-w-[520px] items-center justify-self-center" data-tauri-drag-region>
         <svg

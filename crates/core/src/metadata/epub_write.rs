@@ -440,6 +440,7 @@ mod tests {
             description: Some("<p>Revised <i>blurb</i>.</p>".into()),
             tags: vec!["Fiction".into(), "Utopias".into()],
             cover: None,
+            uuids: vec![],
         }
     }
 

@@ -10,9 +10,9 @@ import { ImportDialog } from './components/ImportDialog';
 import { NetworkWarning } from './components/NetworkWarning';
 import { SettingsDialog } from './components/Settings';
 import { TopBar } from './components/TopBar';
+import { shownItems, watchDevices } from './devices';
 import {
   detailsOpen,
-  items,
   openBook,
   openInitialLibrary,
   query,
@@ -57,7 +57,7 @@ export function App() {
 
   const leaveSearch = () => {
     view?.focus();
-    const list = items();
+    const list = shownItems();
     const first = list[0];
     if (first && !list.some((it) => it.id === selectedId())) select(first.id, { open: false, reveal: true });
   };
@@ -105,7 +105,7 @@ export function App() {
       e.preventDefault();
       setDetailsOpen(true);
     } else if (e.key.startsWith('Arrow')) {
-      const list = items();
+      const list = shownItems();
       if (!list.length) return;
       const cols = view?.columns() ?? 1;
       const horizontal = view?.horizontal ? 1 : 0;
@@ -125,6 +125,7 @@ export function App() {
     const unlisten = onOpenSettings(() => setSettingsOpen(true));
     onCleanup(() => void unlisten.then((off) => off()));
     void openInitialLibrary();
+    watchDevices();
   });
   onCleanup(() => document.removeEventListener('keydown', onKeyDown));
 
@@ -148,7 +149,7 @@ export function App() {
                 fallback={
                   <CoverGrid
                     ref={(h) => (view = h)}
-                    items={items()}
+                    items={shownItems()}
                     tileSize={coverSize()}
                     selectedId={selectedId()}
                     emptyMessage={emptyMessage()}
@@ -159,7 +160,7 @@ export function App() {
               >
                 <BookTable
                   ref={(h) => (view = h)}
-                  rows={items()}
+                  rows={shownItems()}
                   selectedId={selectedId()}
                   emptyMessage={emptyMessage()}
                   onSelect={(id) => select(id)}

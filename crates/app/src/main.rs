@@ -2,6 +2,7 @@
 
 mod commands;
 mod covers;
+mod devices;
 mod lookup;
 #[cfg(target_os = "macos")]
 mod menu;
@@ -38,6 +39,8 @@ pub struct Loaded {
 #[derive(Default)]
 pub struct AppState {
     lib: RwLock<Option<Arc<Loaded>>>,
+    /// Connected e-readers, as last scanned (see devices.rs).
+    devices: RwLock<Vec<Arc<magnitide_core::devices::Scan>>>,
 }
 
 impl AppState {
@@ -47,6 +50,22 @@ impl AppState {
 
     pub fn replace(&self, loaded: Loaded) {
         *self.lib.write().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(loaded));
+    }
+
+    pub fn devices(&self) -> Vec<Arc<magnitide_core::devices::Scan>> {
+        self.devices.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    pub fn set_devices(&self, scans: Vec<Arc<magnitide_core::devices::Scan>>) {
+        *self.devices.write().unwrap_or_else(|e| e.into_inner()) = scans;
+    }
+
+    /// A connected device by id (its mount point).
+    pub fn device(&self, id: &str) -> Result<Arc<magnitide_core::devices::Scan>, String> {
+        self.devices()
+            .into_iter()
+            .find(|s| s.device.root.display().to_string() == id)
+            .ok_or_else(|| "That device isn't connected any more.".to_owned())
     }
 }
 
@@ -58,6 +77,10 @@ fn main() {
     builder
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
+        .setup(|app| {
+            devices::watch(app.handle().clone());
+            Ok(())
+        })
         .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
             let path = request.uri().path().to_owned();
@@ -91,7 +114,11 @@ fn main() {
             lookup::find_metadata,
             lookup::metadata_details,
             lookup::cover_preview,
-            lookup::set_cover_from_url
+            lookup::set_cover_from_url,
+            devices::list_devices,
+            devices::rescan_device,
+            devices::reveal_device,
+            devices::eject_device
         ])
         .run(tauri::generate_context!())
         .expect("error while running Magnitide");

@@ -2,6 +2,7 @@
 
 import { createSignal } from 'solid-js';
 
+import { devices } from './devices';
 import { storage } from './storage';
 
 /** Target cover width in CSS px; the grid stretches tiles to fill each row. */
@@ -49,6 +50,12 @@ export function setColumnSizing(sizing: Record<string, number>): void {
 }
 
 export function setColumnVisibility(visibility: Record<string, boolean>): void {
+  // The device column is forced off while nothing is connected; don't save that.
+  if (!devices().length) {
+    const { device: _forced, ...rest } = visibility;
+    const saved = columnVisibility().device;
+    visibility = saved === undefined ? rest : { ...rest, device: saved };
+  }
   setColumnVisibilitySignal(visibility);
   storage.set('tableColumnVisibility', JSON.stringify(visibility));
 }
@@ -56,8 +63,12 @@ export function setColumnVisibility(visibility: Record<string, boolean>): void {
 /** Table columns hidden until the user turns them on. */
 const DEFAULT_HIDDEN: Record<string, boolean> = { publisher: false, tags: false, size: false };
 
-/** Visibility of every table column that differs from "shown". */
-export const effectiveColumnVisibility = () => ({ ...DEFAULT_HIDDEN, ...columnVisibility() });
+/** Visibility of every table column that differs from "shown". "On Device" only shows while a device is connected. */
+export const effectiveColumnVisibility = (): Record<string, boolean> => ({
+  ...DEFAULT_HIDDEN,
+  ...columnVisibility(),
+  ...(devices().length ? {} : { device: false }),
+});
 
 export function isColumnVisible(id: string): boolean {
   return effectiveColumnVisibility()[id] ?? true;

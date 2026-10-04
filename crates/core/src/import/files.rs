@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use rusqlite::{OptionalExtension, params};
 use serde::Serialize;
 
-use super::store::{Cover, store_book};
+use super::store::{Cover, add_formats, store_book};
 use crate::error::Result;
 use crate::library::{BookId, Library, NewBook};
 use crate::metadata::{self, filename::book_stem};
@@ -39,7 +39,11 @@ pub struct AddReport {
     pub cloned: usize,
     pub copied: usize,
     pub copied_bytes: u64,
-    /// Books already in the library (same title, first author and format).
+    /// Books already in the library that got new formats (same title and
+    /// first author): ids, in order. Not in `added`.
+    pub formats_added_to: Vec<BookId>,
+    /// Books already in the library in every format given (same title and
+    /// first author).
     pub duplicates: Vec<String>,
     /// Files that aren't books (by extension), or are already inside the library.
     pub skipped: Vec<String>,
@@ -94,8 +98,24 @@ pub fn add_files(lib: &mut Library, paths: &[PathBuf], mut progress: impl FnMut(
 
         let authors: Vec<String> =
             meta.authors.iter().map(|a| a.name.trim().to_owned()).filter(|a| !a.is_empty()).collect();
-        if let Some(existing) = duplicate_of(lib, &title, authors.first().map(String::as_str), &files)? {
-            report.duplicates.push(format!("“{title}” is already in the library (book {existing})"));
+        // The same book (title and first author) already here: add only the
+        // formats it doesn't have yet.
+        if let Some((existing, have)) = existing_book(lib, &title, authors.first().map(String::as_str))? {
+            let missing: Vec<(String, PathBuf)> = files.iter().filter(|(f, _)| !have.contains(f)).cloned().collect();
+            if missing.is_empty() {
+                report.duplicates.push(format!("“{title}” is already in the library (book {existing})"));
+                continue;
+            }
+            match add_formats(lib, existing, &missing) {
+                Ok(stored) => {
+                    report.formats_added_to.push(existing);
+                    report.files += stored.files;
+                    report.cloned += stored.cloned;
+                    report.copied += stored.copied;
+                    report.copied_bytes += stored.copied_bytes;
+                }
+                Err(e) => report.failed.push(e.to_string()),
+            }
             continue;
         }
 
@@ -183,30 +203,25 @@ fn metadata_source(files: &[(String, PathBuf)]) -> (&str, &Path) {
     (best.0.as_str(), best.1.as_path())
 }
 
-/// A book with the same title and first author that already has one of these
-/// formats. (Same book in a new format is added as a separate book for now;
-/// merging formats into an existing book comes with metadata editing.)
-fn duplicate_of(
-    lib: &Library,
-    title: &str,
-    author: Option<&str>,
-    files: &[(String, PathBuf)],
-) -> Result<Option<BookId>> {
+/// The earliest book with this title (any case) and first author, and the
+/// formats it has.
+fn existing_book(lib: &Library, title: &str, author: Option<&str>) -> Result<Option<(BookId, Vec<String>)>> {
     let author = author.unwrap_or("Unknown");
-    let mut stmt = lib.conn.prepare_cached(
-        "SELECT b.id FROM books b
-         JOIN book_authors ba ON ba.book_id = b.id AND ba.position = 0
-         JOIN authors a ON a.id = ba.author_id
-         JOIN files f ON f.book_id = b.id
-         WHERE b.title = ?1 COLLATE NOCASE AND a.name = ?2 AND f.format = ?3
-         LIMIT 1",
-    )?;
-    for (format, _) in files {
-        if let Some(id) = stmt.query_row(params![title, author, format], |r| r.get(0)).optional()? {
-            return Ok(Some(id));
-        }
-    }
-    Ok(None)
+    let id: Option<BookId> = lib
+        .conn
+        .prepare_cached(
+            "SELECT b.id FROM books b
+             JOIN book_authors ba ON ba.book_id = b.id AND ba.position = 0
+             JOIN authors a ON a.id = ba.author_id
+             WHERE b.title = ?1 COLLATE NOCASE AND a.name = ?2
+             ORDER BY b.id LIMIT 1",
+        )?
+        .query_row(params![title, author], |r| r.get(0))
+        .optional()?;
+    let Some(id) = id else { return Ok(None) };
+    let mut stmt = lib.conn.prepare_cached("SELECT format FROM files WHERE book_id = ?")?;
+    let formats = stmt.query_map([id], |r| r.get(0))?.collect::<rusqlite::Result<Vec<String>>>()?;
+    Ok(Some((id, formats)))
 }
 
 #[cfg(test)]
@@ -281,6 +296,36 @@ mod tests {
         let inside = lib.root().join("Frank Herbert");
         let r = add_files(&mut lib, &[inside], |_| {}).unwrap();
         assert!(r.added.is_empty() && r.skipped.iter().all(|s| s.contains("already in this library")), "{r:?}");
+    }
+
+    #[test]
+    fn a_new_format_of_a_book_joins_it() {
+        let (tmp, mut lib, drop) = setup();
+        make_epub(&drop.join("dispossessed.epub"), EPUB2_OPF, None);
+        let id = add_files(&mut lib, &[drop.join("dispossessed.epub")], |_| {}).unwrap().added[0];
+
+        // Later, the same book as KEPUB (calibre-style name) and PDF, from elsewhere.
+        let later = tmp.path().join("Later");
+        fs::create_dir(&later).unwrap();
+        make_epub(&later.join("The Dispossessed - Ursula K. Le Guin.kepub.epub"), EPUB2_OPF, None);
+        fs::write(later.join("The Dispossessed - Ursula K. Le Guin.pdf"), "pdf bytes").unwrap();
+        let r = add_files(&mut lib, std::slice::from_ref(&later), |_| {}).unwrap();
+        assert_eq!((r.added.len(), r.formats_added_to.as_slice(), r.files), (0, [id].as_slice(), 2), "{r:?}");
+
+        let cat = lib.load_catalog().unwrap();
+        assert_eq!(cat.books.len(), 1);
+        let b = cat.get(id).unwrap();
+        let mut formats: Vec<&str> = b.formats.iter().map(|f| f.format.as_str()).collect();
+        formats.sort();
+        assert_eq!(formats, ["EPUB", "KEPUB", "PDF"]);
+        for f in &b.formats {
+            let path = b.format_path(lib.root(), f);
+            assert!(path.is_file() && path.parent() == Some(b.dir(lib.root()).as_path()), "{}", path.display());
+        }
+
+        // Every format already there: a duplicate, nothing added.
+        let again = add_files(&mut lib, &[later], |_| {}).unwrap();
+        assert_eq!((again.formats_added_to.len(), again.duplicates.len(), again.files), (0, 1, 0));
     }
 
     #[test]

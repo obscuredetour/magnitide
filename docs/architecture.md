@@ -25,7 +25,8 @@ crates/
                    library loads into a Catalog, so views work the same for all of them.
   calibre-compat   Read-only access to calibre libraries (metadata.db + folders). No writes.
   core             magnitide-core: the native library (schema, migrations, queries, edits,
-                   import pipeline). No Tauri dependency.
+                   import pipeline), EPUB write-back, e-reader detection and matching.
+                   No Tauri dependency.
   sources          magnitide-sources: metadata lookup (Open Library, Google Books). Network
                    only on request; results ranked by plain string matching.
   app              Desktop app (Tauri 2). Thin commands over core; the cover:// protocol.
@@ -149,16 +150,17 @@ a library file directly.
 
 ## Decisions
 
-| Date       | Decision                                                                                                                                                                                                               |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-10-03 | Rust core, Tauri 2 desktop, Solid + TypeScript UI; types generated from Rust (ts-rs).                                                                                                                                  |
-| 2026-10-03 | Tailwind v4; theming via CSS variables in `themes.css` switched at runtime.                                                                                                                                            |
-| 2026-10-03 | Sorting and search run in Rust so every view agrees.                                                                                                                                                                   |
-| 2026-10-03 | Own native library format; never write to calibre libraries. calibre libraries browse read-only and import by copy/clone, untouched.                                                                                   |
-| 2026-10-03 | Human-readable `Author/Title (id)/` folders.                                                                                                                                                                           |
-| 2026-10-03 | Schema multi-user-ready; provenance recorded on import; export to calibre planned.                                                                                                                                     |
-| 2026-10-03 | Server mode planned; OPDS first, then accounts, kosync, Kobo sync.                                                                                                                                                     |
-| 2026-10-03 | Extension points are core traits; WASM for third-party plugins later; DeDRM via desktop-only Python host.                                                                                                              |
-| 2026-10-04 | Shared in-memory catalog crate for every library kind; the app holds an open Magnitide library (and its lock) while it's shown.                                                                                        |
-| 2026-10-04 | EPUB write-back splices the OPF's `<metadata>` instead of regenerating the package; writing on every save is opt-in.                                                                                                   |
-| 2026-10-04 | Metadata lookup lives in its own crate, runs only on request, and proxies covers through Rust (`cover://remote/`), so the webview's CSP stays closed. Google Books needs the user's own key (anonymous quota is zero). |
+| Date       | Decision                                                                                                                                                                                                                                                                       |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-10-03 | Rust core, Tauri 2 desktop, Solid + TypeScript UI; types generated from Rust (ts-rs).                                                                                                                                                                                          |
+| 2026-10-03 | Tailwind v4; theming via CSS variables in `themes.css` switched at runtime.                                                                                                                                                                                                    |
+| 2026-10-03 | Sorting and search run in Rust so every view agrees.                                                                                                                                                                                                                           |
+| 2026-10-03 | Own native library format; never write to calibre libraries. calibre libraries browse read-only and import by copy/clone, untouched.                                                                                                                                           |
+| 2026-10-03 | Human-readable `Author/Title (id)/` folders.                                                                                                                                                                                                                                   |
+| 2026-10-03 | Schema multi-user-ready; provenance recorded on import; export to calibre planned.                                                                                                                                                                                             |
+| 2026-10-03 | Server mode planned; OPDS first, then accounts, kosync, Kobo sync.                                                                                                                                                                                                             |
+| 2026-10-03 | Extension points are core traits; WASM for third-party plugins later; DeDRM via desktop-only Python host.                                                                                                                                                                      |
+| 2026-10-04 | Shared in-memory catalog crate for every library kind; the app holds an open Magnitide library (and its lock) while it's shown.                                                                                                                                                |
+| 2026-10-04 | EPUB write-back splices the OPF's `<metadata>` instead of regenerating the package; writing on every save is opt-in.                                                                                                                                                           |
+| 2026-10-04 | Metadata lookup lives in its own crate, runs only on request, and proxies covers through Rust (`cover://remote/`), so the webview's CSP stays closed. Google Books needs the user's own key (anonymous quota is zero).                                                         |
+| 2026-10-04 | E-readers are found by polling mounted volumes (every 3 s, a directory listing) and recognized by their folders; device files are matched to books on request against whatever library is open, so read-only calibre libraries get it too. Nothing on a device is written yet. |

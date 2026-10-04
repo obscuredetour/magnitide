@@ -4,6 +4,7 @@
 
 pub mod catalog;
 pub mod db;
+pub mod devices;
 pub mod edit;
 pub mod error;
 pub mod fsinfo;
