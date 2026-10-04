@@ -74,8 +74,10 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [ ] Metadata readers for MOBI/AZW3 and PDF (drag and drop uses file names for these today)
 - [ ] Adding a new format to an existing book (today a new format of a book already in the library becomes a separate book)
 - [x] Metadata editing (⌘E): all built-in fields, rich-text description, cover change/remove; folder and file names follow title and first author (all-or-nothing with the database)
-- [ ] Editing custom fields; autocomplete for authors, tags, series and publishers in the edit form
-- [ ] File name clean-up: names already follow edits; still to do, a "Tidy file names" action for existing books whose names don't match their metadata
+- [x] Autocomplete for authors, tags, series and publishers in the edit form
+- [ ] Editing custom fields
+- [x] File name clean-up: names follow edits, and Settings → Library → "Tidy file names" fixes drifted books and reports files missing from disk
+- [ ] Write edited metadata back into book files (EPUB OPF), so other apps and devices see it
 - [ ] Accessibility scaling: ⌘+ / ⌘− / ⌘0 zoom the whole UI (remembered), respecting the OS text size where available
 - [ ] Built-in reader
 - [ ] Export to a calibre library

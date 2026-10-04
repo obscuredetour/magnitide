@@ -2,7 +2,16 @@ import { getVersion } from '@tauri-apps/api/app';
 import { createResource, createSignal, For, type JSX, Match, onMount, type ParentProps, Show, Switch } from 'solid-js';
 
 import { api, errorMessage, fileManagerName } from '../api';
-import { chooseLibrary, forgetRecentLibrary, library, openLibrary, recentLibraries, renameLibrary } from '../library';
+import {
+  chooseLibrary,
+  forgetRecentLibrary,
+  library,
+  openLibrary,
+  recentLibraries,
+  refresh,
+  renameLibrary,
+  setEditRevision,
+} from '../library';
 import { startImport } from '../importer';
 import { setTheme, THEMES, themeChoice } from '../theme';
 import { toast } from '../toast';
@@ -247,6 +256,7 @@ function LibrarySettings() {
       </Show>
       <Show when={library()?.kind === 'magnitide'}>
         <LibraryName />
+        <TidyNames />
       </Show>
       <Show when={library()?.kind === 'calibre'}>
         <Row
@@ -389,5 +399,64 @@ function LibraryName() {
         Save
       </button>
     </Row>
+  );
+}
+
+/** "Tidy file names": preview, run, and list files missing from disk. */
+function TidyNames() {
+  const [preview, { refetch }] = createResource(() => api.tidyPreview().catch(() => null));
+  const [running, setRunning] = createSignal(false);
+  const [missing, setMissing] = createSignal<string[]>([]);
+
+  const run = async () => {
+    setRunning(true);
+    try {
+      const r = await api.tidyFileNames();
+      await refresh();
+      setEditRevision((n) => n + 1);
+      setMissing(r.missing);
+      const n = (count: number, one: string, many: string) => `${count.toLocaleString()} ${count === 1 ? one : many}`;
+      const parts = [
+        r.booksMoved || r.filesRenamed
+          ? `Renamed ${n(r.filesRenamed, 'file', 'files')}, moved ${n(r.booksMoved, 'folder', 'folders')}`
+          : 'Nothing to rename',
+      ];
+      if (r.missing.length) parts.push(`${n(r.missing.length, 'file', 'files')} missing from disk`);
+      if (r.failed.length) parts.push(`${n(r.failed.length, 'book', 'books')} couldn't be renamed`);
+      for (const f of r.failed) console.warn(f);
+      toast(parts.join(' · '), { error: r.failed.length > 0, duration: 5000 });
+      await refetch();
+    } catch (err) {
+      toast(errorMessage(err), { error: true });
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const description = () => {
+    const p = preview();
+    if (p === undefined) return 'Checking…';
+    if (p === null) return 'Couldn’t check the library.';
+    return p.books
+      ? `${p.books.toLocaleString()} ${p.books === 1 ? 'book has' : 'books have'} folder or file names that don’t match their metadata (${p.files.toLocaleString()} files).`
+      : 'Every folder and file name matches its book’s title and author. Tidying also checks for missing files.';
+  };
+
+  return (
+    <>
+      <Row label="Tidy file names" description={description()}>
+        <button class={button} disabled={running()} onClick={() => void run()}>
+          {running() ? 'Tidying…' : preview()?.books ? 'Tidy' : 'Check'}
+        </button>
+      </Row>
+      <Show when={missing().length}>
+        <div class="mb-2 rounded-lg bg-bg p-3 text-xs">
+          <div class="mb-1 font-medium text-danger">Missing from disk</div>
+          <ul class="max-h-32 space-y-0.5 overflow-y-auto text-muted select-text">
+            <For each={missing()}>{(m) => <li class="break-all">{m}</li>}</For>
+          </ul>
+        </div>
+      </Show>
+    </>
   );
 }
