@@ -17,6 +17,7 @@ import {
   setSelectedId,
   status,
 } from './library';
+import { onOpenSettings } from './api';
 import { Toast } from './toast';
 import { coverSize, setViewMode, viewMode } from './view';
 
@@ -110,6 +111,9 @@ export function App() {
 
   onMount(() => {
     document.addEventListener('keydown', onKeyDown);
+    // On macOS the menu bar item owns ⌘, (so onKeyDown's ⌘, branch only runs on other platforms).
+    const unlisten = onOpenSettings(() => setSettingsOpen(true));
+    onCleanup(() => void unlisten.then((off) => off()));
     void openInitialLibrary();
   });
   onCleanup(() => document.removeEventListener('keydown', onKeyDown));

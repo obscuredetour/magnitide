@@ -2,6 +2,8 @@
 
 mod commands;
 mod covers;
+#[cfg(target_os = "macos")]
+mod menu;
 
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -32,7 +34,11 @@ impl AppState {
 }
 
 fn main() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(menu::build).on_menu_event(menu::handle);
+
+    builder
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
