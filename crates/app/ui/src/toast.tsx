@@ -5,10 +5,12 @@ type ToastState = { message: string; error: boolean };
 const [current, setCurrent] = createSignal<ToastState | null>(null);
 let timer: ReturnType<typeof setTimeout> | undefined;
 
-export function toast(message: string, { error = false } = {}): void {
+/** Show a short message. `duration` (ms) defaults to longer for errors; Infinity keeps it up until replaced. */
+export function toast(message: string, { error = false, duration }: { error?: boolean; duration?: number } = {}): void {
   clearTimeout(timer);
   setCurrent({ message, error });
-  timer = setTimeout(() => setCurrent(null), error ? 6000 : 1800);
+  const ms = duration ?? (error ? 6000 : 1800);
+  if (Number.isFinite(ms)) timer = setTimeout(() => setCurrent(null), ms);
 }
 
 export function Toast() {

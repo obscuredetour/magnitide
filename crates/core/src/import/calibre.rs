@@ -17,9 +17,10 @@ use calibre_compat::{CustomColumn, CustomValue, Datatype};
 use rusqlite::{OptionalExtension, Transaction, params};
 use serde::Serialize;
 
+use super::store::{Cover, store_book};
 use crate::error::{Error, Result};
+use crate::html;
 use crate::library::{BookId, Library, NewBook, now, timestamp};
-use crate::{html, paths};
 
 const SOURCE: &str = "calibre";
 
@@ -129,12 +130,9 @@ fn import_book(
     fields: &HashMap<String, (i64, Datatype)>,
     report: &mut ImportReport,
 ) -> Result<()> {
-    let root = lib.root.clone();
-    let tx = lib.conn.transaction()?;
-
     // calibre ids are unique within a library, but two libraries can share a
     // book uuid (e.g. one copied from the other). Keep the uuid when free.
-    let uuid = book.uuid.clone().filter(|u| !uuid_taken(&tx, u).unwrap_or(true));
+    let uuid = book.uuid.clone().filter(|u| !uuid_taken(lib, u).unwrap_or(true));
     if book.uuid.is_some() && uuid.is_none() {
         report.warnings.push(format!("“{}”: uuid already used in this library; assigned a new one", book.title));
     }
@@ -153,85 +151,35 @@ fn import_book(
         rating: book.rating,
         uuid,
         added_at: book.timestamp,
+        author_sorts: Default::default(),
     };
-    let (id, rel_dir) = Library::insert_book(&tx, &new)?;
-    let dir = rel_dir.split('/').fold(root.clone(), |p, c| p.join(c));
 
-    // From here on, a failure must also remove what we wrote to disk, and
-    // only that: a folder that was already there is never deleted.
-    let mut created_dir = false;
-    let result = (|| -> Result<FileStats> {
-        if dir.exists() {
-            return Err(Error::Import(format!("{} already exists", dir.display())));
-        }
-        fs::create_dir_all(&dir)?;
-        created_dir = true;
-        let mut stats = FileStats::default();
-        let first_author = book.authors.first().map(String::as_str).unwrap_or("Unknown");
-        for f in &book.formats {
-            let src = book.format_path(src_root, f);
-            if !src.is_file() {
-                report.warnings.push(format!("“{}”: {} file missing in the calibre library", book.title, f.format));
-                continue;
-            }
-            let filename = paths::book_file(&book.title, first_author, &f.format);
-            let size = clone_or_copy(&src, &dir.join(&filename), &mut stats)?;
-            tx.prepare_cached("INSERT INTO files (book_id, format, filename, size, added_at) VALUES (?, ?, ?, ?, ?)")?
-                .execute(params![id, f.format.to_uppercase(), filename, size as i64, now()])?;
-            stats.files += 1;
-        }
-        if let Some(cover) = book.cover_path(src_root).filter(|p| p.is_file()) {
-            clone_or_copy(&cover, &dir.join("cover.jpg"), &mut stats)?;
-            tx.prepare_cached("UPDATE books SET cover_file = 'cover.jpg' WHERE id = ?")?.execute([id])?;
-            stats.covers += 1;
-        }
-        insert_custom_values(&tx, id, book, fields)?;
-        tx.prepare_cached("INSERT INTO book_sources (book_id, source, source_library, source_book, imported_at) VALUES (?, ?, ?, ?, ?)")?.execute(params![id, SOURCE, source_library, book.id.to_string(), now()],
-        )?;
-        Ok(stats)
-    })();
-
-    match result.and_then(|stats| tx.commit().map(|_| stats).map_err(Error::from)) {
-        Ok(stats) => {
-            report.files += stats.files;
-            report.covers += stats.covers;
-            report.cloned += stats.cloned;
-            report.copied += stats.copied;
-            report.copied_bytes += stats.copied_bytes;
-            Ok(())
-        }
-        Err(e) => {
-            // The transaction rolls back when dropped; tidy the disk too.
-            if created_dir {
-                let _ = fs::remove_dir_all(&dir);
-                if let Some(author_dir) = dir.parent() {
-                    let _ = fs::remove_dir(author_dir); // only succeeds if now empty
-                }
-            }
-            Err(Error::Import(format!("“{}”: {e}", book.title)))
+    let mut files = Vec::new();
+    for f in &book.formats {
+        let src = book.format_path(src_root, f);
+        if src.is_file() {
+            files.push((f.format.to_uppercase(), src));
+        } else {
+            report.warnings.push(format!("“{}”: {} file missing in the calibre library", book.title, f.format));
         }
     }
-}
+    let cover_path = book.cover_path(src_root).filter(|p| p.is_file());
 
-#[derive(Default)]
-struct FileStats {
-    files: usize,
-    covers: usize,
-    cloned: usize,
-    copied: usize,
-    copied_bytes: u64,
-}
-
-/// Clone if the filesystem can, else copy. Never overwrites. Returns the size.
-fn clone_or_copy(src: &Path, dest: &Path, stats: &mut FileStats) -> Result<u64> {
-    match reflink_copy::reflink_or_copy(src, dest)? {
-        None => stats.cloned += 1,
-        Some(written) => {
-            stats.copied += 1;
-            stats.copied_bytes += written;
-        }
-    }
-    Ok(fs::metadata(dest)?.len())
+    let stored = store_book(lib, &new, &files, cover_path.as_deref().map(Cover::File), |tx, id| {
+        insert_custom_values(tx, id, book, fields)?;
+        tx.prepare_cached(
+            "INSERT INTO book_sources (book_id, source, source_library, source_book, imported_at) VALUES (?, ?, ?, ?, ?)",
+        )?
+        .execute(params![id, SOURCE, source_library, book.id.to_string(), now()])?;
+        Ok(())
+    })?;
+    report.files += stored.files;
+    report.covers += stored.covers;
+    report.cloned += stored.cloned;
+    report.copied += stored.copied;
+    report.copied_bytes += stored.copied_bytes;
+    report.warnings.extend(stored.warnings);
+    Ok(())
 }
 
 /// Create (or reuse, on a repeat import) a custom field per calibre custom
@@ -327,8 +275,13 @@ fn already_imported(lib: &Library, source_library: &str, calibre_id: i64) -> Res
         .is_some())
 }
 
-fn uuid_taken(tx: &Transaction<'_>, uuid: &str) -> Result<bool> {
-    Ok(tx.prepare_cached("SELECT 1 FROM books WHERE uuid = ?")?.query_row([uuid], |_| Ok(())).optional()?.is_some())
+fn uuid_taken(lib: &Library, uuid: &str) -> Result<bool> {
+    Ok(lib
+        .conn
+        .prepare_cached("SELECT 1 FROM books WHERE uuid = ?")?
+        .query_row([uuid], |_| Ok(()))
+        .optional()?
+        .is_some())
 }
 
 fn canonical(p: &Path) -> Result<PathBuf> {

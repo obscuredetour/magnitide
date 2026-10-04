@@ -4,9 +4,11 @@
 
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open, save } from '@tauri-apps/plugin-dialog';
 
 import type { BookDetails } from './bindings/BookDetails';
+import type { AddReport } from './bindings/AddReport';
 import type { BookRow } from './bindings/BookRow';
 import type { CacheInfo } from './bindings/CacheInfo';
 import type { ImportProgress } from './bindings/ImportProgress';
@@ -17,6 +19,7 @@ import type { SortDir } from './bindings/SortDir';
 import type { SortKey } from './bindings/SortKey';
 
 export type {
+  AddReport,
   BookDetails,
   BookRow,
   CacheInfo,
@@ -60,6 +63,22 @@ export const api = {
 
   /** Rename the open Magnitide library; resolves to the saved name. */
   renameLibrary: (name: string) => invoke<string>('rename_library', { name }),
+
+  /**
+   * Add book files and folders to the open Magnitide library (calibre libraries
+   * refuse). Progress arrives via onAddProgress; the library is reloaded after.
+   */
+  addBooks: (paths: string[]) => invoke<AddReport>('add_books', { paths }),
+
+  /** Pick book files to add; empty when cancelled. */
+  async chooseBookFiles(): Promise<string[]> {
+    const picked = await open({
+      title: 'Add books',
+      multiple: true,
+      filters: [{ name: 'Books', extensions: BOOK_EXTENSIONS }],
+    });
+    return Array.isArray(picked) ? picked : picked ? [picked] : [];
+  },
 
   /** Where to create a new Magnitide library; null when cancelled. */
   chooseNewLibraryLocation: (suggestedName: string) =>
@@ -109,4 +128,49 @@ export function onOpenSettings(handler: () => void): Promise<UnlistenFn> {
 /** Import progress. Event name matches `IMPORT_PROGRESS_EVENT` in `crates/app/src/commands.rs`. */
 export function onImportProgress(handler: (p: ImportProgress) => void): Promise<UnlistenFn> {
   return listen<ImportProgress>('import-progress', (e) => handler(e.payload));
+}
+
+/**
+ * Book file extensions for the file picker. Mirrors `BOOK_EXTENSIONS` in
+ * `crates/core/src/import/files.rs` (the backend decides; this only filters
+ * the picker).
+ */
+export const BOOK_EXTENSIONS = [
+  'epub',
+  'kepub',
+  'mobi',
+  'azw',
+  'azw3',
+  'azw4',
+  'kfx',
+  'pdf',
+  'cbz',
+  'cbr',
+  'cb7',
+  'fb2',
+  'fbz',
+  'djvu',
+  'txt',
+  'rtf',
+  'docx',
+  'odt',
+  'html',
+  'htm',
+  'lit',
+  'pdb',
+  'prc',
+  'chm',
+];
+
+/** Progress while adding books. Event name matches `ADD_PROGRESS_EVENT` in `crates/app/src/commands.rs`. */
+export function onAddProgress(handler: (p: ImportProgress) => void): Promise<UnlistenFn> {
+  return listen<ImportProgress>('add-progress', (e) => handler(e.payload));
+}
+
+export type DragDrop =
+  { type: 'enter'; paths: string[] } | { type: 'over' } | { type: 'drop'; paths: string[] } | { type: 'leave' };
+
+/** Files dragged over / dropped onto the window (native paths, from Tauri). */
+export function onDragDrop(handler: (e: DragDrop) => void): Promise<UnlistenFn> {
+  return getCurrentWebview().onDragDropEvent((e) => handler(e.payload as DragDrop));
 }
