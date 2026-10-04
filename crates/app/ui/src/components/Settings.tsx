@@ -41,7 +41,7 @@ const SECTIONS: { id: Section; label: string }[] = [
 ];
 
 const button =
-  'cursor-pointer rounded-md border border-line bg-surface-2 px-3 py-1 text-xs font-medium hover:bg-line disabled:cursor-default disabled:opacity-50';
+  'cursor-pointer rounded-md border border-line bg-element px-3 py-1 text-xs font-medium hover:bg-hover disabled:cursor-default disabled:opacity-50';
 
 /** The settings window (⌘,). Mount it to open; `onClose` unmounts it. */
 export function SettingsDialog(props: { onClose(): void }) {
@@ -54,7 +54,7 @@ export function SettingsDialog(props: { onClose(): void }) {
     <dialog
       ref={dialog}
       aria-label="Settings"
-      class="m-auto h-[min(560px,calc(100vh-80px))] w-[min(760px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-2xl border border-line bg-surface p-0 text-fg shadow-lift"
+      class="m-auto h-[min(560px,calc(100vh-80px))] w-[min(760px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-2xl border border-line bg-popover p-0 text-fg shadow-lift"
       onCancel={(e) => {
         // Esc: let Solid unmount the dialog instead of the browser closing it.
         e.preventDefault();
@@ -72,7 +72,7 @@ export function SettingsDialog(props: { onClose(): void }) {
           <For each={SECTIONS}>
             {(s) => (
               <button
-                class="rounded-md px-2.5 py-1.5 text-left hover:bg-line aria-[current=page]:bg-accent/15 aria-[current=page]:text-accent"
+                class="rounded-md px-2.5 py-1.5 text-left hover:bg-hover aria-[current=page]:bg-highlight aria-[current=page]:text-accent"
                 aria-current={section() === s.id ? 'page' : undefined}
                 onClick={() => setSection(s.id)}
               >
@@ -84,7 +84,7 @@ export function SettingsDialog(props: { onClose(): void }) {
 
         <div class="min-w-0 flex-1 overflow-y-auto px-7 py-6 select-text">
           <button
-            class="float-right -mt-1 -mr-2 grid size-7 place-items-center rounded-full hover:bg-line"
+            class="float-right -mt-1 -mr-2 grid size-7 place-items-center rounded-full hover:bg-hover"
             title="Close (Esc)"
             aria-label="Close settings"
             onClick={() => props.onClose()}
@@ -144,8 +144,8 @@ function ThemePreview(props: { theme: string }) {
     <div data-theme={props.theme} class="flex h-full w-full flex-col gap-1.5 bg-bg p-2">
       <div class="h-1.5 w-1/2 rounded-full bg-fg/70" />
       <div class="flex flex-1 gap-1.5">
-        <div class="flex-1 rounded bg-surface shadow-card" />
-        <div class="flex-1 rounded bg-surface-2" />
+        <div class="flex-1 rounded bg-panel shadow-card" />
+        <div class="flex-1 rounded bg-element" />
       </div>
       <div class="h-1.5 w-1/3 rounded-full bg-accent" />
     </div>
@@ -194,7 +194,7 @@ function Appearance() {
       </div>
 
       <Row label="View" description="Also ⌘1 and ⌘2.">
-        <div class="flex rounded-lg bg-line p-0.5" role="group" aria-label="View">
+        <div class="flex rounded-lg bg-element p-0.5" role="group" aria-label="View">
           <For
             each={
               [
@@ -205,7 +205,7 @@ function Appearance() {
           >
             {([mode, label]) => (
               <button
-                class="rounded-md px-3 py-1 text-xs font-medium text-muted aria-pressed:bg-surface aria-pressed:text-fg aria-pressed:shadow-card"
+                class="rounded-md px-3 py-1 text-xs font-medium text-muted aria-pressed:bg-popover aria-pressed:text-fg aria-pressed:shadow-card"
                 aria-pressed={viewMode() === mode}
                 onClick={() => setViewMode(mode)}
               >
@@ -400,7 +400,7 @@ function LibraryName() {
     <Row label="Name" description="Shown in the library menu and recent libraries. The folder keeps its name.">
       <input
         type="text"
-        class="h-7 w-48 rounded-md border border-line bg-surface px-2 outline-none select-text focus:border-accent focus:ring-3 focus:ring-accent/15"
+        class="h-7 w-48 rounded-md border border-line bg-field px-2 outline-none select-text focus:border-focus focus:ring-3 focus:ring-focus/20"
         aria-label="Library name"
         value={draft()}
         onInput={(e) => setDraft(e.currentTarget.value)}
@@ -603,7 +603,7 @@ function SourceSettings() {
                   spellcheck={false}
                   aria-label={`${s.name} API key`}
                   placeholder={s.hasKey ? 'Key saved · enter a new one to replace it' : 'API key'}
-                  class="h-7 min-w-0 flex-1 rounded-md border border-line bg-surface px-2 text-xs outline-none focus:border-accent"
+                  class="h-7 min-w-0 flex-1 rounded-md border border-line bg-field px-2 text-xs outline-none focus:border-focus"
                   value={keyDraft()}
                   onInput={(e) => setKeyDraft(e.currentTarget.value)}
                   onKeyDown={(e) => e.key === 'Enter' && keyDraft().trim() && void update(s, s.enabled, keyDraft())}
@@ -647,7 +647,7 @@ function DeviceSettings() {
             description={`Reads ${DEVICE_FORMATS[kind].slice(0, 4).join(', ')}${kind === 'kindle' ? ' (not EPUB over USB)' : ''}…`}
           >
             <select
-              class="h-7 rounded-md border border-line bg-surface px-2 text-xs"
+              class="h-7 rounded-md border border-line bg-field px-2 text-xs"
               aria-label={`Format to send to ${DEVICE_KIND_NAMES[kind]}`}
               value={preferredFormat(kind) ?? ''}
               onChange={(e) => setPreferredFormat(kind, e.currentTarget.value || null)}

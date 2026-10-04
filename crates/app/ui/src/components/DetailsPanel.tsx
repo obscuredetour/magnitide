@@ -48,8 +48,8 @@ const MATCHED_BY: Record<MatchedBy, string> = {
 
 // Shared styles for repeated elements.
 const chips = 'my-4 flex flex-wrap gap-1.5';
-const chip = 'rounded-full bg-surface-2 px-2.5 py-[3px] text-xs text-fg';
-const chipButton = `${chip} cursor-pointer hover:bg-accent/15 hover:text-accent`;
+const chip = 'rounded-full bg-element px-2.5 py-[3px] text-xs text-fg';
+const chipButton = `${chip} cursor-pointer hover:bg-highlight hover:text-accent`;
 const sectionLabel = 'mt-[22px] mb-2 text-[11px] font-semibold tracking-[.06em] text-muted uppercase';
 
 export function DetailsPanel(props: Props) {
@@ -67,14 +67,14 @@ export function DetailsPanel(props: Props) {
 
   return (
     <aside
-      class="relative w-[380px] flex-none animate-slide-in overflow-y-auto border-l border-line bg-surface select-text max-[760px]:absolute max-[760px]:inset-y-0 max-[760px]:right-0 max-[760px]:w-[min(380px,100%)] max-[760px]:shadow-lift"
+      class="relative w-[380px] flex-none animate-slide-in overflow-y-auto border-l border-line bg-panel select-text max-[760px]:absolute max-[760px]:inset-y-0 max-[760px]:right-0 max-[760px]:w-[min(380px,100%)] max-[760px]:shadow-lift"
       ref={scroller}
       aria-label="Book details"
     >
       <div class="sticky top-2.5 z-1 float-right mt-2.5 mr-2.5 flex items-center gap-1.5">
         <Show when={library()?.kind === 'magnitide'}>
           <button
-            class="h-7 cursor-pointer rounded-full bg-surface-2 px-3 text-xs font-medium hover:bg-line"
+            class="h-7 cursor-pointer rounded-full bg-element px-3 text-xs font-medium hover:bg-hover"
             title="Edit (⌘E)"
             onClick={() => void openEditor(props.id)}
           >
@@ -82,7 +82,7 @@ export function DetailsPanel(props: Props) {
           </button>
         </Show>
         <button
-          class="grid size-7 place-items-center rounded-full bg-surface-2 hover:bg-line"
+          class="grid size-7 place-items-center rounded-full bg-element hover:bg-hover"
           title="Close (Esc)"
           onClick={() => props.onClose()}
         >
@@ -118,7 +118,7 @@ function Details(props: { book: BookDetails }) {
 
   return (
     <div class="px-7 pt-7 pb-10">
-      <div class="relative mx-auto mb-6 aspect-[2/3] w-[62%] overflow-hidden rounded-lg bg-surface-2 shadow-lift">
+      <div class="relative mx-auto mb-6 aspect-[2/3] w-[62%] overflow-hidden rounded-lg bg-element shadow-lift">
         <Cover id={b().id} title={b().title} authors={b().authors.join(' & ')} hasCover={b().hasCover} size="full" />
       </div>
 
@@ -128,7 +128,7 @@ function Details(props: { book: BookDetails }) {
           {(a, i) => (
             <>
               {i() > 0 && ' & '}
-              <button class="cursor-pointer text-accent hover:underline" onClick={() => searchFor('author', a)}>
+              <button class="cursor-pointer text-link hover:underline" onClick={() => searchFor('author', a)}>
                 {a}
               </button>
             </>
@@ -147,7 +147,7 @@ function Details(props: { book: BookDetails }) {
             {(o, i) => (
               <>
                 {i() > 0 && ', '}
-                <button class="cursor-pointer text-accent hover:underline" onClick={() => setSelectedId(o.id)}>
+                <button class="cursor-pointer text-link hover:underline" onClick={() => setSelectedId(o.id)}>
                   {o.title}
                 </button>
               </>
@@ -192,7 +192,7 @@ function Details(props: { book: BookDetails }) {
           <For each={b().collects}>
             {(c) => (
               <li>
-                <button class="cursor-pointer text-accent hover:underline" onClick={() => setSelectedId(c.id)}>
+                <button class="cursor-pointer text-link hover:underline" onClick={() => setSelectedId(c.id)}>
                   {c.title}
                 </button>
               </li>
@@ -225,7 +225,7 @@ function Details(props: { book: BookDetails }) {
                 </Show>
                 <Show when={library()?.kind === 'magnitide'}>
                   <button
-                    class="absolute -top-1.5 -right-1.5 grid size-[18px] cursor-pointer place-items-center rounded-full bg-surface text-xs leading-none text-muted opacity-0 shadow-sm ring-1 ring-line group-hover/format:opacity-100 hover:bg-danger hover:text-white hover:ring-danger focus-visible:opacity-100"
+                    class="absolute -top-1.5 -right-1.5 grid size-[18px] cursor-pointer place-items-center rounded-full bg-popover text-xs leading-none text-muted opacity-0 shadow-sm ring-1 ring-line group-hover/format:opacity-100 hover:bg-danger hover:text-on-accent hover:ring-danger focus-visible:opacity-100"
                     title={`Remove the ${f.format}`}
                     aria-label={`Remove the ${f.format}`}
                     onClick={() => void removeFormat(b(), f.format)}
@@ -237,7 +237,7 @@ function Details(props: { book: BookDetails }) {
             )}
           </For>
           <Show when={library()?.kind === 'magnitide'}>
-            <ConvertMenu ids={[b().id]} buttonClass={`${chip} cursor-pointer text-accent hover:bg-accent/15`} />
+            <ConvertMenu ids={[b().id]} buttonClass={`${chip} cursor-pointer text-accent hover:bg-highlight`} />
           </Show>
         </div>
       </Show>
@@ -267,7 +267,7 @@ function Details(props: { book: BookDetails }) {
                       <span class="font-medium whitespace-nowrap text-success">On {d.name}</span>
                       <span class="min-w-0 truncate">{h().path}</span>
                       <button
-                        class="ml-auto cursor-pointer whitespace-nowrap text-accent hover:underline"
+                        class="ml-auto cursor-pointer whitespace-nowrap text-link hover:underline"
                         onClick={() => void removeFromDevice(d, [b().id])}
                       >
                         Remove
@@ -285,7 +285,7 @@ function Details(props: { book: BookDetails }) {
         <p class="-mt-1.5 mb-4 text-xs text-muted">
           The EPUB’s built-in metadata differs from the library.{' '}
           <button
-            class="cursor-pointer text-accent hover:underline disabled:opacity-60"
+            class="cursor-pointer text-link hover:underline disabled:opacity-60"
             disabled={writing()}
             title="Write the library’s metadata and cover into the EPUB, for e-readers and other apps"
             onClick={async () => {
@@ -317,7 +317,7 @@ function Details(props: { book: BookDetails }) {
 
       <div class="mt-6">
         <button
-          class="cursor-pointer text-xs text-accent hover:underline"
+          class="cursor-pointer text-xs text-link hover:underline"
           onClick={() => api.revealBook(b().id).catch((err) => toast(errorMessage(err), { error: true }))}
         >
           Show in {fileManagerName}

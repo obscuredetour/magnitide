@@ -94,14 +94,14 @@ export function Autocomplete(props: Props) {
       <Show when={showing()}>
         <ul
           role="listbox"
-          class="absolute top-full right-0 left-0 z-50 mt-1 max-h-56 overflow-y-auto rounded-lg border border-line bg-surface p-1 shadow-lift"
+          class="absolute top-full right-0 left-0 z-50 mt-1 max-h-56 overflow-y-auto rounded-lg border border-line bg-popover p-1 shadow-lift"
         >
           <For each={matches()}>
             {(name, i) => (
               <li
                 role="option"
                 aria-selected={i() === active()}
-                class="cursor-default truncate rounded-md px-2.5 py-1.5 aria-selected:bg-accent/15 aria-selected:text-accent"
+                class="cursor-default truncate rounded-md px-2.5 py-1.5 aria-selected:bg-highlight aria-selected:text-accent"
                 // mousedown (not click), so the input keeps focus.
                 onMouseDown={(e) => {
                   e.preventDefault();

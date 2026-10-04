@@ -164,12 +164,12 @@ export function CoverGrid(props: Props) {
               onContextMenu={(e) => props.onContextMenu(item.id, e)}
               onDblClick={() => props.onOpen(item.id)}
             >
-              <div class="relative aspect-[2/3] w-full overflow-hidden rounded-md bg-surface-2 shadow-card transition duration-[180ms] ease-out group-hover:-translate-y-[3px] group-hover:shadow-lift group-data-selected:outline-3 group-data-selected:outline-offset-3 group-data-selected:outline-accent">
+              <div class="relative aspect-[2/3] w-full overflow-hidden rounded-md bg-element shadow-card transition duration-[180ms] ease-out group-hover:-translate-y-[3px] group-hover:shadow-lift group-data-selected:outline-3 group-data-selected:outline-offset-3 group-data-selected:outline-accent">
                 <Cover id={item.id} title={item.title} authors={item.authors} hasCover={item.hasCover} size="thumb" />
                 <Show when={onDevice().get(item.id)}>
                   {(where) => (
                     <span
-                      class="absolute top-1.5 left-1.5 grid size-5 place-items-center rounded-full bg-success text-white shadow-card ring-2 ring-black/20"
+                      class="absolute top-1.5 left-1.5 grid size-5 place-items-center rounded-full bg-success text-on-accent shadow-card ring-2 ring-black/20"
                       title={where()
                         .map((o) => `On ${o.device.name}`)
                         .join('\n')}

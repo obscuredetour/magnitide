@@ -7,8 +7,13 @@ import { storage } from './storage';
 export const THEMES = [
   { id: 'light', label: 'Light' },
   { id: 'dark', label: 'Dark' },
-  { id: 'catppuccin-mocha', label: 'Catppuccin Mocha' },
   { id: 'sepia', label: 'Sepia' },
+  { id: 'catppuccin-latte', label: 'Catppuccin Latte' },
+  { id: 'catppuccin-frappe', label: 'Catppuccin Frappé' },
+  { id: 'catppuccin-macchiato', label: 'Catppuccin Macchiato' },
+  { id: 'catppuccin-mocha', label: 'Catppuccin Mocha' },
+  { id: 'dracula', label: 'Dracula' },
+  { id: 'alucard', label: 'Alucard' },
 ] as const;
 
 export type ThemeName = (typeof THEMES)[number]['id'];

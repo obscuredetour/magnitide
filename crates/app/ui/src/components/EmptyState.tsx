@@ -11,7 +11,7 @@ export function EmptyState(props: { message: string }) {
         <code class="text-[12.5px]">metadata.db</code>). calibre libraries are opened read-only and never changed.
       </p>
       <button
-        class="cursor-pointer rounded-lg bg-accent px-[18px] py-2 font-semibold text-white hover:brightness-110"
+        class="cursor-pointer rounded-lg bg-accent px-[18px] py-2 font-semibold text-on-accent hover:brightness-110"
         onClick={() => void chooseLibrary()}
       >
         Choose library folder…

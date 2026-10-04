@@ -14,10 +14,10 @@ import { Portal } from 'solid-js/web';
 const MenuContext = createContext<{ close(): void }>();
 
 const ITEMS = '[role^="menuitem"]:not([disabled])';
-const PANEL = 'z-30 min-w-56 animate-menu-in rounded-xl border border-line bg-surface p-1.5 text-fg shadow-lift';
+const PANEL = 'z-30 min-w-56 animate-menu-in rounded-xl border border-line bg-popover p-1.5 text-fg shadow-lift';
 const ITEM_BASE =
   'flex w-full cursor-default items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left outline-none disabled:opacity-45 disabled:hover:bg-transparent';
-const ITEM = `${ITEM_BASE} hover:bg-accent/15 focus:bg-accent/15`;
+const ITEM = `${ITEM_BASE} hover:bg-highlight focus:bg-highlight`;
 const DANGER_ITEM = `${ITEM_BASE} text-danger hover:bg-danger/15 focus:bg-danger/15`;
 
 type PanelProps = {
@@ -259,7 +259,7 @@ export function SubMenu(props: { label: string; disabled?: boolean; children: JS
         disabled={props.disabled}
         tabIndex={-1}
         class={ITEM}
-        classList={{ 'bg-accent/15': open() !== null }}
+        classList={{ 'bg-highlight': open() !== null }}
         onPointerMove={(e) => e.currentTarget.focus()}
         onClick={() => show('keyboard')}
         // Native, like the panel's handler, which would otherwise stop the key first.

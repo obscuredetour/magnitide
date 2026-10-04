@@ -14,7 +14,7 @@ function Swatch(props: { theme: string }) {
       class="relative size-5 flex-none overflow-hidden rounded-full border border-line bg-bg"
       aria-hidden="true"
     >
-      <span class="absolute inset-y-0 right-0 w-1/2 bg-surface-2" />
+      <span class="absolute inset-y-0 right-0 w-1/2 bg-element" />
       <span class="absolute right-[3px] bottom-[3px] size-2 rounded-full bg-accent" />
     </span>
   );
@@ -26,7 +26,7 @@ export function ThemeMenu() {
       label="Theme"
       iconOnly
       align="end"
-      buttonClass="grid size-8 place-items-center rounded-lg hover:bg-line aria-expanded:bg-line"
+      buttonClass="grid size-8 place-items-center rounded-lg hover:bg-hover aria-expanded:bg-hover"
       button={
         <svg class="size-[17px] fill-none stroke-muted stroke-[1.6]" viewBox="0 0 20 20" aria-hidden="true">
           <circle cx="10" cy="10" r="7" />

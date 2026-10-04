@@ -20,11 +20,11 @@ const SORT_OPTIONS: [SortKey, string][] = [
 ];
 
 const segment =
-  'grid h-[26px] w-8 place-items-center rounded-md text-muted hover:text-fg aria-pressed:bg-surface aria-pressed:text-fg aria-pressed:shadow-card';
+  'grid h-[26px] w-8 place-items-center rounded-md text-muted hover:text-fg aria-pressed:bg-popover aria-pressed:text-fg aria-pressed:shadow-card';
 
 function ViewSwitcher() {
   return (
-    <div class="flex rounded-lg bg-line p-0.5" role="group" aria-label="View">
+    <div class="flex rounded-lg bg-element p-0.5" role="group" aria-label="View">
       <button
         class={segment}
         aria-pressed={viewMode() === 'grid'}
@@ -91,7 +91,7 @@ export function TopBar(props: Props) {
           autocomplete="off"
           spellcheck={false}
           value={query()}
-          class="peer h-8 w-full rounded-[9px] border border-line bg-surface pr-[30px] pl-8 transition-[border-color,box-shadow] duration-150 outline-none select-text focus:border-accent focus:ring-3 focus:ring-accent/15 [&::-webkit-search-cancel-button]:hidden"
+          class="peer h-8 w-full rounded-[9px] border border-line bg-field pr-[30px] pl-8 transition-[border-color,box-shadow] duration-150 outline-none select-text focus:border-focus focus:ring-3 focus:ring-focus/20 [&::-webkit-search-cancel-button]:hidden"
           classList={{ 'border-danger! ring-3 ring-danger/20!': queryError() !== null }}
           title={queryError() ?? ''}
           onInput={(e) => {
@@ -127,7 +127,7 @@ export function TopBar(props: Props) {
         <label>
           <span class="sr-only">Sort by</span>
           <select
-            class="h-[30px] rounded-lg border border-line bg-surface px-2.5"
+            class="h-[30px] rounded-lg border border-line bg-field px-2.5"
             value={sort()}
             onChange={(e) => setSort(e.currentTarget.value as SortKey)}
           >
@@ -137,7 +137,7 @@ export function TopBar(props: Props) {
           </select>
         </label>
         <button
-          class="-ml-2 grid size-7 place-items-center rounded-md text-muted hover:bg-line hover:text-fg"
+          class="-ml-2 grid size-7 place-items-center rounded-md text-muted hover:bg-hover hover:text-fg"
           title={sortDir() === 'asc' ? 'Ascending (click to reverse)' : 'Descending (click to reverse)'}
           aria-label={sortDir() === 'asc' ? 'Sort ascending' : 'Sort descending'}
           onClick={() => setSort(sort(), sortDir() === 'asc' ? 'desc' : 'asc')}
@@ -152,7 +152,7 @@ export function TopBar(props: Props) {
         </button>
         <ThemeMenu />
         <button
-          class="grid size-8 place-items-center rounded-lg text-muted hover:bg-line hover:text-fg"
+          class="grid size-8 place-items-center rounded-lg text-muted hover:bg-hover hover:text-fg"
           title="Settings (⌘,)"
           aria-label="Settings"
           onClick={() => props.onOpenSettings()}

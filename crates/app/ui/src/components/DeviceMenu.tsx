@@ -34,7 +34,7 @@ export function DeviceMenu() {
         label="Devices"
         title={`${label()}: ${onCount().toLocaleString()} books from this library`}
         class="min-w-0 flex-none"
-        buttonClass="flex min-w-0 items-center gap-1.5 rounded-[7px] px-2 py-[5px] text-sm hover:bg-line aria-expanded:bg-line"
+        buttonClass="flex min-w-0 items-center gap-1.5 rounded-[7px] px-2 py-[5px] text-sm hover:bg-hover aria-expanded:bg-hover"
         panelClass="w-80"
         button={
           <>
