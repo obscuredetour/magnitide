@@ -11,9 +11,9 @@ import { type Applied, MatchDialog } from './MatchDialog';
 import { Icon } from './Icon';
 
 const input =
-  'h-8 w-full rounded-md border border-line bg-field px-2.5 outline-none select-text focus:border-focus focus:ring-3 focus:ring-focus/20 disabled:opacity-50';
+  'h-8 w-full rounded-control border border-line bg-field px-2.5 outline-none select-text focus:border-focus focus:ring-3 focus:ring-focus/20 disabled:opacity-50';
 const smallButton =
-  'cursor-pointer rounded-md border border-line bg-element px-2.5 py-1 text-xs font-medium hover:bg-hover disabled:cursor-default disabled:opacity-50';
+  'cursor-pointer rounded-control border border-line bg-element px-2.5 py-1 text-xs font-medium hover:bg-hover disabled:cursor-default disabled:opacity-50';
 
 // Lists are edited as text, the way calibre does it.
 const joinAuthors = (a: string[]) => a.join(' & ');
@@ -143,7 +143,7 @@ export function EditDialog(props: { editing: Editing }) {
     <dialog
       ref={dialog}
       aria-label="Edit book"
-      class="m-auto max-h-[calc(100vh-48px)] w-[min(820px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-2xl border border-line bg-popover p-0 text-fg shadow-lift"
+      class="m-auto max-h-[calc(100vh-48px)] w-[min(820px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-dialog border border-line bg-popover p-0 text-fg shadow-lift"
       onCancel={(e) => {
         e.preventDefault();
         closeEditor();
@@ -252,7 +252,7 @@ export function EditDialog(props: { editing: Editing }) {
               />
             </Field>
             <Show when={editingSorts()}>
-              <div class="col-span-2 -mt-1 rounded-lg bg-bg p-3">
+              <div class="col-span-2 -mt-1 rounded-card bg-bg p-3">
                 <div class="mb-2 text-xs text-muted">
                   Sort names decide where authors appear in lists sorted by author. Changing one applies to all of that
                   author's books.
@@ -324,7 +324,7 @@ export function EditDialog(props: { editing: Editing }) {
                       />
                       <button
                         type="button"
-                        class="grid size-7 cursor-pointer place-items-center rounded-md text-muted hover:bg-hover hover:text-fg"
+                        class="grid size-7 cursor-pointer place-items-center rounded-control text-muted hover:bg-hover hover:text-fg"
                         aria-label="Remove this series"
                         onClick={() => setForm('moreSeries', (list) => list.filter((_, j) => j !== i()))}
                       >
@@ -427,7 +427,7 @@ export function EditDialog(props: { editing: Editing }) {
                 role="textbox"
                 aria-multiline="true"
                 aria-label="Description"
-                class="comments-html min-h-28 rounded-md border border-line bg-field px-3 py-2 font-serif text-sm/[1.6] outline-none select-text focus:border-focus focus:ring-3 focus:ring-focus/20"
+                class="comments-html min-h-28 rounded-control border border-line bg-field px-3 py-2 font-serif text-sm/[1.6] outline-none select-text focus:border-focus focus:ring-3 focus:ring-focus/20"
               />
             </div>
           </div>
@@ -474,7 +474,7 @@ export function EditDialog(props: { editing: Editing }) {
           <button
             type="submit"
             disabled={saving()}
-            class="cursor-pointer rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-on-accent hover:brightness-110 disabled:opacity-60"
+            class="cursor-pointer rounded-control bg-accent px-4 py-1.5 text-sm font-semibold text-on-accent hover:brightness-110 disabled:opacity-60"
           >
             {saving() ? 'Saving…' : 'Save'}
           </button>
@@ -511,7 +511,7 @@ function NumberRange(props: {
   onChange(start: number, end: number | null): void;
 }) {
   const num =
-    'h-8 w-20 rounded-md border border-line bg-field px-2.5 tabular-nums outline-none focus:border-focus focus:ring-3 focus:ring-focus/20 disabled:opacity-50';
+    'h-8 w-20 rounded-control border border-line bg-field px-2.5 tabular-nums outline-none focus:border-focus focus:ring-3 focus:ring-focus/20 disabled:opacity-50';
   return (
     <div class="flex items-center gap-2" classList={{ 'opacity-50': props.disabled }}>
       <input
@@ -597,13 +597,13 @@ function Collects(props: {
   };
 
   return (
-    <div class="rounded-lg bg-bg p-3">
+    <div class="rounded-card bg-bg p-3">
       <div class="mb-1 text-xs font-medium text-muted">Collects</div>
       <div class="mb-2 text-[11px] text-faint">The books this omnibus contains, if you have them separately.</div>
       <div class="flex flex-wrap gap-1.5">
         <For each={props.ids}>
           {(bookId) => (
-            <span class="flex items-center gap-1 rounded-full bg-element py-[3px] pr-1 pl-2.5 text-xs">
+            <span class="flex items-center gap-1 rounded-chip bg-element py-[3px] pr-1 pl-2.5 text-xs">
               {titles[bookId] ?? `Book ${bookId}`}
               <button
                 type="button"
@@ -632,13 +632,13 @@ function Collects(props: {
           onInput={(e) => setQuery(e.currentTarget.value)}
         />
         <Show when={results()?.length}>
-          <ul class="mt-1 rounded-md border border-line bg-popover p-1">
+          <ul class="mt-1 rounded-menu border border-line bg-popover p-1.5">
             <For each={results()}>
               {(r) => (
                 <li>
                   <button
                     type="button"
-                    class="w-full cursor-pointer truncate rounded px-2 py-1 text-left text-xs hover:bg-highlight"
+                    class="w-full cursor-pointer truncate rounded-control px-2 py-1 text-left text-xs hover:bg-highlight"
                     onClick={() => {
                       add([r]);
                       setQuery('');

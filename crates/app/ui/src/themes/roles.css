@@ -38,6 +38,15 @@
 
   --border: color-mix(in srgb, var(--overlay-0) 35%, transparent);
 
+  /* Corner radii, by what's rounded. Inner corners are the outer radius minus
+     the padding between, so a menu (12px, padded 6px) holds 6px items. */
+  --inset-radius: 4px; /* inside a control: segmented buttons, key hints, tiny tags */
+  --control-radius: 6px; /* buttons, inputs, selects, icon buttons, menu items, list rows */
+  --card-radius: 8px; /* boxes inside dialogs, preview cards */
+  --menu-radius: 12px; /* menus, autocomplete, toasts, the selection bar */
+  --dialog-radius: 16px; /* dialogs */
+  --chip-radius: 9999px; /* text pills: tags, formats, badges */
+
   /* Dark-theme defaults; light themes override them below. */
   --inverse: var(--crust);
   --on-inverse: var(--text);

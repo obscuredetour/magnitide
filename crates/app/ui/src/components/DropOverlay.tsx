@@ -28,7 +28,7 @@ export function DropOverlay() {
     <Show when={count() !== null && library()}>
       <div class="pointer-events-none fixed inset-0 z-40 grid place-items-center bg-bg/70 p-8 backdrop-blur-sm">
         <div
-          class="flex w-[min(420px,100%)] flex-col items-center gap-2 rounded-2xl border-2 border-dashed px-8 py-10 text-center shadow-lift"
+          class="flex w-[min(420px,100%)] flex-col items-center gap-2 rounded-dialog border-2 border-dashed px-8 py-10 text-center shadow-lift"
           classList={{ 'border-accent bg-popover': !readOnly(), 'border-line bg-element': readOnly() }}
         >
           <Icon of={Upload} size={40} class={`mb-1 ${readOnly() ? 'text-muted' : 'text-accent'}`} />

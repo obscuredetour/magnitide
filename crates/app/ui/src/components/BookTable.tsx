@@ -148,7 +148,7 @@ const columns: ColumnDef<typeof features, BookRow, any>[] = [
       <span class="flex gap-1">
         <For each={info.getValue()}>
           {(f) => (
-            <span class="rounded bg-element px-1.5 text-[11px] font-medium text-muted in-data-selected:bg-on-selection/20">
+            <span class="rounded-inset bg-element px-1.5 text-[11px] font-medium text-muted in-data-selected:bg-on-selection/20">
               {f}
             </span>
           )}
@@ -379,7 +379,7 @@ function ColumnPicker(props: { table: ReturnType<typeof createTable<typeof featu
       label="Columns"
       iconOnly
       align="end"
-      buttonClass="grid size-6 place-items-center rounded-md hover:bg-hover aria-expanded:bg-hover"
+      buttonClass="grid size-6 place-items-center rounded-control hover:bg-hover aria-expanded:bg-hover"
       button={<Icon of={Ellipsis} class="text-muted" />}
     >
       <MenuLabel>Columns</MenuLabel>

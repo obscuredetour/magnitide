@@ -21,7 +21,7 @@ export function Toast() {
     <Show when={current()}>
       {(t) => (
         <div
-          class="fixed left-1/2 z-20 max-w-[min(560px,calc(100%-32px))] -translate-x-1/2 animate-toast-in rounded-[10px] px-4 py-[9px] shadow-lift select-text"
+          class="fixed left-1/2 z-20 max-w-[min(560px,calc(100%-32px))] -translate-x-1/2 animate-toast-in rounded-menu px-4 py-[9px] shadow-lift select-text"
           classList={{
             'bottom-6': !lifted(),
             'bottom-20': lifted(),

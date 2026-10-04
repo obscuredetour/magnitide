@@ -109,9 +109,9 @@ const same = (f: Field, a: Value | null, b: Value | null) =>
   a !== null && b !== null && f.text(a).trim().toLowerCase() === f.text(b).trim().toLowerCase();
 
 const input =
-  'h-8 min-w-0 rounded-md border border-line bg-field px-2.5 outline-none select-text focus:border-focus focus:ring-3 focus:ring-focus/20';
+  'h-8 min-w-0 rounded-control border border-line bg-field px-2.5 outline-none select-text focus:border-focus focus:ring-3 focus:ring-focus/20';
 const smallButton =
-  'cursor-pointer rounded-md border border-line bg-element px-3 py-1.5 text-sm font-medium hover:bg-hover disabled:cursor-default disabled:opacity-50';
+  'cursor-pointer rounded-control border border-line bg-element px-3 py-1.5 text-sm font-medium hover:bg-hover disabled:cursor-default disabled:opacity-50';
 
 /** A source's cover, downloaded through Rust and shown from the cache. */
 function RemoteCover(props: { url: string | null; class?: string; withSize?: boolean }) {
@@ -138,7 +138,7 @@ function RemoteCover(props: { url: string | null; class?: string; withSize?: boo
 /** Pixel dimensions over a cover, so the two can be compared at a glance. */
 function SizeBadge(props: { width: number; height: number }) {
   return (
-    <span class="absolute right-1 bottom-1 rounded bg-black/65 px-1.5 py-px text-[11px] font-medium text-white tabular-nums">
+    <span class="absolute right-1 bottom-1 rounded-inset bg-black/65 px-1.5 py-px text-[11px] font-medium text-white tabular-nums">
       {props.width}×{props.height}
     </span>
   );
@@ -163,7 +163,7 @@ function CurrentCover(props: { id: number }) {
 /** Marks a found value that's identical to the book's. */
 function SameBadge() {
   return (
-    <span class="mt-px inline-flex flex-none items-center gap-1 rounded-full bg-success/20 px-2 py-0.5 text-xs font-semibold text-success ring-1 ring-success/30">
+    <span class="mt-px inline-flex flex-none items-center gap-1 rounded-chip bg-success/20 px-2 py-0.5 text-xs font-semibold text-success ring-1 ring-success/30">
       <Icon of={Check} size={12} />
       Same
     </span>
@@ -292,7 +292,7 @@ export function MatchDialog(props: { id: number; current: Current; onApply(appli
       <dialog
         ref={dialog}
         aria-label="Find metadata"
-        class="m-auto h-[min(680px,calc(100vh-48px))] w-[min(1000px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-2xl border border-line bg-popover p-0 text-fg shadow-lift"
+        class="m-auto h-[min(680px,calc(100vh-48px))] w-[min(1000px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-dialog border border-line bg-popover p-0 text-fg shadow-lift"
         onCancel={(e) => {
           e.preventDefault();
           props.onClose();
@@ -361,7 +361,7 @@ export function MatchDialog(props: { id: number; current: Current; onApply(appli
                       role="option"
                       data-match={i()}
                       aria-selected={i() === selected()}
-                      class="flex cursor-default gap-2.5 rounded-lg p-2 hover:bg-hover aria-selected:bg-highlight"
+                      class="flex cursor-default gap-2.5 rounded-control p-2 hover:bg-hover aria-selected:bg-highlight"
                       onClick={() => select(i())}
                     >
                       <RemoteCover
@@ -376,7 +376,7 @@ export function MatchDialog(props: { id: number; current: Current; onApply(appli
                         </div>
                         <div class="mt-1 flex flex-wrap gap-1">
                           <span
-                            class="rounded-full px-1.5 text-[10px] font-medium"
+                            class="rounded-chip px-1.5 text-[10px] font-medium"
                             classList={{
                               'bg-accent/15 text-accent': m.kind !== 'possible',
                               'bg-element text-muted': m.kind === 'possible',
@@ -386,7 +386,7 @@ export function MatchDialog(props: { id: number; current: Current; onApply(appli
                           </span>
                           <For each={m.records}>
                             {(x) => (
-                              <span class="rounded-full bg-element px-1.5 text-[10px] text-muted">
+                              <span class="rounded-chip bg-element px-1.5 text-[10px] text-muted">
                                 {SOURCE_NAME[x.source!]}
                               </span>
                             )}
@@ -494,7 +494,7 @@ export function MatchDialog(props: { id: number; current: Current; onApply(appli
             <button
               type="button"
               disabled={!chosenCount()}
-              class="cursor-pointer rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-on-accent hover:brightness-110 disabled:cursor-default disabled:opacity-50"
+              class="cursor-pointer rounded-control bg-accent px-4 py-1.5 text-sm font-semibold text-on-accent hover:brightness-110 disabled:cursor-default disabled:opacity-50"
               onClick={apply}
             >
               {chosenCount() ? `Use ${chosenCount()} ${chosenCount() === 1 ? 'Field' : 'Fields'}` : 'Use'}
@@ -547,7 +547,7 @@ function FieldRow(props: {
         <Show when={props.sources}>
           {(s) => (
             <select
-              class="mb-1 h-6 rounded border border-line bg-field px-1 text-[11px]"
+              class="mb-1 h-6 rounded-control border border-line bg-field px-1 text-[11px]"
               aria-label={`Source for ${props.label.toLowerCase()}`}
               value={props.pick}
               onChange={(e) => props.onPick(Number(e.currentTarget.value))}

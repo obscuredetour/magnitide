@@ -33,7 +33,7 @@ export function LibraryMenu() {
       label="Library"
       title={library()?.path ?? 'Open a library'}
       class="min-w-0"
-      buttonClass="-ml-2 flex max-w-full min-w-0 items-baseline gap-2 rounded-[7px] px-2 py-[5px] hover:bg-hover aria-expanded:bg-hover"
+      buttonClass="-ml-2 flex max-w-full min-w-0 items-baseline gap-2 rounded-control px-2 py-[5px] hover:bg-hover aria-expanded:bg-hover"
       panelClass="w-80"
       button={
         <>
@@ -54,7 +54,7 @@ export function LibraryMenu() {
                   {lib().name}
                 </span>
                 <span
-                  class="flex-none rounded-full px-2 py-px text-[11px] font-medium"
+                  class="flex-none rounded-chip px-2 py-px text-[11px] font-medium"
                   classList={{
                     'bg-accent/15 text-accent': lib().kind === 'magnitide',
                     'bg-element text-muted': lib().kind === 'calibre',

@@ -50,7 +50,7 @@ const MATCHED_BY: Record<MatchedBy, string> = {
 
 // Shared styles for repeated elements.
 const chips = 'my-4 flex flex-wrap gap-1.5';
-const chip = 'rounded-full bg-element px-2.5 py-[3px] text-xs text-fg';
+const chip = 'rounded-chip bg-element px-2.5 py-[3px] text-xs text-fg';
 const chipButton = `${chip} cursor-pointer hover:bg-highlight hover:text-accent`;
 const sectionLabel = 'mt-[22px] mb-2 text-[11px] font-semibold tracking-[.06em] text-muted uppercase';
 
@@ -76,7 +76,7 @@ export function DetailsPanel(props: Props) {
       <div class="sticky top-2.5 z-1 float-right mt-2.5 mr-2.5 flex items-center gap-1.5">
         <Show when={library()?.kind === 'magnitide'}>
           <button
-            class="h-7 cursor-pointer rounded-full bg-element px-3 text-xs font-medium hover:bg-hover"
+            class="h-7 cursor-pointer rounded-chip bg-element px-3 text-xs font-medium hover:bg-hover"
             title="Edit (⌘E)"
             onClick={() => void openEditor(props.id)}
           >

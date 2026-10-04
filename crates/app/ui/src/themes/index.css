@@ -36,6 +36,9 @@
  *               --on-status (text on status fills)
  *    Lines      --border (hairlines: Dracula "Subtle borders", Catppuccin
  *               "Inactive Border", softened)
+ *    Shape      --inset-radius, --control-radius, --card-radius,
+ *               --menu-radius, --dialog-radius, --chip-radius (not from the
+ *               specs, which leave shape alone; see roles.css)
  *    Layers     --inverse and --on-inverse (toasts, the selection bar),
  *               --scrim (behind dialogs), --shadow (shadow colour)
  *

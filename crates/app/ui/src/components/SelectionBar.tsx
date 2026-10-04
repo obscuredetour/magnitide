@@ -11,7 +11,7 @@ import { ConvertMenu } from './ConvertMenu';
 import { Icon } from './Icon';
 
 const action =
-  'cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium whitespace-nowrap hover:bg-on-inverse/15 disabled:cursor-default disabled:opacity-50';
+  'cursor-pointer rounded-control px-2.5 py-1 text-xs font-medium whitespace-nowrap hover:bg-on-inverse/15 disabled:cursor-default disabled:opacity-50';
 
 /** What can be done with several selected books. Mount while more than one is selected. */
 export function SelectionBar() {
@@ -23,7 +23,7 @@ export function SelectionBar() {
 
   return (
     <div
-      class="fixed bottom-6 left-1/2 z-15 flex max-w-[calc(100%-32px)] -translate-x-1/2 animate-toast-in items-center gap-1 overflow-x-auto rounded-xl bg-inverse/95 py-1.5 pr-1.5 pl-3.5 text-on-inverse shadow-lift"
+      class="fixed bottom-6 left-1/2 z-15 flex max-w-[calc(100%-32px)] -translate-x-1/2 animate-toast-in items-center gap-1 overflow-x-auto rounded-menu bg-inverse/95 py-1.5 pr-1.5 pl-3.5 text-on-inverse shadow-lift"
       role="toolbar"
       aria-label="Selected books"
     >
@@ -59,7 +59,7 @@ export function SelectionBar() {
         </button>
       </Show>
       <button
-        class="ml-1 grid size-6 cursor-pointer place-items-center rounded-md hover:bg-on-inverse/15"
+        class="ml-1 grid size-6 cursor-pointer place-items-center rounded-control hover:bg-on-inverse/15"
         title="Clear selection (Esc)"
         aria-label="Clear selection"
         onClick={() => setSelectedId(selectedId())}

@@ -9,9 +9,9 @@ import { plural, writeOnSave } from '../writeback';
 import { Autocomplete } from './Autocomplete';
 
 const input =
-  'h-8 w-full rounded-md border border-line bg-field px-2.5 outline-none select-text placeholder:text-faint focus:border-focus focus:ring-3 focus:ring-focus/20';
+  'h-8 w-full rounded-control border border-line bg-field px-2.5 outline-none select-text placeholder:text-faint focus:border-focus focus:ring-3 focus:ring-focus/20';
 const smallButton =
-  'cursor-pointer rounded-md border border-line bg-element px-2.5 py-1 text-xs font-medium hover:bg-hover disabled:cursor-default disabled:opacity-50';
+  'cursor-pointer rounded-control border border-line bg-element px-2.5 py-1 text-xs font-medium hover:bg-hover disabled:cursor-default disabled:opacity-50';
 
 const splitAuthors = (s: string) =>
   s
@@ -156,7 +156,7 @@ export function BulkEditDialog(props: { ids: number[] }) {
     <dialog
       ref={dialog}
       aria-label={`Edit ${n} books`}
-      class="m-auto max-h-[calc(100vh-48px)] w-[min(680px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-2xl border border-line bg-popover p-0 text-fg shadow-lift"
+      class="m-auto max-h-[calc(100vh-48px)] w-[min(680px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-dialog border border-line bg-popover p-0 text-fg shadow-lift"
       onCancel={(e) => {
         e.preventDefault();
         closeBulkEditor();
@@ -244,7 +244,7 @@ export function BulkEditDialog(props: { ids: number[] }) {
                     type="number"
                     min="0"
                     step="1"
-                    class="h-6 w-16 rounded border border-line bg-field px-1.5 tabular-nums disabled:opacity-50"
+                    class="h-6 w-16 rounded-control border border-line bg-field px-1.5 tabular-nums disabled:opacity-50"
                     disabled={!numbering()}
                     value={seriesStart()}
                     onInput={(e) => setSeriesStart(Number(e.currentTarget.value) || 0)}
@@ -373,7 +373,7 @@ export function BulkEditDialog(props: { ids: number[] }) {
                           <button
                             type="button"
                             aria-pressed={on()}
-                            class="cursor-pointer rounded-full bg-element px-2.5 py-[3px] text-xs hover:bg-hover aria-pressed:bg-danger/15 aria-pressed:text-danger aria-pressed:line-through"
+                            class="cursor-pointer rounded-chip bg-element px-2.5 py-[3px] text-xs hover:bg-hover aria-pressed:bg-danger/15 aria-pressed:text-danger aria-pressed:line-through"
                             onClick={() => {
                               const next = new Set(removeTags());
                               if (!next.delete(t.name)) next.add(t.name);
@@ -412,7 +412,7 @@ export function BulkEditDialog(props: { ids: number[] }) {
           <button
             type="submit"
             disabled={saving() || !changes().length}
-            class="cursor-pointer rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-on-accent hover:brightness-110 disabled:cursor-default disabled:opacity-60"
+            class="cursor-pointer rounded-control bg-accent px-4 py-1.5 text-sm font-semibold text-on-accent hover:brightness-110 disabled:cursor-default disabled:opacity-60"
           >
             {saving() ? 'Saving…' : `Save ${n} Books`}
           </button>

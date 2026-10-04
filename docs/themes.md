@@ -150,3 +150,6 @@ What the UI paints with. Each has a default from the palette (in
 | `inverse`, `on-inverse`                | Toasts and the selection bar      | dark: `crust`, `text`; light: `text`, `base` |
 | `scrim`                                | Behind dialogs                    | dark: black 38%; light: `text 22%`           |
 | `shadow`                               | Shadow colour                     | dark: black 75%; light: black 20%            |
+
+Corner radii (`--control-radius` and friends in `roles.css`) are part of the app's shape,
+not its colours, so theme files don't set them (yet).
