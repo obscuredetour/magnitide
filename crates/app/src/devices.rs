@@ -13,13 +13,24 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use ts_rs::TS;
 
 use crate::AppState;
-use crate::commands::{CmdResult, ImportProgress, write_library};
+use crate::commands::{CmdResult, write_library};
 
 /// Event name matches `onDevicesChanged` in ui/src/api.ts.
 pub const DEVICES_CHANGED_EVENT: &str = "devices-changed";
 
 /// Sent while books are copied to a device. Matches `onTransferProgress` in ui/src/api.ts.
 pub const TRANSFER_PROGRESS_EVENT: &str = "transfer-progress";
+
+/// Where sending has got to: about to handle book `done + 1` of `total`.
+#[derive(Clone, Serialize, TS)]
+#[ts(export)]
+pub struct TransferProgress {
+    done: usize,
+    total: usize,
+    title: String,
+    /// Converting the book to this format before copying it.
+    converting: Option<String>,
+}
 
 /// How often the mounted volumes are checked (a directory listing; cheap).
 const POLL: Duration = Duration::from_secs(3);
@@ -148,7 +159,8 @@ fn rescanned(app: &AppHandle, root: &Path) {
 }
 
 /// Copy books from the open library to a device (in the format it reads
-/// best; EPUBs get the library's metadata written into the copy).
+/// best; EPUBs get the library's metadata written into the copy). Formats
+/// converted on the way are added to a Magnitide library's books too.
 #[tauri::command]
 pub async fn send_to_device(
     app: AppHandle,
@@ -168,17 +180,25 @@ pub async fn send_to_device(
         let books: Vec<&magnitide_catalog::Book> =
             book_ids.iter().filter(|b| !already.contains(b)).filter_map(|b| lib.catalog.get(*b)).collect();
         let free = devices::volumes::space(&scan.device.root).map(|s| s.1);
-        let report = devices::transfer::send(
-            &scan.device,
-            &books,
-            &lib.root,
-            free,
-            format.as_deref(),
-            &converter,
-            |done, total, title| {
-                let _ = app2.emit(TRANSFER_PROGRESS_EVENT, ImportProgress { done, total, title: title.to_owned() });
-            },
-        );
+        let origin = devices::transfer::Origin { root: &lib.root, keep_in: lib.native.as_deref() };
+        let report = devices::transfer::send(&scan.device, &books, origin, free, format.as_deref(), &converter, |p| {
+            let progress = TransferProgress {
+                done: p.done,
+                total: p.total,
+                title: p.title.to_owned(),
+                converting: p.converting.map(str::to_owned),
+            };
+            let _ = app2.emit(TRANSFER_PROGRESS_EVENT, progress);
+        });
+        // Show the kept formats (before the rescan, which the UI matches against the library).
+        if report.kept > 0
+            && let Some(native) = &lib.native
+        {
+            match native.lock().unwrap_or_else(|e| e.into_inner()).load_catalog() {
+                Ok(catalog) => app2.state::<AppState>().replace(lib.with_catalog(catalog)),
+                Err(e) => eprintln!("reloading the library after sending: {e}"),
+            }
+        }
         rescanned(&app2, &scan.device.root);
         // New books go straight onto their shelves on a Kobo.
         let mut report = report;

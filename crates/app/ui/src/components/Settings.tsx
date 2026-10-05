@@ -711,8 +711,8 @@ function DeviceSettings() {
       <Heading>Devices</Heading>
       <p class="mb-4 text-xs text-muted">
         When a book has more than one format a device reads, Magnitide asks which to send, unless you pick one here.
-        Books without it are converted on the way when possible (the library keeps its formats), else get the best
-        format they have.
+        Books without it are converted on the way when possible, else get the best format they have. In a Magnitide
+        library the converted file is added to the book too, so it's only converted once.
       </p>
       <For each={kinds}>
         {(kind) => (

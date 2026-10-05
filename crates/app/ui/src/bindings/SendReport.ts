@@ -7,9 +7,13 @@ export type SendReport = {
  */
 sent: number, bytes: number, 
 /**
- * Of those, converted on the way (the library keeps its formats).
+ * Of those, converted on the way.
  */
 converted: number, 
+/**
+ * Of those, with the converted file added to the library as a new format.
+ */
+kept: number, 
 /**
  * Books with no format this device reads ("Title (EPUB only)").
  */

@@ -4,17 +4,21 @@
 //! per author (`documents/` on a Kindle), and, for EPUBs, writes the
 //! library's metadata, cover and book id into the copy (never into the
 //! library's file), so the device shows what the library shows and the copy
-//! is always recognized. Removing deletes the book file and KOReader's
-//! `.sdr` folder next to it, nothing else.
+//! is always recognized. A format made on the way is added to the book too
+//! when the library can be written, so it's only converted once. Removing
+//! deletes the book file and KOReader's `.sdr` folder next to it, nothing else.
 
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+use std::sync::Mutex;
 
 use magnitide_catalog::{Book, Format};
 use serde::Serialize;
 
 use super::{Device, DeviceKind};
+use crate::Library;
 use crate::convert::{Converter, TempDir};
+use crate::import::store::add_formats;
 use crate::metadata::{Author, BookMetadata, epub_write};
 use crate::paths;
 
@@ -49,8 +53,10 @@ pub struct SendReport {
     /// Books copied.
     pub sent: usize,
     pub bytes: u64,
-    /// Of those, converted on the way (the library keeps its formats).
+    /// Of those, converted on the way.
     pub converted: usize,
+    /// Of those, with the converted file added to the library as a new format.
+    pub kept: usize,
     /// Books with no format this device reads ("Title (EPUB only)").
     pub unsupported: Vec<String>,
     /// Some unsupported books could be converted if calibre were installed.
@@ -61,6 +67,25 @@ pub struct SendReport {
     pub warnings: Vec<String>,
     /// Shelves written to the device afterwards (Kobo), if any.
     pub collections: Option<super::collections::CollectionsReport>,
+}
+
+/// The library books are sent from.
+#[derive(Clone, Copy)]
+pub struct Origin<'a> {
+    /// Its folder; book files are found from here.
+    pub root: &'a Path,
+    /// The library itself, when it can be written: formats converted for the
+    /// device are added to their books. None leaves the library as it is.
+    pub keep_in: Option<&'a Mutex<Library>>,
+}
+
+/// Where sending has got to: about to handle book `done + 1` of `total`.
+pub struct Progress<'a> {
+    pub done: usize,
+    pub total: usize,
+    pub title: &'a str,
+    /// Converting the book to this format first; None once it's being copied.
+    pub converting: Option<&'a str>,
 }
 
 /// What to put on the device for one book.
@@ -74,17 +99,18 @@ struct Plan<'b> {
 
 /// Copy `books` to the device, as `preferred` where they have it (converting
 /// to it where they don't and `converter` can). Books with no format the
-/// device reads are converted to the best one it does, where possible.
-/// `progress(done, total, title)`.
+/// device reads are converted to the best one it does, where possible, and
+/// the converted file kept in the library if `origin` allows.
 pub fn send(
     device: &Device,
     books: &[&Book],
-    library_root: &Path,
+    origin: Origin<'_>,
     free_bytes: Option<u64>,
     preferred: Option<&str>,
     converter: &Converter,
-    mut progress: impl FnMut(usize, usize, &str),
+    mut progress: impl FnMut(Progress<'_>),
 ) -> SendReport {
+    let library_root = origin.root;
     let mut report = SendReport::default();
     let can_calibre = Converter::with_calibre(Some("ebook-convert".into()));
     let mut plans: Vec<Plan<'_>> = Vec::new();
@@ -135,15 +161,29 @@ pub fn send(
         DeviceKind::Kindle => device.root.join("documents"),
         DeviceKind::Kobo | DeviceKind::Generic => device.root.clone(),
     };
+    let total = plans.len();
     for (done, plan) in plans.iter().enumerate() {
-        progress(done, plans.len(), &plan.book.title);
+        let title = plan.book.title.as_str();
         let src = plan.book.format_path(library_root, plan.source);
         let result = if plan.format == plan.source.format {
+            progress(Progress { done, total, title, converting: None });
             send_one(device.kind, plan.book, &plan.format, &src, library_root, &base)
         } else {
+            progress(Progress { done, total, title, converting: Some(&plan.format) });
             TempDir::new().and_then(|work| {
                 let converted = work.0.join(format!("converted.{}", plan.format.to_ascii_lowercase()));
                 converter.convert(&src, &plan.source.format, &plan.format, &converted)?;
+                // Kept even if copying it to the device then fails: the work is done.
+                if let Some(lib) = origin.keep_in {
+                    let mut lib = lib.lock().unwrap_or_else(|e| e.into_inner());
+                    match add_formats(&mut lib, plan.book.id, &[(plan.format.clone(), converted.clone())]) {
+                        Ok(_) => report.kept += 1,
+                        Err(e) => report
+                            .warnings
+                            .push(format!("“{title}”: the {} couldn't be added to the library ({e})", plan.format)),
+                    }
+                }
+                progress(Progress { done, total, title, converting: None });
                 send_one(device.kind, plan.book, &plan.format, &converted, library_root, &base)
             })
         };
@@ -154,10 +194,10 @@ pub fn send(
                 report.bytes += bytes;
                 report.warnings.extend(warning);
             }
-            Err(e) => report.failed.push(format!("“{}”: {e}", plan.book.title)),
+            Err(e) => report.failed.push(format!("“{title}”: {e}")),
         }
     }
-    progress(plans.len(), plans.len(), "");
+    progress(Progress { done: total, total, title: "", converting: None });
     report
 }
 
@@ -309,6 +349,10 @@ mod tests {
         lib
     }
 
+    fn read_only(root: &Path) -> Origin<'_> {
+        Origin { root, keep_in: None }
+    }
+
     #[test]
     fn sends_the_best_format_with_library_metadata_then_removes() {
         let tmp = tempfile::tempdir().unwrap();
@@ -323,7 +367,7 @@ mod tests {
         let kobo_root = tmp.path().join("KOBOeReader");
         fs::create_dir_all(kobo_root.join(".kobo")).unwrap();
         let kobo = detect(&kobo_root).unwrap();
-        let report = send(&kobo, &books, lib.root(), Some(1 << 30), None, &Converter::default(), |_, _, _| {});
+        let report = send(&kobo, &books, read_only(lib.root()), Some(1 << 30), None, &Converter::default(), |_| {});
         assert_eq!((report.sent, report.unsupported.len()), (2, 1), "{report:?}");
         assert!(report.unsupported[0].starts_with("“Notes” (DOCX)"));
 
@@ -366,7 +410,7 @@ mod tests {
         let kindle = detect(&root).unwrap();
 
         let books: Vec<&Book> = cat.books.iter().collect();
-        let report = send(&kindle, &books, lib.root(), None, None, &Converter::default(), |_, _, _| {});
+        let report = send(&kindle, &books, read_only(lib.root()), None, None, &Converter::default(), |_| {});
         assert_eq!(report.sent, 1, "{report:?}");
         assert_eq!(report.unsupported.len(), 1, "DOCX can't be made into anything a Kindle reads");
         // The EPUB is converted to AZW3 on the way; this fixture has no pages, so that fails, cleanly.
@@ -374,7 +418,7 @@ mod tests {
         assert!(root.join("documents/Frank Herbert/Dune - Frank Herbert.azw3").is_file());
 
         // Sending again doesn't overwrite.
-        send(&kindle, &books, lib.root(), None, None, &Converter::default(), |_, _, _| {});
+        send(&kindle, &books, read_only(lib.root()), None, None, &Converter::default(), |_| {});
         assert!(root.join("documents/Frank Herbert/Dune - Frank Herbert (2).azw3").is_file());
     }
 
@@ -391,7 +435,7 @@ mod tests {
         let kobo = detect(&root).unwrap();
         let books: Vec<&Book> = cat.books.iter().collect();
 
-        let r = send(&kobo, &books, lib.root(), None, Some("EPUB"), &Converter::default(), |_, _, _| {});
+        let r = send(&kobo, &books, read_only(lib.root()), None, Some("EPUB"), &Converter::default(), |_| {});
         assert_eq!(r.sent, 2, "{r:?}");
         assert!(root.join("Ursula K. Le Guin/The Dispossessed - Ursula K. Le Guin.epub").is_file(), "EPUB as asked");
         assert!(root.join("Frank Herbert/Dune - Frank Herbert.pdf").is_file(), "no EPUB: its best other format");
@@ -411,7 +455,7 @@ mod tests {
         let kobo = detect(&root).unwrap();
 
         // Preferred KEPUB, the book has only EPUB: converted natively for the device.
-        let r = send(&kobo, &dispossessed, lib.root(), None, Some("KEPUB"), &Converter::default(), |_, _, _| {});
+        let r = send(&kobo, &dispossessed, read_only(lib.root()), None, Some("KEPUB"), &Converter::default(), |_| {});
         assert_eq!((r.sent, r.converted), (1, 1), "{r:?}");
         let sent = root.join("Ursula K. Le Guin/The Dispossessed - Ursula K. Le Guin.kepub.epub");
         assert!(epub::read(&sent).is_some());
@@ -430,14 +474,50 @@ mod tests {
         let r = send(
             &detect(&kindle_root).unwrap(),
             &sample_book,
-            lib.root(),
+            read_only(lib.root()),
             None,
             None,
             &Converter::default(),
-            |_, _, _| {},
+            |_| {},
         );
         assert_eq!((r.sent, r.converted, r.unsupported.len()), (1, 1, 0), "{r:?}");
         assert!(kindle_root.join("documents/Ann Author/Sample Book - Ann Author.azw3").is_file());
+    }
+
+    #[test]
+    fn keeps_what_it_converts_in_a_library_that_can_be_written() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lib = setup(tmp.path());
+        let root = lib.root().to_path_buf();
+        let cat = lib.load_catalog().unwrap();
+        let dispossessed: Vec<&Book> = cat.books.iter().filter(|b| b.title == "The Dispossessed").collect();
+        let id = dispossessed[0].id;
+        let lib = Mutex::new(lib);
+        let origin = Origin { root: &root, keep_in: Some(&lib) };
+        let kobo_root = tmp.path().join("KOBOeReader");
+        fs::create_dir_all(kobo_root.join(".kobo")).unwrap();
+        let kobo = detect(&kobo_root).unwrap();
+
+        // Told it's converting before it copies.
+        let mut steps = Vec::new();
+        let r = send(&kobo, &dispossessed, origin, None, Some("KEPUB"), &Converter::default(), |p| {
+            steps.push((p.done, p.title.to_owned(), p.converting.map(str::to_owned)))
+        });
+        assert_eq!((r.sent, r.converted, r.kept), (1, 1, 1), "{r:?}");
+        let t = || "The Dispossessed".to_owned();
+        assert_eq!(steps, [(0, t(), Some("KEPUB".into())), (0, t(), None), (1, String::new(), None)]);
+        assert!(kobo_root.join("Ursula K. Le Guin/The Dispossessed - Ursula K. Le Guin.kepub.epub").is_file());
+
+        // The library has the KEPUB now, so the next device gets it as is.
+        let cat = lib.lock().unwrap().load_catalog().unwrap();
+        let book = cat.get(id).unwrap();
+        let kepub = book.formats.iter().find(|f| f.format == "KEPUB").expect("kept in the library");
+        assert!(epub::read(&book.format_path(&root, kepub)).is_some());
+        let other_root = tmp.path().join("Other/KOBOeReader");
+        fs::create_dir_all(other_root.join(".kobo")).unwrap();
+        let r =
+            send(&detect(&other_root).unwrap(), &[book], origin, None, Some("KEPUB"), &Converter::default(), |_| {});
+        assert_eq!((r.sent, r.converted, r.kept), (1, 0, 0), "{r:?}");
     }
 
     #[test]
@@ -448,8 +528,15 @@ mod tests {
         let root = tmp.path().join("KOBOeReader");
         fs::create_dir_all(root.join(".kobo")).unwrap();
         let books: Vec<&Book> = cat.books.iter().collect();
-        let r =
-            send(&detect(&root).unwrap(), &books, lib.root(), Some(1024), None, &Converter::default(), |_, _, _| {});
+        let r = send(
+            &detect(&root).unwrap(),
+            &books,
+            read_only(lib.root()),
+            Some(1024),
+            None,
+            &Converter::default(),
+            |_| {},
+        );
         assert_eq!(r.sent, 0);
         assert!(r.failed[0].starts_with("Not enough space"), "{r:?}");
     }

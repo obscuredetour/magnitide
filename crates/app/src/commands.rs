@@ -390,13 +390,7 @@ pub(crate) async fn write_library<T: Send + 'static>(
     .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())?;
 
-    state.replace(Loaded {
-        root: lib.root.clone(),
-        kind: lib.kind,
-        catalog,
-        native: lib.native.clone(),
-        thumb_dir: lib.thumb_dir.clone(),
-    });
+    state.replace(lib.with_catalog(catalog));
     Ok(out)
 }
 

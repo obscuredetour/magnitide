@@ -44,12 +44,20 @@ function formatSize(bytes: number): string {
 
 const searchFor = (field: string, value: string) => search(`${field}:"${value}"`);
 
-const MATCHED_BY: Record<MatchedBy, string> = {
-  uuid: 'its calibre id',
-  isbn: 'ISBN',
-  file: 'an identical file',
-  title: 'title and author',
-};
+/** How a device file was recognized, for its tooltip. */
+function foundBy(matchedBy: MatchedBy): string {
+  switch (matchedBy) {
+    // The open library's book id (books imported from calibre keep calibre's, so devices still know them).
+    case 'uuid':
+      return library()?.kind === 'magnitide' ? 'its Magnitide id' : 'its calibre id';
+    case 'isbn':
+      return 'ISBN';
+    case 'file':
+      return 'an identical file';
+    case 'title':
+      return 'title and author';
+  }
+}
 
 // Shared styles for repeated elements.
 const chips = 'flex flex-wrap gap-1.5';
@@ -389,7 +397,7 @@ function Details(props: { book: BookDetails }) {
                   {(o) => (
                     <p
                       class="flex items-center gap-1.5 text-muted"
-                      title={`${o.hit.path}\nFound by ${MATCHED_BY[o.hit.matchedBy]}`}
+                      title={`${o.hit.path}\nFound by ${foundBy(o.hit.matchedBy)}`}
                     >
                       <span class="font-medium whitespace-nowrap text-success">On {o.device.name}</span>
                       <span class="min-w-0 truncate">{o.hit.path}</span>

@@ -25,6 +25,7 @@ import type { ThemeAddons } from './bindings/ThemeAddons';
 import type { MergeOutcome } from './bindings/MergeOutcome';
 import type { RemoveReport } from './bindings/RemoveReport';
 import type { SendReport } from './bindings/SendReport';
+import type { TransferProgress } from './bindings/TransferProgress';
 import type { Lookup } from './bindings/Lookup';
 import type { Match as MetadataMatch } from './bindings/Match';
 import type { MatchKind } from './bindings/MatchKind';
@@ -100,6 +101,7 @@ export type {
   SortKey,
   TidyPreview,
   TidyReport,
+  TransferProgress,
   WritebackPreview,
   WriteReport,
 };
@@ -241,7 +243,10 @@ export const api = {
   /** Eject (unmount) a device so it can be unplugged. */
   ejectDevice: (id: string) => invoke<void>('eject_device', { id }),
 
-  /** Copy books to a device (best format for it; EPUBs carry the library's metadata). Progress via onTransferProgress. */
+  /**
+   * Copy books to a device (best format for it; EPUBs carry the library's metadata). Formats converted on the way are
+   * added to a Magnitide library's books too. Progress via onTransferProgress.
+   */
   sendToDevice: (id: string, bookIds: number[], format: string | null = null) =>
     invoke<SendReport>('send_to_device', { id, bookIds, format }),
 
@@ -375,9 +380,9 @@ export function onConvertProgress(handler: (p: ImportProgress) => void): Promise
   return listen<ImportProgress>('convert-progress', (e) => handler(e.payload));
 }
 
-/** Copying books to a device. Event name matches `TRANSFER_PROGRESS_EVENT` in devices.rs. */
-export function onTransferProgress(handler: (p: ImportProgress) => void): Promise<UnlistenFn> {
-  return listen<ImportProgress>('transfer-progress', (e) => handler(e.payload));
+/** Copying books to a device (converting first where needed). Event name matches `TRANSFER_PROGRESS_EVENT` in devices.rs. */
+export function onTransferProgress(handler: (p: TransferProgress) => void): Promise<UnlistenFn> {
+  return listen<TransferProgress>('transfer-progress', (e) => handler(e.payload));
 }
 
 /** Import progress. Event name matches `IMPORT_PROGRESS_EVENT` in `crates/app/src/commands.rs`. */
