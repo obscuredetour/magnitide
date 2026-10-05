@@ -7,6 +7,7 @@ import {
   type BookRow,
   type CollectionsReport,
   coverChanged,
+  type DeviceHit,
   type DeviceInfo,
   errorMessage,
   onConvertProgress,
@@ -226,24 +227,82 @@ export async function removeFromDevice(device: DeviceInfo, ids: number[]): Promi
   });
 }
 
-/** Add the device's files that aren't in the library. */
-export function importFromDevice(device: DeviceInfo): Promise<void> {
+/** Device files the library lacks: books it doesn't have, and formats its books don't. */
+export function newOnDevice(device: DeviceInfo): { books: string[]; formats: DeviceHit[] } {
+  return { books: device.unmatched, formats: device.hits.filter((h) => h.newFormat) };
+}
+
+/** Pick which of the device's files the library lacks to copy into it. */
+export async function chooseFromDevice(device: DeviceInfo): Promise<void> {
+  const { books, formats } = newOnDevice(device);
+  const [chosen, setChosen] = createSignal(new Set([...books, ...formats.map((h) => h.path)]));
+  const toggle = (path: string, on: boolean) => {
+    const next = new Set(chosen());
+    if (on) next.add(path);
+    else next.delete(path);
+    setChosen(next);
+  };
+  const row = (path: string, note?: string) => (
+    <label class="flex cursor-pointer items-center gap-2 text-fg" title={path}>
+      <input
+        type="checkbox"
+        class="accent-accent"
+        checked={chosen().has(path)}
+        onChange={(e) => toggle(path, e.currentTarget.checked)}
+      />
+      <span class="min-w-0 truncate">{path.split('/').pop()}</span>
+      <Show when={note}>
+        <span class="text-xs whitespace-nowrap text-muted">{note}</span>
+      </Show>
+    </label>
+  );
+  const ok = await confirm({
+    title: `Add from ${device.name}`,
+    message: () => (
+      <div class="max-h-72 space-y-3 overflow-y-auto">
+        <Show when={books.length}>
+          <div class="space-y-1">
+            <p class="text-xs font-medium">Not in the library</p>
+            <For each={books}>{(path) => row(path)}</For>
+          </div>
+        </Show>
+        <Show when={formats.length}>
+          <div class="space-y-1">
+            <p class="text-xs font-medium">Formats the library’s books don’t have</p>
+            <For each={formats}>{(h) => row(h.path, h.format)}</For>
+          </div>
+        </Show>
+      </div>
+    ),
+    confirm: 'Add to Library',
+  });
+  const paths = [...chosen()];
+  if (ok && paths.length) await addFromDevice(device, paths);
+}
+
+/** Copy device files into the library: new books, or formats their books lack. */
+export function addFromDevice(device: DeviceInfo, paths: string[]): Promise<void> {
   const lib = library();
   if (lib?.kind !== 'magnitide') {
     toast('This calibre library is read-only. Import it into a Magnitide library to add books.', { error: true });
     return Promise.resolve();
   }
-  return exclusive(`Adding books from ${device.name}…`, async () => {
-    const r = await api.importFromDevice(device.id, device.unmatched);
+  return exclusive(`Copying from ${device.name}…`, async () => {
+    const r = await api.importFromDevice(device.id, paths);
     await refresh();
     setLibrary({ ...lib, bookCount: lib.bookCount + r.added.length });
     if (r.formatsAddedTo.length) setEditRevision((n) => n + 1);
-    const parts = [`Added ${plural(r.added.length, 'book', 'books')} from ${device.name}`];
-    if (r.formatsAddedTo.length) parts.push(`new formats for ${plural(r.formatsAddedTo.length, 'book', 'books')}`);
+    const parts = r.added.length
+      ? [`Added ${plural(r.added.length, 'book', 'books')} from ${device.name}`]
+      : r.formatsAddedTo.length
+        ? [`Copied ${plural(r.files, 'format', 'formats')} from ${device.name} into the library`]
+        : [`Nothing new to add from ${device.name}`];
+    if (r.added.length && r.formatsAddedTo.length)
+      parts.push(`new formats for ${plural(r.formatsAddedTo.length, 'book', 'books')}`);
     if (r.duplicates.length) parts.push(`${r.duplicates.length} already in the library`);
-    if (r.failed.length) parts.push(`${r.failed.length} failed`);
+    if (r.failed.length) parts.push(r.failed.length === 1 ? r.failed[0]! : `${r.failed.length} failed`);
     for (const line of [...r.failed, ...r.duplicates, ...r.skipped]) console.info(line);
-    toast(parts.join(' · '), { error: r.failed.length > 0, duration: 4000 });
+    toast(parts.join(' · '), { error: r.failed.length > 0, duration: r.failed.length ? 7000 : 4000 });
   });
 }
 
