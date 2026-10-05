@@ -8,6 +8,8 @@ import { startJob } from '../jobs';
 import { plural, writeOnSave } from '../writeback';
 import { Autocomplete } from './Autocomplete';
 import { primaryButton, secondaryButton, smallButton } from '../buttons';
+import { keys } from '../keys';
+import { backdropDismiss } from '../backdrop';
 
 const input =
   'h-8 w-full rounded-control border border-line bg-field px-2.5 outline-none select-text placeholder:text-faint focus:border-focus focus:ring-3 focus:ring-focus/20';
@@ -160,6 +162,8 @@ export function BulkEditDialog(props: { ids: number[] }) {
     <dialog
       ref={dialog}
       aria-label={`Edit ${n} books`}
+      // Clicking outside closes it unless something's been changed.
+      {...backdropDismiss(() => dialog, { dirty: () => changes().length > 0, close: closeBulkEditor })}
       class="m-auto max-h-[calc(100vh-48px)] w-[min(680px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-dialog border border-line bg-popover p-0 text-fg shadow-lift"
       onCancel={(e) => {
         e.preventDefault();
@@ -189,7 +193,7 @@ export function BulkEditDialog(props: { ids: number[] }) {
           >
             Edit One by One
           </button>
-          <span class="ml-auto text-xs text-faint">⌘S to save · Esc to cancel</span>
+          <span class="ml-auto text-xs text-faint">{keys('mod+S')} to save · Esc to cancel</span>
         </div>
 
         <Show when={values()} fallback={<p class="px-6 py-10 text-center text-sm text-muted">Loading…</p>}>

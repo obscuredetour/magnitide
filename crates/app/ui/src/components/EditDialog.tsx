@@ -10,6 +10,9 @@ import { Cover } from './Cover';
 import { type Applied, MatchDialog } from './MatchDialog';
 import { Icon } from './Icon';
 import { primaryButton, secondaryButton, smallButton } from '../buttons';
+import { keys } from '../keys';
+import { widthFlags } from '../widths';
+import { backdropDismiss } from '../backdrop';
 
 const input =
   'h-8 w-full rounded-control border border-line bg-field px-2.5 outline-none select-text focus:border-focus focus:ring-3 focus:ring-focus/20 disabled:opacity-50';
@@ -142,6 +145,8 @@ export function EditDialog(props: { editing: Editing }) {
     <dialog
       ref={dialog}
       aria-label="Edit book"
+      // Clicking outside closes it unless there are unsaved changes.
+      {...backdropDismiss(() => dialog, { dirty: () => JSON.stringify(build()) !== initial, close: closeEditor })}
       class="m-auto max-h-[calc(100vh-48px)] w-[min(820px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-dialog border border-line bg-popover p-0 text-fg shadow-lift min-[1100px]:w-[min(1180px,calc(100vw-48px))]"
       onCancel={(e) => {
         e.preventDefault();
@@ -171,13 +176,13 @@ export function EditDialog(props: { editing: Editing }) {
           >
             Find Metadata…
           </button>
-          <span class="ml-auto text-xs text-faint">⌘S to save · Esc to cancel</span>
+          <span class="ml-auto text-xs text-faint">{keys('mod+S')} to save · Esc to cancel</span>
         </div>
 
         {/* Cover | fields, the description under the fields; in a wide window
             (the dialog widens from 1100px) the description gets a third column. */}
-        <div class="@container/edit min-h-0 flex-1 overflow-y-auto px-6 py-5">
-          <div class="grid grid-cols-[10rem_minmax(0,1fr)] gap-x-6 gap-y-3.5 @[960px]/edit:grid-cols-[10rem_minmax(0,1fr)_minmax(0,0.85fr)]">
+        <div ref={(el) => widthFlags(el, { wide: 960 })} class="group/edit min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          <div class="grid grid-cols-[10rem_minmax(0,1fr)] gap-x-6 gap-y-3.5 group-data-wide/edit:grid-cols-[10rem_minmax(0,1fr)_minmax(0,0.85fr)]">
             {/* Cover */}
             <div class="col-start-1 row-start-1">
               <div class="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-element shadow-card">
@@ -424,9 +429,9 @@ export function EditDialog(props: { editing: Editing }) {
 
             {/* Description: under the fields, or its own column as tall as the fields
               (contain-size: it doesn't stretch the row; long text scrolls inside). */}
-            <div class="col-start-2 flex min-w-0 flex-col @[960px]/edit:col-start-3 @[960px]/edit:row-start-1 @[960px]/edit:contain-size">
+            <div class="col-start-2 flex min-w-0 flex-col group-data-wide/edit:col-start-3 group-data-wide/edit:row-start-1 group-data-wide/edit:contain-size">
               <span class="mb-1 block text-xs font-medium text-muted">Description</span>
-              {/* Rich text: ⌘B / ⌘I work. Sanitized when saved. */}
+              {/* Rich text: ⌘B / ⌘I (Ctrl elsewhere) work. Sanitized when saved. */}
               <div
                 ref={description}
                 contentEditable

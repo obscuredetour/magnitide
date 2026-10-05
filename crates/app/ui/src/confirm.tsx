@@ -1,7 +1,7 @@
 // A modal "Are you sure?" for destructive actions. `confirm(...)` resolves
 // to true when the user confirms; <ConfirmHost/> (mounted once in App) shows it.
 
-import { createSignal, type JSX, onMount, Show } from 'solid-js';
+import { createSignal, type JSX, onCleanup, onMount, Show } from 'solid-js';
 
 import { dangerButton, primaryButton, secondaryButton } from './buttons';
 
@@ -13,6 +13,11 @@ type Request = {
   confirm: string;
   /** Red confirm button. */
   danger?: boolean;
+  /** The cancel button's label (default "Cancel"). */
+  cancel?: string;
+  /** Seconds until it cancels by itself, counted down on the cancel button
+      (for changes that could leave the app hard to use, like display settings). */
+  timeout?: number;
   resolve(ok: boolean): void;
 };
 
@@ -34,6 +39,15 @@ function ConfirmDialog(props: { request: Request }) {
     props.request.resolve(ok);
     setRequest(null);
   };
+  const [left, setLeft] = createSignal(props.request.timeout);
+  if (props.request.timeout) {
+    const tick = setInterval(() => {
+      const n = (left() ?? 0) - 1;
+      setLeft(n);
+      if (n <= 0) done(false);
+    }, 1000);
+    onCleanup(() => clearInterval(tick));
+  }
   onMount(() => {
     dialog.showModal();
     // A field in the message (marked autofocus) takes focus; else the confirm button.
@@ -54,8 +68,9 @@ function ConfirmDialog(props: { request: Request }) {
         <div class="text-sm text-muted select-text">{props.request.message()}</div>
       </div>
       <div class="flex justify-end gap-2 border-t border-line px-6 py-3">
-        <button class={secondaryButton} onClick={() => done(false)}>
-          Cancel
+        <button class={`${secondaryButton} tabular-nums`} onClick={() => done(false)}>
+          {props.request.cancel ?? 'Cancel'}
+          <Show when={left()}>{(n) => <> ({n()})</>}</Show>
         </button>
         <button
           ref={confirmButton}

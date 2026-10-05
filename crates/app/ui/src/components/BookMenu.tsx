@@ -22,6 +22,7 @@ import {
 import { activeShelf, addToShelf, newShelfFor, removeFromShelf, shelves } from '../shelves';
 import { writeBookFiles } from '../writeback';
 import { ContextMenu, MenuItem, MenuSeparator, SubMenu } from './Menu';
+import { deleteKeys, keys } from '../keys';
 
 type Request = { x: number; y: number; ids: number[] };
 
@@ -36,9 +37,6 @@ export function openBookMenu(x: number, y: number, ids: number[]): void {
 export function BookMenuHost() {
   return <Show when={request()}>{(r) => <BookMenu request={r()} onClose={() => setRequest(null)} />}</Show>;
 }
-
-/** Delete with ⌘⌫ on macOS, Delete elsewhere. */
-export const deleteShortcut = /Mac/.test(navigator.userAgent) ? '⌘⌫' : 'Del';
 
 function BookMenu(props: { request: Request; onClose(): void }) {
   const ids = props.request.ids;
@@ -62,7 +60,7 @@ function BookMenu(props: { request: Request; onClose(): void }) {
       <Show when={one()}>
         {(b) => (
           <>
-            <MenuItem shortcut="⌘O" disabled={!b().formats.length} onSelect={() => void openBook(b().id)}>
+            <MenuItem shortcut={keys('mod+O')} disabled={!b().formats.length} onSelect={() => void openBook(b().id)}>
               Open
             </MenuItem>
             <MenuItem onSelect={() => setDetailsOpen(true)}>Show Details</MenuItem>
@@ -70,7 +68,7 @@ function BookMenu(props: { request: Request; onClose(): void }) {
         )}
       </Show>
       <Show when={editable()}>
-        <MenuItem shortcut="⌘E" onSelect={() => (one() ? void openEditor(ids[0]!) : editBooks(ids))}>
+        <MenuItem shortcut={keys('mod+E')} onSelect={() => (one() ? void openEditor(ids[0]!) : editBooks(ids))}>
           {one() ? 'Edit…' : `Edit ${ids.length} Books…`}
         </MenuItem>
         <MenuItem onSelect={() => findMetadataFor(ids)}>
@@ -146,7 +144,7 @@ function BookMenu(props: { request: Request; onClose(): void }) {
         <MenuItem onSelect={() => void mergeBooks(books()[0]!, books()[1]!)}>Merge…</MenuItem>
       </Show>
       <Show when={editable()}>
-        <MenuItem danger shortcut={deleteShortcut} onSelect={() => void deleteBooks(ids)}>
+        <MenuItem danger shortcut={keys(deleteKeys)} onSelect={() => void deleteBooks(ids)}>
           Move to {trashName}…
         </MenuItem>
       </Show>
