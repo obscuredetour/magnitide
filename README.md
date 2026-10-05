@@ -23,6 +23,18 @@ cargo install tauri-cli --version "^2" --locked
 pnpm --dir crates/app/ui install
 ```
 
+### Supported systems
+
+macOS 13 or later, Windows 10 or later (with the WebView2 runtime, built in to
+Windows 11), and Linux with WebKitGTK 4.1 (Ubuntu 22.04 or later). The floor is
+the web engine: the UI needs what Safari 16.4 introduced (Tailwind CSS v4), so
+`minimumSystemVersion` in `tauri.conf.json` and `build.target` in
+`vite.config.ts` are set to match.
+
+Every push to `main` and every pull request runs the checks in
+`.github/workflows/checks.yml` (Rust format, clippy and tests; the UI's types,
+formatting and build) on Linux.
+
 ## Running
 
 ```bash
