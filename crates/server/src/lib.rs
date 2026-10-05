@@ -15,10 +15,12 @@ mod routes;
 mod util;
 
 use std::io::Read;
+use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use base64::Engine;
 use magnitide_catalog::Catalog;
@@ -120,7 +122,8 @@ pub fn authorized(password: Option<&str>, authorization: Option<&str>) -> bool {
 
 /// A running server; stops when dropped.
 pub struct Server {
-    http: Arc<tiny_http::Server>,
+    /// None once stopped.
+    http: Option<Arc<tiny_http::Server>>,
     port: u16,
     stopping: Arc<AtomicBool>,
     workers: Vec<JoinHandle<()>>,
@@ -153,7 +156,7 @@ impl Server {
                 })
             })
             .collect();
-        Ok(Self { http, port, stopping, workers })
+        Ok(Self { http: Some(http), port, stopping, workers })
     }
 
     pub fn port(&self) -> u16 {
@@ -165,12 +168,21 @@ impl Server {
     }
 
     fn shutdown(&mut self) {
+        let Some(http) = self.http.take() else { return };
         self.stopping.store(true, Ordering::Relaxed);
         for _ in 0..self.workers.len() {
-            self.http.unblock();
+            http.unblock();
         }
         for w in self.workers.drain(..) {
             let _ = w.join();
+        }
+        // tiny_http closes its socket on its own thread after the server is
+        // dropped; wait for that, so restarting on the same port (a changed
+        // password, say) doesn't find it still taken.
+        drop(http);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while TcpListener::bind(("0.0.0.0", self.port)).is_err() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
         }
     }
 }
