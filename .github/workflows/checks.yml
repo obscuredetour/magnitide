@@ -46,7 +46,7 @@ jobs:
         working-directory: crates/app/ui
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           package_json_file: crates/app/ui/package.json
       - uses: actions/setup-node@v5
