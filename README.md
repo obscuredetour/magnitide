@@ -12,6 +12,7 @@ How the pieces fit, and the decisions behind them: [docs/architecture.md](docs/a
 | [`core`](crates/core)                     | `magnitide-core`: the native Magnitide library (schema, migrations, edits), calibre import, adding book files with EPUB metadata. No Tauri code, so the planned server can share it |
 | [`catalog`](crates/catalog)               | `magnitide-catalog`: the in-memory book model, search and sort that every kind of library loads into                                                                                |
 | [`sources`](crates/sources)               | `magnitide-sources`: metadata lookup from Open Library and Google Books, on request only                                                                                            |
+| [`server`](crates/server)                 | `magnitide-server`: serves a library read-only on the local network, as a plain web page for e-reader browsers and an OPDS catalogue for reading apps                               |
 | [`calibre-compat`](crates/calibre-compat) | Read-only access to calibre libraries (`metadata.db` + book folders), plus a CLI to inspect them                                                                                    |
 
 ## Setup
@@ -132,4 +133,5 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [ ] Plugin host for DeDRM (embedded Python)
 - [ ] Built-in reader
 - [ ] Export to a calibre library
-- [ ] Server mode: web UI and OPDS, then accounts, KOReader sync, Kobo sync
+- [x] Library server (Settings → Library Server, off by default): the open library on your Wi-Fi, read-only, with an optional password. Kobo's browser (and any other) gets a plain, script-free page to browse, search and download from, with KEPUBs made on the fly from EPUBs; KOReader and other reading apps add `http://<address>/opds` as an OPDS catalogue. Shows the address and a QR code
+- [ ] Server mode: a headless server (Docker, NAS) with accounts, KOReader sync, Kobo sync
