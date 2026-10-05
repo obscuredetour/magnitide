@@ -35,6 +35,7 @@ import { Cover } from './Cover';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from './Menu';
 import type { ViewHandle } from './CoverGrid';
 import { Icon } from './Icon';
+import { keys } from '../keys';
 
 const ROW_H = 40;
 /** Always shown: every row needs a title. */
@@ -477,7 +478,7 @@ function HeaderCell(props: {
           'text-fg': active(),
           'hover:text-fg': key() !== undefined,
         }}
-        title={`${key() ? 'Click to sort; drag' : 'Drag'} to move (or ⌥← ⌥→)`}
+        title={`${key() ? 'Click to sort; drag' : 'Drag'} to move (or ${keys('alt+ArrowLeft')} ${keys('alt+ArrowRight')})`}
         onPointerDown={(e) => props.onDragStart(e)}
         onKeyDown={(e) => props.onKeyDown(e)}
         onClick={() => {

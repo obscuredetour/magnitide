@@ -10,6 +10,7 @@ import { editBooks } from '../editor';
 import { findMetadataFor } from '../lookup';
 import { ConvertMenu } from './ConvertMenu';
 import { Icon } from './Icon';
+import { keys } from '../keys';
 
 const action =
   'cursor-pointer rounded-control px-2.5 py-1 text-xs font-medium whitespace-nowrap hover:bg-on-inverse/15 disabled:cursor-default disabled:opacity-50';
@@ -30,7 +31,11 @@ export function SelectionBar() {
     >
       <span class="mr-1.5 text-xs whitespace-nowrap tabular-nums">{selectedIds().size.toLocaleString()} selected</span>
       <Show when={library()?.kind === 'magnitide'}>
-        <button class={action} title="Edit these books together (⌘E)" onClick={() => editBooks(selectedInOrder())}>
+        <button
+          class={action}
+          title={`Edit these books together (${keys('mod+E')})`}
+          onClick={() => editBooks(selectedInOrder())}
+        >
           Edit…
         </button>
         <button

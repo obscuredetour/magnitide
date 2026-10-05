@@ -129,7 +129,8 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Shelves: a sidebar of your own shelves (drag covers or rows onto one, or "Add to Shelf" in the right-click menu); click one to show its books (`shelf:"Name"` in search). Clickable series in the details panel
 - [x] Shelves on a Kobo: written as collections for Kobo's own app and KOReader when sending (or "Sync Shelves" in the device menu). Only Magnitide's shelves and books are touched; Kobo's database is backed up first
 - [ ] MTP devices (newer Kindles)
-- [ ] Accessibility scaling: ⌘+ / ⌘− / ⌘0 zoom the whole UI (remembered), respecting the OS text size where available
+- [x] Interface size: Settings → Appearance (80–200% in steps; a new size asks to be kept and reverts by itself after 15 s, like a display resolution), or ⌘+ / ⌘− / ⌘0 (View menu on macOS). The whole window zooms, remembered per device; the macOS title bar stays native size, and the window's minimum size grows with it so the toolbar always fits
+- [x] Keyboard shortcuts shown the platform's way (⌘E on macOS, Ctrl+E elsewhere), all listed in Settings → Keyboard Shortcuts
 - [ ] Built-in reader
 - [ ] Export to a calibre library
 - [x] Library server (Settings → Library Server, off by default): the open library on your Wi-Fi, read-only, with an optional password. Kobo's browser (and any other) gets a plain, script-free page to browse, search and download from, with KEPUBs made on the fly from EPUBs; KOReader and other reading apps add `http://<address>/opds` as an OPDS catalogue. Shows the address and a QR code

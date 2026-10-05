@@ -95,8 +95,11 @@
     --chrome-h: calc(var(--titlebar-h) + var(--topbar-h));
     --statusbar-h: 26px;
   }
+  /* The title bar holds the traffic lights, which the window draws at a
+     fixed size, so it stays the native height at any interface size (--zoom,
+     set by zoom.ts) instead of zooming with the page. */
   :root.is-mac {
-    --titlebar-h: 28px;
+    --titlebar-h: calc(28px / var(--zoom, 1));
   }
   /* While dragging books onto a shelf. */
   html[data-dragging-books] * {

@@ -374,6 +374,11 @@ export function onOpenSettings(handler: () => void): Promise<UnlistenFn> {
   return listen('open-settings', handler);
 }
 
+/** View › Zoom In / Zoom Out / Actual Size in the macOS menu bar. Matches `ZOOM_EVENT` in menu.rs. */
+export function onZoomMenu(handler: (action: 'in' | 'out' | 'reset') => void): Promise<UnlistenFn> {
+  return listen<'in' | 'out' | 'reset'>('zoom', (e) => handler(e.payload));
+}
+
 /** An e-reader was connected or disconnected (or rescanned). Matches `DEVICES_CHANGED_EVENT` in devices.rs. */
 export function onDevicesChanged(handler: () => void): Promise<UnlistenFn> {
   return listen('devices-changed', handler);

@@ -14,6 +14,8 @@ import { ConvertMenu } from './ConvertMenu';
 import { Cover } from './Cover';
 import { Icon } from './Icon';
 import { primaryButton, secondaryButton } from '../buttons';
+import { widthFlags } from '../widths';
+import { keys } from '../keys';
 
 type Props = {
   id: number;
@@ -66,8 +68,8 @@ const chipButton = `${chip} cursor-pointer hover:bg-highlight hover:text-accent`
 /** Buttons floating over the content (Edit, Close): see-through and blurred, so they stay readable over anything; solid on hover. */
 const glass = 'cursor-pointer bg-element-hover/70 shadow-card ring-1 ring-line backdrop-blur-sm hover:bg-element';
 const sectionLabel = 'text-[11px] font-semibold tracking-[.06em] text-muted uppercase';
-/** A section below the title block: full width in the two-column layout, label then content. */
-const section = 'space-y-2 @lg/details:col-span-2';
+/** A section below the title block: full width in the two-column layout (from 416px, see widths.ts), label then content. */
+const section = 'space-y-2 group-data-wide/details:col-span-2';
 
 export function DetailsPanel(props: Props) {
   let scroller!: HTMLDivElement;
@@ -84,7 +86,8 @@ export function DetailsPanel(props: Props) {
 
   return (
     <aside
-      class="@container/details relative flex-none animate-slide-in border-l border-line bg-panel select-text max-[760px]:absolute max-[760px]:inset-y-0 max-[760px]:right-0 max-[760px]:w-[min(380px,100%)]! max-[760px]:max-w-full! max-[760px]:shadow-lift"
+      ref={(el) => widthFlags(el, { wide: 416 })}
+      class="group/details relative flex-none animate-slide-in border-l border-line bg-panel select-text max-[760px]:absolute max-[760px]:inset-y-0 max-[760px]:right-0 max-[760px]:w-[min(28rem,100%_-_2rem)]! max-[760px]:max-w-full! max-[760px]:shadow-lift"
       // The list keeps at least 320px beside it.
       style={{ width: `${detailsWidth()}px`, 'max-width': 'calc(100% - 320px)' }}
       aria-label="Book details"
@@ -95,7 +98,7 @@ export function DetailsPanel(props: Props) {
           <Show when={library()?.kind === 'magnitide'}>
             <button
               class={`h-7 rounded-chip px-3 text-xs font-medium ${glass}`}
-              title="Edit (⌘E)"
+              title={`Edit (${keys('mod+E')})`}
               onClick={() => void openEditor(props.id)}
             >
               Edit
@@ -207,8 +210,8 @@ function Details(props: { book: BookDetails }) {
     <div class="flex min-h-full flex-col">
       {/* Sections are spaced by the container (gap), not their own margins, so
         the one- and two-column layouts space them alike and hidden ones leave no gap. */}
-      <div class="flex flex-col gap-6 px-7 pt-7 @lg/details:grid @lg/details:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] @lg/details:grid-rows-[repeat(5,auto)] @lg/details:gap-x-7">
-        <div class="relative aspect-2/3 w-[62%] overflow-hidden rounded-lg bg-element shadow-lift @lg/details:w-full @lg/details:min-w-32">
+      <div class="flex flex-col gap-6 px-7 pt-7 group-data-wide/details:grid group-data-wide/details:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] group-data-wide/details:grid-rows-[repeat(5,auto)] group-data-wide/details:gap-x-7">
+        <div class="relative aspect-2/3 w-[62%] overflow-hidden rounded-lg bg-element shadow-lift group-data-wide/details:w-full group-data-wide/details:min-w-32">
           <Cover id={b().id} title={b().title} authors={b().authors.join(' & ')} hasCover={b().hasCover} size="full" />
         </div>
 

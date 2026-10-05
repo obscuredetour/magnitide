@@ -16,6 +16,7 @@ import {
 } from '../api';
 import { Icon } from './Icon';
 import { primaryButton, secondaryButton } from '../buttons';
+import { keys } from '../keys';
 
 /** The edit form's values, to compare against. */
 export type Current = {
@@ -539,7 +540,7 @@ export function MatchDialog(props: {
               when={props.step}
               fallback={
                 <>
-                  <span class="text-xs text-faint">⌘↩ to apply · Esc to cancel</span>
+                  <span class="text-xs text-faint">{keys('mod+Enter')} to apply · Esc to cancel</span>
                   <button type="button" class={secondaryButton} onClick={() => props.onClose()}>
                     Cancel
                   </button>
@@ -564,7 +565,7 @@ export function MatchDialog(props: {
                       {last() ? 'Skip' : 'Skip ›'}
                     </button>
                   </div>
-                  <span class="text-xs text-faint">⌘↩ to use · Esc to stop</span>
+                  <span class="text-xs text-faint">{keys('mod+Enter')} to use · Esc to stop</span>
                   <button type="button" class={secondaryButton} disabled={saving()} onClick={() => props.onClose()}>
                     Done
                   </button>
