@@ -3,6 +3,7 @@
 import { batch } from 'solid-js';
 
 import { type AddReport, api, errorMessage, onAddProgress } from './api';
+import { type JobHandle, startJob } from './jobs';
 import { library, refresh, setDetailsOpen, setEditRevision, setLibrary, setSelectedId } from './library';
 import { toast } from './toast';
 
@@ -23,9 +24,9 @@ export async function addPaths(paths: string[]): Promise<void> {
     return;
   }
   busy = true;
-  toast('Adding books…', { duration: Infinity });
+  const job = startJob('Add books', 'Adding books…');
   const unlisten = await onAddProgress((p) => {
-    if (p.total > 1 && p.done < p.total) toast(`Adding ${p.done + 1} of ${p.total}…`, { duration: Infinity });
+    if (p.total > 1 && p.done < p.total) job.progress(`Adding ${p.done + 1} of ${p.total}…`);
   });
   try {
     const report = await api.addBooks(paths);
@@ -42,9 +43,9 @@ export async function addPaths(paths: string[]): Promise<void> {
         if (touched === 1) setDetailsOpen(true);
       }
     });
-    summarize(report);
+    summarize(report, job);
   } catch (err) {
-    toast(errorMessage(err), { error: true });
+    job.finish(errorMessage(err), { error: true });
   } finally {
     unlisten();
     busy = false;
@@ -56,7 +57,7 @@ export async function chooseAndAddBooks(): Promise<void> {
   if (files.length) await addPaths(files);
 }
 
-function summarize(r: AddReport): void {
+function summarize(r: AddReport, job: JobHandle): void {
   const n = r.added.length;
   const joined = r.formatsAddedTo.length;
   const parts = n || !joined ? [n === 1 ? 'Added 1 book' : `Added ${n} books`] : [];
@@ -65,6 +66,9 @@ function summarize(r: AddReport): void {
   if (r.skipped.length) parts.push(`${r.skipped.length} skipped`);
   if (r.failed.length) parts.push(`${r.failed.length} failed`);
   const problems = r.failed.length > 0 || (n + joined === 0 && r.duplicates.length + r.skipped.length > 0);
-  for (const line of [...r.failed, ...r.duplicates, ...r.skipped, ...r.warnings]) console.info(line);
-  toast(parts.join(' · '), { error: problems, duration: problems ? 6000 : 3000 });
+  job.finish(parts.join(' · '), {
+    error: problems,
+    details: [...r.failed, ...r.duplicates, ...r.skipped, ...r.warnings],
+    duration: problems ? 6000 : 3000,
+  });
 }

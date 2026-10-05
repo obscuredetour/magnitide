@@ -23,7 +23,7 @@ export function SelectionBar() {
 
   return (
     <div
-      class="fixed bottom-6 left-1/2 z-15 flex max-w-[calc(100%-32px)] -translate-x-1/2 animate-toast-in items-center gap-1 overflow-x-auto rounded-menu bg-inverse/95 py-1.5 pr-1.5 pl-3.5 text-on-inverse shadow-lift"
+      class="fixed bottom-10 left-1/2 z-15 flex max-w-[calc(100%-32px)] -translate-x-1/2 animate-toast-in items-center gap-1 overflow-x-auto rounded-menu bg-inverse/95 py-1.5 pr-1.5 pl-3.5 text-on-inverse shadow-lift"
       role="toolbar"
       aria-label="Selected books"
     >
