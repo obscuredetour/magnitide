@@ -20,6 +20,7 @@ pub mod merge;
 pub mod metadata;
 pub mod names;
 pub mod paths;
+pub mod shelves;
 pub mod tidy;
 pub mod writeback;
 

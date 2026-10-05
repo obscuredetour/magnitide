@@ -4,7 +4,8 @@ import Tablet from 'lucide-solid/icons/tablet';
 import { api, type DeviceInfo, errorMessage, fileManagerName } from '../api';
 import { deviceFilter, devices, ejectDevice, rescanDevice, setDeviceFilter } from '../devices';
 import { library } from '../library';
-import { importFromDevice } from '../transfer';
+import { shelves } from '../shelves';
+import { importFromDevice, syncDeviceShelves } from '../transfer';
 import { toast } from '../toast';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from './Menu';
 import { Icon } from './Icon';
@@ -96,6 +97,14 @@ function DeviceSection(props: { device: DeviceInfo }) {
       <Show when={d().unmatched.length && library()?.kind === 'magnitide'}>
         <MenuItem title={d().unmatched.slice(0, 20).join('\n')} onSelect={() => void importFromDevice(d())}>
           Add {d().unmatched.length.toLocaleString()} Other {d().unmatched.length === 1 ? 'File' : 'Files'} to Library
+        </MenuItem>
+      </Show>
+      <Show when={d().kind === 'kobo' && library()?.kind === 'magnitide' && shelves().length}>
+        <MenuItem
+          title="Write your shelves as collections in Kobo's own app and KOReader (only books from this library; other collections stay)"
+          onSelect={() => void syncDeviceShelves(d())}
+        >
+          Sync Shelves
         </MenuItem>
       </Show>
       <MenuItem onSelect={() => void rescanDevice(d())}>Rescan</MenuItem>

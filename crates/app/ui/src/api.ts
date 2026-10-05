@@ -16,7 +16,10 @@ import type { DeviceHit } from './bindings/DeviceHit';
 import type { DeviceInfo } from './bindings/DeviceInfo';
 import type { DeviceKind } from './bindings/DeviceKind';
 import type { MatchedBy } from './bindings/MatchedBy';
+import type { CollectionsReport } from './bindings/CollectionsReport';
 import type { DeleteReport } from './bindings/DeleteReport';
+import type { SeriesLine } from './bindings/SeriesLine';
+import type { Shelf } from './bindings/Shelf';
 import type { ThemeAddon } from './bindings/ThemeAddon';
 import type { ThemeAddons } from './bindings/ThemeAddons';
 import type { MergeOutcome } from './bindings/MergeOutcome';
@@ -68,7 +71,10 @@ export type {
   DeviceKind,
   Lookup,
   MatchedBy,
+  CollectionsReport,
   DeleteReport,
+  SeriesLine,
+  Shelf,
   ThemeAddon,
   ThemeAddons,
   MergeOutcome,
@@ -169,6 +175,19 @@ export const api = {
   setCoverFromFile: (id: number, path: string) => invoke<void>('set_cover_from_file', { id, path }),
 
   removeCover: (id: number) => invoke<void>('remove_cover', { id }),
+
+  /** The open library's shelves (none for calibre libraries). */
+  listShelves: () => invoke<Shelf[]>('list_shelves'),
+  createShelf: (name: string) => invoke<Shelf>('create_shelf', { name }),
+  renameShelf: (id: number, name: string) => invoke<void>('rename_shelf', { id, name }),
+  deleteShelf: (id: number) => invoke<void>('delete_shelf', { id }),
+  /** Put books on a shelf; how many weren't on it already. */
+  addToShelf: (id: number, bookIds: number[]) => invoke<number>('add_to_shelf', { id, bookIds }),
+  /** Take books off a shelf; how many were on it. */
+  removeFromShelf: (id: number, bookIds: number[]) => invoke<number>('remove_from_shelf', { id, bookIds }),
+
+  /** Write the library's shelves to a connected Kobo (its own app and KOReader). */
+  syncDeviceShelves: (id: string) => invoke<CollectionsReport>('sync_device_shelves', { id }),
 
   /** Delete books; their folders go to the Trash. */
   deleteBooks: (ids: number[]) => invoke<DeleteReport>('delete_books', { ids }),

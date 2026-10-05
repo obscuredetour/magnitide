@@ -96,6 +96,10 @@
   :root.is-mac {
     --titlebar-h: 28px;
   }
+  /* While dragging books onto a shelf. */
+  html[data-dragging-books] * {
+    cursor: grabbing !important;
+  }
   ::selection {
     background: var(--text-selection);
   }

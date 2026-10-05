@@ -180,11 +180,60 @@ pub async fn send_to_device(
             },
         );
         rescanned(&app2, &scan.device.root);
+        // New books go straight onto their shelves on a Kobo.
+        let mut report = report;
+        if report.sent > 0 {
+            match sync_shelves(&app2, &scan.device.root) {
+                Ok(c) => report.collections = c,
+                Err(e) => report.warnings.push(format!("Shelves weren't written to the device: {e}")),
+            }
+        }
         report
     })
     .await
     .map_err(|e| e.to_string())?;
     Ok(report)
+}
+
+/// Write the open library's shelves to a Kobo as collections (Kobo's own app
+/// and KOReader), from its latest scan. None when there's nothing to do: not
+/// a Kobo, a calibre library, or no shelves.
+fn sync_shelves(app: &AppHandle, root: &Path) -> Result<Option<devices::collections::CollectionsReport>, String> {
+    let state = app.state::<AppState>();
+    let Some(scan) = state.devices().into_iter().find(|s| s.device.root == root) else { return Ok(None) };
+    if scan.device.kind != DeviceKind::Kobo {
+        return Ok(None);
+    }
+    let lib = state.current().ok_or("No library is open")?;
+    let Some(native) = lib.native.clone() else { return Ok(None) };
+    let shelf_books = native.lock().unwrap_or_else(|e| e.into_inner()).shelf_books().map_err(|e| e.to_string())?;
+    if shelf_books.is_empty() {
+        return Ok(None);
+    }
+    let matches = devices::match_books(&scan, &lib.catalog, &lib.root);
+    let plan = devices::collections::Plan::new(&shelf_books, &scan, &matches);
+    let backups = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| e.to_string())?
+        .join("device-backups")
+        .join(magnitide_core::paths::sanitize(&scan.device.name, 64));
+    Ok(Some(devices::collections::sync_kobo(root, &plan, &backups)))
+}
+
+/// Write the library's shelves to a connected Kobo now.
+#[tauri::command]
+pub async fn sync_device_shelves(app: AppHandle, id: String) -> CmdResult<devices::collections::CollectionsReport> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let scan = state.device(&id)?;
+        if scan.device.kind != DeviceKind::Kobo {
+            return Err("Shelves can only be written to a Kobo so far.".to_owned());
+        }
+        sync_shelves(&app, &scan.device.root)?.ok_or_else(|| "There are no shelves to write.".to_owned())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Delete books' files from a device (and KOReader's notes for them).

@@ -533,8 +533,10 @@ pub struct BookDetails {
     id: i64,
     title: String,
     authors: Vec<String>,
-    /// "Book 3 of …", or "Books 1–3 of …" for an omnibus; then any further series.
-    series: Vec<String>,
+    /// The main series, then any further ones.
+    series: Vec<SeriesLine>,
+    /// Shelves it's on.
+    shelves: Vec<String>,
     stars: Option<f32>,
     /// Books this omnibus contains.
     collects: Vec<BookLink>,
@@ -551,6 +553,17 @@ pub struct BookDetails {
     comments_html: Option<String>,
     has_cover: bool,
     folder: String,
+}
+
+/// "Book 3 of Mistborn", or "Books 1–3 of …" for an omnibus.
+#[derive(Serialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct SeriesLine {
+    name: String,
+    /// "3", or "1–3" for an omnibus.
+    number: String,
+    omnibus: bool,
 }
 
 #[derive(Serialize, TS)]
@@ -577,9 +590,10 @@ pub async fn book_details(state: State<'_, AppState>, id: i64) -> CmdResult<Book
         title: b.title.clone(),
         authors: b.authors.clone(),
         series: {
-            let line = |name: &str, index: f64, end: Option<f64>| {
-                let n = magnitide_catalog::format_number(index, end);
-                format!("{} {n} of {name}", if end.is_some() { "Books" } else { "Book" })
+            let line = |name: &str, index: f64, end: Option<f64>| SeriesLine {
+                name: name.to_owned(),
+                number: magnitide_catalog::format_number(index, end),
+                omnibus: end.is_some(),
             };
             b.series
                 .iter()
@@ -587,6 +601,7 @@ pub async fn book_details(state: State<'_, AppState>, id: i64) -> CmdResult<Book
                 .chain(b.more_series.iter().map(|s| line(&s.name, s.index, s.end)))
                 .collect()
         },
+        shelves: b.shelves.clone(),
         collects: links(&lib.catalog, &b.collects),
         collected_in: links(&lib.catalog, &b.collected_in),
         stars: b.stars(),
@@ -828,4 +843,43 @@ fn same_path(a: &Path, b: &Path) -> bool {
         (Ok(a), Ok(b)) => a == b,
         _ => a == b,
     }
+}
+
+// ---------- Shelves ----------
+
+/// The open library's shelves (none for calibre libraries).
+#[tauri::command]
+pub async fn list_shelves(state: State<'_, AppState>) -> CmdResult<Vec<magnitide_core::shelves::Shelf>> {
+    let Some(native) = state.current().and_then(|l| l.native.clone()) else { return Ok(Vec::new()) };
+    tauri::async_runtime::spawn_blocking(move || native.lock().unwrap_or_else(|e| e.into_inner()).shelves())
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn create_shelf(state: State<'_, AppState>, name: String) -> CmdResult<magnitide_core::shelves::Shelf> {
+    write_library(&state, move |lib| lib.create_shelf(&name)).await
+}
+
+#[tauri::command]
+pub async fn rename_shelf(state: State<'_, AppState>, id: i64, name: String) -> CmdResult<()> {
+    write_library(&state, move |lib| lib.rename_shelf(id, &name)).await
+}
+
+#[tauri::command]
+pub async fn delete_shelf(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
+    write_library(&state, move |lib| lib.delete_shelf(id)).await
+}
+
+/// Put books on a shelf; how many weren't on it already.
+#[tauri::command]
+pub async fn add_to_shelf(state: State<'_, AppState>, id: i64, book_ids: Vec<i64>) -> CmdResult<usize> {
+    write_library(&state, move |lib| lib.add_to_shelf(id, &book_ids)).await
+}
+
+/// Take books off a shelf; how many were on it.
+#[tauri::command]
+pub async fn remove_from_shelf(state: State<'_, AppState>, id: i64, book_ids: Vec<i64>) -> CmdResult<usize> {
+    write_library(&state, move |lib| lib.remove_from_shelf(id, &book_ids)).await
 }

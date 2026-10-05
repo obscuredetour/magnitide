@@ -18,6 +18,7 @@ import {
   sendOptions,
   sendToDevice,
 } from '../transfer';
+import { activeShelf, addToShelf, newShelfFor, removeFromShelf, shelves } from '../shelves';
 import { writeBookFiles } from '../writeback';
 import { ContextMenu, MenuItem, MenuSeparator, SubMenu } from './Menu';
 
@@ -100,6 +101,16 @@ function BookMenu(props: { request: Request; onClose(): void }) {
         }}
       </For>
       <Show when={editable()}>
+        <SubMenu label="Add to Shelf">
+          <For each={shelves()}>{(s) => <MenuItem onSelect={() => void addToShelf(s, ids)}>{s.name}</MenuItem>}</For>
+          <Show when={shelves().length}>
+            <MenuSeparator />
+          </Show>
+          <MenuItem onSelect={() => void newShelfFor(ids)}>New Shelf…</MenuItem>
+        </SubMenu>
+        <Show when={activeShelf()}>
+          {(s) => <MenuItem onSelect={() => void removeFromShelf(s(), ids)}>Remove from “{s().name}”</MenuItem>}
+        </Show>
         <SubMenu label="Convert to" disabled={!targets()?.length}>
           <For each={targets()}>{(f) => <MenuItem onSelect={() => void convertBooks(ids, f)}>{f}</MenuItem>}</For>
         </SubMenu>

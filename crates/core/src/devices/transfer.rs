@@ -59,6 +59,8 @@ pub struct SendReport {
     pub failed: Vec<String>,
     /// Sent, but with something worth knowing (metadata couldn't be written).
     pub warnings: Vec<String>,
+    /// Shelves written to the device afterwards (Kobo), if any.
+    pub collections: Option<super::collections::CollectionsReport>,
 }
 
 /// What to put on the device for one book.

@@ -3,13 +3,14 @@ import ArrowDownWideNarrow from 'lucide-solid/icons/arrow-down-wide-narrow';
 import ArrowUpNarrowWide from 'lucide-solid/icons/arrow-up-narrow-wide';
 import LayoutGrid from 'lucide-solid/icons/layout-grid';
 import List from 'lucide-solid/icons/list';
+import PanelLeft from 'lucide-solid/icons/panel-left';
 import Search from 'lucide-solid/icons/search';
 import Settings from 'lucide-solid/icons/settings';
 import X from 'lucide-solid/icons/x';
 
 import type { SortKey } from '../api';
 import { query, queryError, search, setSort, sort, sortDir } from '../library';
-import { setViewMode, viewMode } from '../view';
+import { setSidebarOpen, setViewMode, sidebarOpen, viewMode } from '../view';
 import { CoverSizeSlider } from './CoverSizeSlider';
 import { DeviceMenu } from './DeviceMenu';
 import { LibraryMenu } from './LibraryMenu';
@@ -70,6 +71,15 @@ export function TopBar(props: Props) {
       data-tauri-drag-region
     >
       <div class="flex min-w-0 items-center gap-1 justify-self-start" data-tauri-drag-region>
+        <button
+          class="grid size-7 flex-none place-items-center rounded-control text-muted hover:bg-hover hover:text-fg aria-pressed:text-fg"
+          aria-pressed={sidebarOpen()}
+          title={sidebarOpen() ? 'Hide shelves' : 'Show shelves'}
+          aria-label="Shelves sidebar"
+          onClick={() => setSidebarOpen(!sidebarOpen())}
+        >
+          <Icon of={PanelLeft} size={16} />
+        </button>
         <LibraryMenu />
         <DeviceMenu />
       </div>

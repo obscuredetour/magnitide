@@ -51,6 +51,7 @@ impl Library {
                     authors: Vec::new(),
                     author_sort: None,
                     tags: Vec::new(),
+                    shelves: Vec::new(),
                     languages: Vec::new(),
                     identifiers: BTreeMap::new(),
                     formats: Vec::new(),
@@ -111,6 +112,17 @@ impl Library {
             }
             Ok(())
         })?;
+        each_row(
+            conn,
+            "SELECT bs.book_id, s.name FROM book_shelves bs JOIN shelves s ON s.id = bs.shelf_id ORDER BY s.name",
+            [],
+            |r| {
+                if let Some(i) = with(r.get(0)?) {
+                    books[i].shelves.push(r.get(1)?);
+                }
+                Ok(())
+            },
+        )?;
         each_row(conn, "SELECT book_id, lang FROM book_languages ORDER BY book_id, position", [], |r| {
             if let Some(i) = with(r.get(0)?) {
                 books[i].languages.push(r.get(1)?);

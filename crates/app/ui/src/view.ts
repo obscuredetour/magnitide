@@ -131,3 +131,12 @@ export function setDetailsWidth(n: number, save = true): void {
   setDetailsWidthSignal(w);
   if (save) storage.set('detailsWidth', String(w));
 }
+
+/** The shelves sidebar; shown unless turned off. */
+const [sidebarOpen, setSidebarOpenSignal] = createSignal(storage.get('sidebar') !== 'off');
+export { sidebarOpen };
+
+export function setSidebarOpen(open: boolean): void {
+  setSidebarOpenSignal(open);
+  storage.set('sidebar', open ? 'on' : 'off');
+}

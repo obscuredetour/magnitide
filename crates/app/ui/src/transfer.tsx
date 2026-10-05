@@ -5,6 +5,7 @@ import { createSignal, For, Show } from 'solid-js';
 import {
   api,
   type BookRow,
+  type CollectionsReport,
   coverChanged,
   type DeviceInfo,
   errorMessage,
@@ -171,6 +172,8 @@ export async function sendToDevice(device: DeviceInfo, ids: number[], as?: strin
             (r.needsCalibre ? ' (install calibre to convert them)' : ''),
         );
       if (r.failed.length) parts.push(r.failed.length === 1 ? r.failed[0]! : `${r.failed.length} failed`);
+      if (r.collections?.books) parts.push('shelves updated');
+      for (const w of r.collections?.warnings ?? []) console.warn(w);
       const problem = r.failed.length > 0 || (r.sent === 0 && r.unsupported.length > 0);
       toast(parts.join(' · '), { error: problem, duration: problem ? 7000 : 3500 });
     } finally {
@@ -277,6 +280,27 @@ export async function mergeBooks(a: BookRow, b: BookRow): Promise<void> {
     setSelectedId(kept);
     setEditRevision((n) => n + 1);
     toast(`Merged · ${plural(r.formatsMoved, 'file', 'files')} moved${r.coverTaken ? ', cover taken' : ''}`);
+  } catch (err) {
+    toast(errorMessage(err), { error: true });
+  }
+}
+
+/** What a shelf sync did, as a sentence. */
+export function describeCollections(r: CollectionsReport, device: DeviceInfo): string {
+  const apps = [r.kobo !== null && 'Kobo', r.koreader !== null && 'KOReader'].filter(Boolean).join(' and ');
+  if (!apps) return r.warnings[0] ?? `Nothing on ${device.name} takes shelves`;
+  const what = r.books
+    ? `${plural(r.books, 'book', 'books')} on ${plural(Math.max(r.kobo ?? 0, r.koreader ?? 0), 'shelf', 'shelves')}`
+    : 'no books from your shelves are on it yet';
+  return `Shelves written to ${device.name} for ${apps}: ${what}` + (r.warnings.length ? ` · ${r.warnings[0]}` : '');
+}
+
+/** Write the library's shelves to a Kobo as collections, now. */
+export async function syncDeviceShelves(device: DeviceInfo): Promise<void> {
+  try {
+    const r = await api.syncDeviceShelves(device.id);
+    for (const w of r.warnings) console.warn(w);
+    toast(describeCollections(r, device), { error: r.kobo === null && r.koreader === null, duration: 6000 });
   } catch (err) {
     toast(errorMessage(err), { error: true });
   }
