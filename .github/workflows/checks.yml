@@ -1,6 +1,8 @@
 # Runs on every push to main and every pull request: Rust formatting, lints
 # and tests, and the UI's type check, formatting and release build. Linux
 # only (the cheapest runner); a newer push cancels the run it replaces.
+# The runner is pinned (not ubuntu-latest) so a new Ubuntu, and the
+# WebKitGTK packages Tauri builds against, arrive when we choose.
 name: Checks
 
 on:
@@ -18,7 +20,7 @@ permissions:
 jobs:
   rust:
     name: Rust (format, clippy, tests)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
@@ -39,7 +41,7 @@ jobs:
 
   ui:
     name: UI (types, formatting, build)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:
       run:
