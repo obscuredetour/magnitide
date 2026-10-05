@@ -42,7 +42,7 @@ mod imp {
 
     // Filesystem magic numbers (linux/magic.h). FUSE is deliberately absent:
     // it's used for both local (ntfs-3g) and remote (sshfs) filesystems.
-    const NETWORK: &[i64] = &[
+    const NETWORK: &[u32] = &[
         0x6969,     // NFS
         0x517B,     // SMB
         0xFF534D42, // CIFS
@@ -61,7 +61,10 @@ mod imp {
         }
         // SAFETY: statfs succeeded, so the struct is initialized.
         let st = unsafe { st.assume_init() };
-        NETWORK.contains(&(st.f_type as i64))
+        // f_type is i64 on 64-bit Linux and i32 on 32-bit, where magic numbers
+        // above 0x7FFFFFFF (CIFS, SMB2) come out negative; the low 32 bits
+        // compare correctly on both.
+        NETWORK.contains(&(st.f_type as u32))
     }
 }
 
