@@ -2,7 +2,15 @@ import { getVersion } from '@tauri-apps/api/app';
 import { createResource, createSignal, For, type JSX, Match, onMount, type ParentProps, Show, Switch } from 'solid-js';
 import X from 'lucide-solid/icons/x';
 
-import { api, type DeviceKind, errorMessage, fileManagerName, type SourceId, type SourceStatus } from '../api';
+import {
+  api,
+  type DeviceKind,
+  errorMessage,
+  fileManagerName,
+  type ServerStatus,
+  type SourceId,
+  type SourceStatus,
+} from '../api';
 import {
   chooseLibrary,
   forgetRecentLibrary,
@@ -35,13 +43,14 @@ import { CoverSizeSlider } from './CoverSizeSlider';
 import { Icon } from './Icon';
 import { smallButton } from '../buttons';
 
-type Section = 'appearance' | 'library' | 'list' | 'devices' | 'sources' | 'about';
+type Section = 'appearance' | 'library' | 'list' | 'devices' | 'server' | 'sources' | 'about';
 
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'appearance', label: 'Appearance' },
   { id: 'library', label: 'Library' },
   { id: 'list', label: 'List View' },
   { id: 'devices', label: 'Devices' },
+  { id: 'server', label: 'Library Server' },
   { id: 'sources', label: 'Metadata Sources' },
   { id: 'about', label: 'About' },
 ];
@@ -108,6 +117,9 @@ export function SettingsDialog(props: { onClose(): void }) {
             </Match>
             <Match when={section() === 'devices'}>
               <DeviceSettings />
+            </Match>
+            <Match when={section() === 'server'}>
+              <ServerSettings />
             </Match>
             <Match when={section() === 'sources'}>
               <SourceSettings />
@@ -752,6 +764,174 @@ function DeviceSettings() {
           </Show>
         }
       />
+    </>
+  );
+}
+
+function ServerSettings() {
+  const [status, { mutate }] = createResource(() => api.serverStatus().catch(() => undefined));
+  const [port, setPort] = createSignal('');
+  const [password, setPassword] = createSignal('');
+  const [busy, setBusy] = createSignal(false);
+
+  const update = async (enabled: boolean, newPassword: string | null = null) => {
+    const current = status();
+    if (!current) return;
+    const n = Number(port() || current.port);
+    if (!Number.isInteger(n) || n < 1024 || n > 65535) {
+      toast('Pick a port from 1024 to 65535.', { error: true });
+      return;
+    }
+    setBusy(true);
+    try {
+      const next: ServerStatus = await api.setServer(enabled, n, newPassword);
+      mutate(next);
+      setPort('');
+      if (newPassword !== null) {
+        setPassword('');
+        toast(newPassword ? 'Password saved' : 'Password removed');
+      }
+    } catch (err) {
+      toast(errorMessage(err), { error: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = (text: string) =>
+    navigator.clipboard.writeText(text).then(
+      () => toast('Address copied'),
+      () => toast("Couldn't copy the address", { error: true }),
+    );
+
+  return (
+    <>
+      <Heading>Library Server</Heading>
+      <p class="mb-4 text-xs text-muted">
+        Shares the open library on your Wi-Fi while Magnitide is running. E-reader web browsers (Kobo's, Kindle's, a
+        phone's) get a simple page to download books from, and reading apps such as KOReader can add it as an OPDS
+        catalogue. It's read-only: nothing on it can change your library.
+      </p>
+      <Show when={status()}>
+        {(s) => (
+          <>
+            <Row
+              label="Share the library"
+              description={
+                <Show when={s().error} fallback="Off until you turn it on; remembered after that.">
+                  <span class="text-danger">{s().error}</span>
+                </Show>
+              }
+            >
+              <input
+                type="checkbox"
+                class="size-4 accent-accent"
+                aria-label="Share the library on the network"
+                checked={s().enabled}
+                disabled={busy()}
+                onChange={(e) => void update(e.currentTarget.checked)}
+              />
+            </Row>
+            <Row label="Port" description="Change it if another app already uses this one.">
+              <input
+                type="number"
+                min="1024"
+                max="65535"
+                aria-label="Port"
+                class="h-7 w-24 rounded-control border border-line bg-field px-2 text-xs tabular-nums outline-none focus:border-focus"
+                value={port() || String(s().port)}
+                onInput={(e) => setPort(e.currentTarget.value)}
+                onKeyDown={(e) => e.key === 'Enter' && port() && void update(s().enabled)}
+                onBlur={() => port() && Number(port()) !== s().port && void update(s().enabled)}
+              />
+            </Row>
+            <Row
+              label="Password"
+              description={
+                s().hasPassword
+                  ? 'Browsers and apps ask for it (any user name works).'
+                  : 'Without one, anyone on your network can browse and download your books.'
+              }
+            >
+              <input
+                type="password"
+                autocomplete="new-password"
+                aria-label="Server password"
+                placeholder={s().hasPassword ? 'Saved · type to replace' : 'None'}
+                class="h-7 w-44 rounded-control border border-line bg-field px-2 text-xs outline-none focus:border-focus"
+                value={password()}
+                onInput={(e) => setPassword(e.currentTarget.value)}
+                onKeyDown={(e) => e.key === 'Enter' && password() && void update(s().enabled, password())}
+              />
+              <button
+                class={button}
+                disabled={!password() || busy()}
+                onClick={() => void update(s().enabled, password())}
+              >
+                Save
+              </button>
+              <Show when={s().hasPassword}>
+                <button class={button} disabled={busy()} onClick={() => void update(s().enabled, '')}>
+                  Remove
+                </button>
+              </Show>
+            </Row>
+            <Show when={s().running && s().url}>
+              {(url) => (
+                <div class="mt-4 flex gap-5 rounded-card border border-line bg-bg/50 p-4">
+                  <Show when={s().qrSvg}>
+                    {(svg) => (
+                      <div
+                        class="size-36 flex-none overflow-hidden rounded-inset bg-white p-1.5 [&>svg]:size-full"
+                        role="img"
+                        aria-label={`QR code for ${url()}`}
+                        // Our own SVG, made by the qrcode crate from the address.
+                        innerHTML={svg()}
+                      />
+                    )}
+                  </Show>
+                  <div class="min-w-0 space-y-2.5 text-xs">
+                    <div class="flex items-center gap-2">
+                      <span class="font-mono text-sm font-medium break-all select-all">{url()}</span>
+                      <button class={button} onClick={() => void copy(url())}>
+                        Copy
+                      </button>
+                    </div>
+                    <Show when={s().otherUrls.length > 0}>
+                      <p class="text-muted">
+                        On another network: <span class="font-mono select-all">{s().otherUrls.join(', ')}</span>
+                      </p>
+                    </Show>
+                    <p>
+                      <span class="font-medium">Kobo:</span>{' '}
+                      <span class="text-muted">
+                        More › Beta Features › Web Browser, then go to this address. Books download straight into your
+                        library, as KEPUB.
+                      </span>
+                    </p>
+                    <p>
+                      <span class="font-medium">KOReader and other reading apps:</span>{' '}
+                      <span class="text-muted">
+                        add an OPDS catalogue at <span class="font-mono break-all select-all">{url()}opds</span>.
+                      </span>
+                    </p>
+                    <p class="text-muted">
+                      If macOS asks whether Magnitide may accept incoming connections, allow it, or devices can't
+                      connect.
+                    </p>
+                    <Show when={s().vpn}>
+                      <p class="text-muted">
+                        A VPN is on. If devices can't connect, allow local network (LAN) connections in its settings, or
+                        turn it off while you download.
+                      </p>
+                    </Show>
+                  </div>
+                </div>
+              )}
+            </Show>
+          </>
+        )}
+      </Show>
     </>
   );
 }

@@ -25,6 +25,7 @@ import type { ThemeAddons } from './bindings/ThemeAddons';
 import type { MergeOutcome } from './bindings/MergeOutcome';
 import type { RemoveReport } from './bindings/RemoveReport';
 import type { SendReport } from './bindings/SendReport';
+import type { ServerStatus } from './bindings/ServerStatus';
 import type { TransferProgress } from './bindings/TransferProgress';
 import type { Lookup } from './bindings/Lookup';
 import type { Match as MetadataMatch } from './bindings/Match';
@@ -58,6 +59,7 @@ import type { SortKey } from './bindings/SortKey';
 
 export type {
   AddReport,
+  ServerStatus,
   AuthorSort,
   BookDetails,
   BookEdit,
@@ -267,6 +269,13 @@ export const api = {
 
   /** Merge book `other` into `keep` (formats, missing cover, tags, identifiers), removing `other`. */
   mergeBooks: (keep: number, other: number) => invoke<MergeOutcome>('merge_books', { keep, other }),
+
+  /** The library server (Settings › Library Server). */
+  serverStatus: () => invoke<ServerStatus>('server_status'),
+
+  /** Turn the server on or off, or change its port; `password` replaces it ("" removes it, null leaves it). */
+  setServer: (enabled: boolean, port: number, password: string | null = null) =>
+    invoke<ServerStatus>('set_server', { enabled, port, password }),
 
   /** Open a device in the file manager. */
   revealDevice: (id: string) => invoke<void>('reveal_device', { id }),

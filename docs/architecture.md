@@ -31,7 +31,9 @@ crates/
                    only on request; results ranked by plain string matching.
   app              Desktop app (Tauri 2). Thin commands over core; the cover:// protocol.
     ui/            Solid + TypeScript + Tailwind v4. Talks to the backend only via api.ts.
-  server           (planned) Headless HTTP server over core: web UI, OPDS, sync APIs.
+  server           magnitide-server: the library over HTTP, read-only: a plain web page
+                   for e-reader browsers and an OPDS catalogue. Used by the app today
+                   (Settings › Library Server); the headless server will build on it.
 ```
 
 Rules that keep this layering useful:
@@ -103,6 +105,29 @@ My Library/
   far safer than editing calibre's live database, which needs calibre's
   custom SQL functions, triggers and schema upgrades.
 
+## Library server (in the app)
+
+Settings › Library Server serves the open library on the local network while
+the app runs. It's off until turned on, and read-only by construction: the
+`server` crate only reads a `Catalog` and the library's files (through a
+`Source` trait asked on every request, so it follows whichever library is
+open), and only answers GET and HEAD.
+
+- **Web page** for e-reader browsers (Kobo's beta browser is old WebKit):
+  server-rendered HTML, no scripts, black on white, no flexbox `gap`.
+  Descriptions go through the same sanitizer as the app. Kobo's browser (by
+  its user agent) is offered KEPUB first, converted from the EPUB on demand
+  and cached outside the library.
+- **OPDS 1.2** at `/opds`: navigation feeds for shelves, authors and series,
+  acquisition feeds for books, OpenSearch, 25 books a page.
+- **Password** (optional): HTTP Basic, any user name, compared in constant
+  time. Plain HTTP on a home network, so it keeps out housemates, not
+  eavesdroppers.
+- tiny_http with four worker threads. The address shown comes from the
+  network adapters, skipping VPN tunnels and virtual adapters (point-to-point,
+  /32, or tunnel-like names): with a VPN up, the default route's address is
+  the tunnel's, which devices on the Wi-Fi can't reach.
+
 ## Server mode (planned)
 
 A `magnitide-server` binary over `core`, shipped as a small Docker image for
@@ -110,8 +135,8 @@ NAS use: map a port and a library folder.
 
 In order of value for effort:
 
-1. Web UI (the same Solid app over HTTP) and **OPDS** catalogues, which
-   KOReader and most reading apps can browse and download from.
+1. Web UI (the same Solid app over HTTP), and the `server` crate's OPDS
+   catalogue and e-reader page, which the desktop app already serves.
 2. **Accounts**: authentication, per-user state, rate limiting. TLS is
    expected from a reverse proxy; the docs will show how.
 3. **KOReader progress sync** (kosync protocol).
@@ -169,3 +194,4 @@ a library file directly.
 | 2026-10-04 | A format converted for a device is added to the book too when the library is a Magnitide one (so it's converted once); calibre libraries still only get a temporary file. Sending says when it's converting.                                                                                                                                                           |
 | 2026-10-04 | Longer work (sends, conversions, adding, deleting) runs as jobs: shown in a status bar along the bottom (with the book count) and kept in an activity history for the session only, in memory, capped at 50. What a job changed is in the library already; the history is the account of it.                                                                           |
 | 2026-10-05 | Shelves are Magnitide's own collections (schema v4) and are written to a Kobo for both Kobo's app (`KoboReader.sqlite` `Shelf`/`ShelfContent`, as calibre's KoboTouch driver writes them, after a backup) and KOReader (`collection.lua`, read and rewritten in KOReader's own format). Only Magnitide's shelves and recognised books are changed; nothing is deleted. |
+| 2026-10-05 | The app's library server is its own crate (tiny_http, no async runtime) behind a `Source` trait, off by default and read-only (GET/HEAD only). Kobo's browser gets KEPUBs converted on demand into the cache; e-reader pages are script-free HTML for old WebKit; OPDS 1.2 for reading apps.                                                                           |
