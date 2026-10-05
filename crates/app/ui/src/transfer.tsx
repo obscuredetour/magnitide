@@ -105,7 +105,10 @@ async function chooseFormat(device: DeviceInfo, ids: number[]): Promise<string |
                 <span class="text-xs text-muted">
                   {[
                     i() === 0 && `reads best on ${device.name}`,
-                    converted(f) && 'converted from EPUB for the device',
+                    converted(f) &&
+                      (library()?.kind === 'magnitide'
+                        ? 'converted from EPUB and saved to the library'
+                        : 'converted from EPUB for the device'),
                     !one &&
                       !converted(f) &&
                       `${books.filter((b) => b.formats.includes(f)).length} of ${books.length} have it`,
@@ -158,14 +161,25 @@ export async function sendToDevice(device: DeviceInfo, ids: number[], as?: strin
   if (format === undefined) return;
   return exclusive(`Sending to ${device.name}…`, async () => {
     const unlisten = await onTransferProgress((p) => {
-      if (p.total > 1 && p.done < p.total)
-        toast(`Sending ${p.done + 1} of ${p.total} to ${device.name}…`, { duration: Infinity });
+      if (p.done >= p.total) return;
+      const which = p.total > 1 ? `${p.done + 1} of ${p.total}` : null;
+      toast(
+        p.converting
+          ? `Converting ${which ?? `“${p.title}”`} to ${p.converting} for ${device.name}…`
+          : `Sending ${which ? `${which} ` : ''}to ${device.name}…`,
+        { duration: Infinity },
+      );
     });
     try {
       const r = await api.sendToDevice(device.id, todo, format);
+      if (r.kept) {
+        await refresh();
+        setEditRevision((n) => n + 1);
+      }
       for (const line of [...r.failed, ...r.unsupported, ...r.warnings]) console.info(line);
       const parts = [`Sent ${plural(r.sent, 'book', 'books')} to ${device.name}`];
       if (r.converted) parts.push(`${r.converted} converted`);
+      if (r.kept) parts.push(r.kept === r.converted ? 'saved to the library' : `${r.kept} saved to the library`);
       if (r.unsupported.length)
         parts.push(
           `${plural(r.unsupported.length, 'book has', 'books have')} no format it reads` +
