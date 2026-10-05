@@ -16,24 +16,25 @@ import {
 } from './api';
 import { confirm } from './confirm';
 import { booksOn, DEVICE_KIND_NAMES, preferredFormat, setPreferredFormat, shownItems } from './devices';
+import { type JobHandle, recordJob, startJob } from './jobs';
 import { items, library, refresh, setEditRevision, setLibrary, setSelectedId } from './library';
 import { toast } from './toast';
 import { plural } from './writeback';
 
 let busy = false;
 
-/** Run one transfer at a time, with a persistent "working" toast. */
-async function exclusive(label: string, work: () => Promise<void>): Promise<void> {
+/** Run one transfer at a time, as a job (status bar and history). */
+async function exclusive(title: string, status: string, work: (job: JobHandle) => Promise<void>): Promise<void> {
   if (busy) {
     toast('Still working on the last transfer…');
     return;
   }
   busy = true;
-  toast(label, { duration: Infinity });
+  const job = startJob(title, status);
   try {
-    await work();
+    await work(job);
   } catch (err) {
-    toast(errorMessage(err), { error: true });
+    job.finish(errorMessage(err), { error: true });
   } finally {
     busy = false;
   }
@@ -160,15 +161,14 @@ export async function sendToDevice(device: DeviceInfo, ids: number[], as?: strin
   }
   const format = as ?? (await chooseFormat(device, todo));
   if (format === undefined) return;
-  return exclusive(`Sending to ${device.name}…`, async () => {
+  return exclusive(`Send to ${device.name}`, `Sending to ${device.name}…`, async (job) => {
     const unlisten = await onTransferProgress((p) => {
       if (p.done >= p.total) return;
       const which = p.total > 1 ? `${p.done + 1} of ${p.total}` : null;
-      toast(
+      job.progress(
         p.converting
           ? `Converting ${which ?? `“${p.title}”`} to ${p.converting} for ${device.name}…`
           : `Sending ${which ? `${which} ` : ''}to ${device.name}…`,
-        { duration: Infinity },
       );
     });
     try {
@@ -177,7 +177,6 @@ export async function sendToDevice(device: DeviceInfo, ids: number[], as?: strin
         await refresh();
         setEditRevision((n) => n + 1);
       }
-      for (const line of [...r.failed, ...r.unsupported, ...r.warnings]) console.info(line);
       const parts = [`Sent ${plural(r.sent, 'book', 'books')} to ${device.name}`];
       if (r.converted) parts.push(`${r.converted} converted`);
       if (r.kept) parts.push(r.kept === r.converted ? 'saved to the library' : `${r.kept} saved to the library`);
@@ -188,9 +187,11 @@ export async function sendToDevice(device: DeviceInfo, ids: number[], as?: strin
         );
       if (r.failed.length) parts.push(r.failed.length === 1 ? r.failed[0]! : `${r.failed.length} failed`);
       if (r.collections?.books) parts.push('shelves updated');
-      for (const w of r.collections?.warnings ?? []) console.warn(w);
       const problem = r.failed.length > 0 || (r.sent === 0 && r.unsupported.length > 0);
-      toast(parts.join(' · '), { error: problem, duration: problem ? 7000 : 3500 });
+      job.finish(parts.join(' · '), {
+        error: problem,
+        details: [...r.failed, ...r.unsupported, ...r.warnings, ...(r.collections?.warnings ?? [])],
+      });
     } finally {
       unlisten();
     }
@@ -215,14 +216,13 @@ export async function removeFromDevice(device: DeviceInfo, ids: number[]): Promi
     danger: true,
   });
   if (!ok) return;
-  await exclusive(`Removing from ${device.name}…`, async () => {
+  await exclusive(`Remove from ${device.name}`, `Removing from ${device.name}…`, async (job) => {
     const r = await api.removeFromDevice(device.id, todo);
-    for (const line of r.failed) console.info(line);
-    toast(
+    job.finish(
       r.failed.length
         ? `Removed ${r.removed}; ${r.failed.length} couldn't be removed`
         : `Removed ${plural(r.removed, 'book', 'books')} from ${device.name}`,
-      { error: r.failed.length > 0 },
+      { error: r.failed.length > 0, details: r.failed },
     );
   });
 }
@@ -287,7 +287,7 @@ export function addFromDevice(device: DeviceInfo, paths: string[]): Promise<void
     toast('This calibre library is read-only. Import it into a Magnitide library to add books.', { error: true });
     return Promise.resolve();
   }
-  return exclusive(`Copying from ${device.name}…`, async () => {
+  return exclusive(`Add from ${device.name}`, `Copying from ${device.name}…`, async (job) => {
     const r = await api.importFromDevice(device.id, paths);
     await refresh();
     setLibrary({ ...lib, bookCount: lib.bookCount + r.added.length });
@@ -301,8 +301,10 @@ export function addFromDevice(device: DeviceInfo, paths: string[]): Promise<void
       parts.push(`new formats for ${plural(r.formatsAddedTo.length, 'book', 'books')}`);
     if (r.duplicates.length) parts.push(`${r.duplicates.length} already in the library`);
     if (r.failed.length) parts.push(r.failed.length === 1 ? r.failed[0]! : `${r.failed.length} failed`);
-    for (const line of [...r.failed, ...r.duplicates, ...r.skipped]) console.info(line);
-    toast(parts.join(' · '), { error: r.failed.length > 0, duration: r.failed.length ? 7000 : 4000 });
+    job.finish(parts.join(' · '), {
+      error: r.failed.length > 0,
+      details: [...r.failed, ...r.duplicates, ...r.skipped, ...r.warnings],
+    });
   });
 }
 
@@ -352,9 +354,12 @@ export async function mergeBooks(a: BookRow, b: BookRow): Promise<void> {
     if (lib) setLibrary({ ...lib, bookCount: lib.bookCount - 1 });
     setSelectedId(kept);
     setEditRevision((n) => n + 1);
-    toast(`Merged · ${plural(r.formatsMoved, 'file', 'files')} moved${r.coverTaken ? ', cover taken' : ''}`);
+    recordJob(
+      'Merge',
+      `Merged · ${plural(r.formatsMoved, 'file', 'files')} moved${r.coverTaken ? ', cover taken' : ''}`,
+    );
   } catch (err) {
-    toast(errorMessage(err), { error: true });
+    recordJob('Merge', errorMessage(err), { error: true });
   }
 }
 
@@ -370,12 +375,16 @@ export function describeCollections(r: CollectionsReport, device: DeviceInfo): s
 
 /** Write the library's shelves to a Kobo as collections, now. */
 export async function syncDeviceShelves(device: DeviceInfo): Promise<void> {
+  const job = startJob(`Sync shelves to ${device.name}`, `Writing shelves to ${device.name}…`);
   try {
     const r = await api.syncDeviceShelves(device.id);
-    for (const w of r.warnings) console.warn(w);
-    toast(describeCollections(r, device), { error: r.kobo === null && r.koreader === null, duration: 6000 });
+    job.finish(describeCollections(r, device), {
+      error: r.kobo === null && r.koreader === null,
+      details: r.warnings,
+      duration: 6000,
+    });
   } catch (err) {
-    toast(errorMessage(err), { error: true });
+    job.finish(errorMessage(err), { error: true });
   }
 }
 
@@ -404,9 +413,9 @@ export async function removeFormat(book: { id: number; title: string; formats: r
     await api.removeFormat(book.id, format);
     await refresh();
     setEditRevision((n) => n + 1);
-    toast(`Removed the ${format} · it's in the ${trashName}`);
+    recordJob(`Remove ${format}`, `Removed the ${format} of “${book.title}” · it's in the ${trashName}`);
   } catch (err) {
-    toast(errorMessage(err), { error: true });
+    recordJob(`Remove ${format}`, errorMessage(err), { error: true });
   }
 }
 
@@ -462,17 +471,14 @@ export async function deleteBooks(ids: number[]): Promise<void> {
     if (lib) setLibrary({ ...lib, bookCount: lib.bookCount - r.deleted.length });
     if (r.deleted.length) setSelectedId(next?.id ?? null);
     setEditRevision((n) => n + 1);
-    for (const line of r.failed) console.info(line);
-    if (r.failed.length) {
-      toast(
-        `Moved ${plural(r.deleted.length, 'book', 'books')} to the ${trashName} · ${r.failed.length} couldn't be: ${r.failed[0]}`,
-        { error: true },
-      );
-    } else {
-      toast(`Moved ${plural(r.deleted.length, 'book', 'books')} to the ${trashName}`);
-    }
+    const moved = `Moved ${plural(r.deleted.length, 'book', 'books')} to the ${trashName}`;
+    recordJob('Delete', r.failed.length ? `${moved} · ${r.failed.length} couldn't be: ${r.failed[0]}` : moved, {
+      error: r.failed.length > 0,
+      // Which ones went, for finding them in the Trash.
+      details: [...r.failed, ...books.filter((b) => r.deleted.includes(b.id)).map((b) => `Moved “${b.title}”`)],
+    });
   } catch (err) {
-    toast(errorMessage(err), { error: true });
+    recordJob('Delete', errorMessage(err), { error: true });
   }
 }
 
@@ -482,20 +488,18 @@ export function convertBooks(ids: number[], to: string): Promise<void> {
     toast('This calibre library is read-only. Import it into a Magnitide library to convert books.', { error: true });
     return Promise.resolve();
   }
-  return exclusive(`Converting to ${to}…`, async () => {
+  return exclusive(`Convert to ${to}`, `Converting to ${to}…`, async (job) => {
     const unlisten = await onConvertProgress((p) => {
-      if (p.total > 1 && p.done < p.total)
-        toast(`Converting ${p.done + 1} of ${p.total} to ${to}…`, { duration: Infinity });
+      if (p.total > 1 && p.done < p.total) job.progress(`Converting ${p.done + 1} of ${p.total} to ${to}…`);
     });
     try {
       const r = await api.convertBooks(ids, to);
       await refresh();
       setEditRevision((n) => n + 1);
-      for (const line of r.failed) console.info(line);
       const parts = [`Converted ${plural(r.converted, 'book', 'books')} to ${to}`];
       if (r.already) parts.push(`${r.already} already had it`);
       if (r.failed.length) parts.push(r.failed.length === 1 ? r.failed[0]! : `${r.failed.length} failed`);
-      toast(parts.join(' · '), { error: r.failed.length > 0, duration: r.failed.length ? 7000 : 3500 });
+      job.finish(parts.join(' · '), { error: r.failed.length > 0, details: r.failed });
     } finally {
       unlisten();
     }

@@ -12,6 +12,7 @@ import { ImportDialog } from './components/ImportDialog';
 import { NetworkWarning } from './components/NetworkWarning';
 import { SelectionBar } from './components/SelectionBar';
 import { SettingsDialog } from './components/Settings';
+import { StatusBar } from './components/StatusBar';
 import { ConfirmHost } from './confirm';
 import { TitleBar } from './components/TitleBar';
 import { TopBar } from './components/TopBar';
@@ -214,7 +215,7 @@ export function App() {
       />
       <Switch>
         <Match when={status().kind === 'ready'}>
-          <main class="fixed inset-x-0 top-(--chrome-h) bottom-0 flex flex-col">
+          <main class="fixed inset-x-0 top-(--chrome-h) bottom-(--statusbar-h) flex flex-col">
             <NetworkWarning />
             <div class="relative flex min-h-0 flex-1">
               <Show when={sidebarOpen()}>
@@ -255,6 +256,7 @@ export function App() {
               </Show>
             </div>
           </main>
+          <StatusBar />
         </Match>
         <Match when={noLibrary()}>{(s) => <EmptyState message={s().message} />}</Match>
       </Switch>

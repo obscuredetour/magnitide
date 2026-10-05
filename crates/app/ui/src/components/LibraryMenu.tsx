@@ -2,7 +2,6 @@ import { For, Show } from 'solid-js';
 import ChevronDown from 'lucide-solid/icons/chevron-down';
 
 import { api, errorMessage, fileManagerName } from '../api';
-import { shownItems } from '../devices';
 import { chooseLibrary, library, openLibrary, recentLibraries } from '../library';
 import { startImport } from '../importer';
 import { chooseAndAddBooks } from '../adder';
@@ -11,13 +10,6 @@ import { Menu, MenuItem, MenuLabel, MenuSeparator } from './Menu';
 import { Icon } from './Icon';
 
 export function LibraryMenu() {
-  const count = () => {
-    const total = library()?.bookCount ?? 0;
-    const shown = shownItems().length;
-    return shown === total
-      ? `${total.toLocaleString()} books`
-      : `${shown.toLocaleString()} of ${total.toLocaleString()}`;
-  };
   const others = () => recentLibraries().filter((r) => r.path !== library()?.path);
 
   const showFolder = async () => {
@@ -32,15 +24,12 @@ export function LibraryMenu() {
     <Menu
       label="Library"
       title={library()?.path ?? 'Open a library'}
-      class="min-w-0"
-      buttonClass="-ml-2 flex max-w-full min-w-0 items-baseline gap-2 rounded-control px-2 py-[5px] hover:bg-hover aria-expanded:bg-hover"
+      class="-ml-2 min-w-0"
+      buttonClass="flex max-w-full min-w-0 items-baseline gap-2 rounded-control px-2 py-[5px] hover:bg-hover aria-expanded:bg-hover"
       panelClass="w-80"
       button={
         <>
           <span class="truncate text-sm font-[650]">{library()?.name ?? 'Magnitide'}</span>
-          <Show when={library()}>
-            <span class="whitespace-nowrap text-muted tabular-nums max-[1080px]:hidden">{count()}</span>
-          </Show>
           <Icon of={ChevronDown} size={12} class="self-center text-muted" />
         </>
       }

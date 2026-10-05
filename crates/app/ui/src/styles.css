@@ -87,11 +87,13 @@
     @apply h-full overflow-hidden font-sans text-[13px]/[1.4] text-fg antialiased select-none;
   }
   /* Window chrome: the macOS title bar (0 elsewhere, where the system draws
-     one) and the toolbar under it. Everything below starts at --chrome-h. */
+     one) and the toolbar under it. Everything below starts at --chrome-h,
+     and ends at the status bar along the bottom. */
   :root {
     --titlebar-h: 0px;
     --topbar-h: 52px;
     --chrome-h: calc(var(--titlebar-h) + var(--topbar-h));
+    --statusbar-h: 26px;
   }
   :root.is-mac {
     --titlebar-h: 28px;
