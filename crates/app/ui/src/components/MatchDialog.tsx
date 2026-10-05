@@ -44,6 +44,22 @@ export type Applied = {
   coverUrl?: string;
 };
 
+/**
+ * Stepping through several books (Find Metadata for a selection): the
+ * dialog saves each book's chosen fields itself and moves on.
+ */
+export type Step = {
+  /** 0-based, of `total`. */
+  position: number;
+  total: number;
+  /** This book's search, started ahead of time. */
+  prefetched?: Promise<SearchResult>;
+  onPrevious?: () => void;
+  onSkip(): void;
+  /** Save the chosen fields and move on; resolves to an error message, or null. */
+  onUse(applied: Applied): Promise<string | null>;
+};
+
 const SOURCE_NAME: Record<SourceId, string> = { openLibrary: 'Open Library', google: 'Google Books' };
 const KIND_LABEL: Record<MatchKind, string> = {
   isbn: 'ISBN match',
@@ -174,7 +190,15 @@ function SameBadge() {
  * is saved here: chosen values go into the edit form (the cover applies
  * straight away, like any cover change).
  */
-export function MatchDialog(props: { id: number; current: Current; onApply(applied: Applied): void; onClose(): void }) {
+export function MatchDialog(props: {
+  id: number;
+  current: Current;
+  onApply(applied: Applied): void;
+  onClose(): void;
+  step?: Step;
+  /** Skip the opening animation (the next book of a step-through). */
+  quiet?: boolean;
+}) {
   let dialog!: HTMLDialogElement;
   const [title, setTitle] = createSignal(props.current.title);
   const [author, setAuthor] = createSignal(props.current.authors[0] ?? '');
@@ -187,6 +211,9 @@ export function MatchDialog(props: { id: number; current: Current; onApply(appli
   const [checked, setChecked] = createStore<Partial<Record<string, boolean>>>({});
   const [picked, setPicked] = createStore<Partial<Record<string, number>>>({});
   const [loadingDetails, setLoadingDetails] = createSignal(false);
+  const [saving, setSaving] = createSignal(false);
+  // The first search may have run ahead (stepping through books).
+  let prefetched = props.step?.prefetched;
 
   const match = (): MetadataMatch | undefined => result.matches[selected()];
 
@@ -194,11 +221,14 @@ export function MatchDialog(props: { id: number; current: Current; onApply(appli
     setSearching(true);
     setFailed(null);
     try {
-      const r = await api.findMetadata({
-        title: title().trim(),
-        authors: author().trim() ? [author().trim()] : [],
-        isbn: isbn().trim() || null,
-      });
+      const ahead = prefetched;
+      prefetched = undefined;
+      const r = await (ahead ??
+        api.findMetadata({
+          title: title().trim(),
+          authors: author().trim() ? [author().trim()] : [],
+          isbn: isbn().trim() || null,
+        }));
       setResult(r);
       select(0);
     } catch (err) {
@@ -271,15 +301,23 @@ export function MatchDialog(props: { id: number; current: Current; onApply(appli
   const coverOn = () => covers().length > 0 && (checked.cover ?? !props.current.hasCover);
   const chosenCount = () => rows().filter((r) => r.on).length + (coverOn() ? 1 : 0);
 
-  const apply = () => {
+  const apply = async () => {
     const applied: Applied = {};
     for (const r of rows()) {
       if (r.on && r.value !== null) (applied as Record<string, Value>)[r.f.key] = r.value;
     }
     if (coverOn()) applied.coverUrl = covers()[coverPick()]?.url;
+    if (props.step) {
+      setSaving(true);
+      const error = await props.step.onUse(applied);
+      setSaving(false);
+      if (error) setFailed(error);
+      return;
+    }
     props.onApply(applied);
     props.onClose();
   };
+  const last = () => props.step !== undefined && props.step.position === props.step.total - 1;
 
   onMount(() => {
     dialog.showModal();
@@ -291,7 +329,8 @@ export function MatchDialog(props: { id: number; current: Current; onApply(appli
       <dialog
         ref={dialog}
         aria-label="Find metadata"
-        class="m-auto h-[min(680px,calc(100vh-48px))] w-[min(1000px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-dialog border border-line bg-popover p-0 text-fg shadow-lift"
+        data-quiet={props.quiet || undefined}
+        class="m-auto h-[min(680px,calc(100vh-48px))] w-[min(1000px,calc(100vw-48px))] overflow-hidden rounded-dialog border border-line bg-popover p-0 text-fg shadow-lift not-data-quiet:animate-menu-in"
         onCancel={(e) => {
           e.preventDefault();
           props.onClose();
@@ -300,7 +339,7 @@ export function MatchDialog(props: { id: number; current: Current; onApply(appli
           const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
           if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
             e.preventDefault();
-            if (chosenCount()) apply();
+            if (chosenCount() && !saving()) void apply();
           } else if (!typing && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && result.matches.length) {
             e.preventDefault();
             const n = result.matches.length;
@@ -318,6 +357,16 @@ export function MatchDialog(props: { id: number; current: Current; onApply(appli
             }}
           >
             <h2 class="mr-2 font-serif text-lg font-semibold whitespace-nowrap">Find Metadata</h2>
+            <Show when={props.step}>
+              {(st) => (
+                <span
+                  class="mr-1 rounded-chip bg-element px-2 py-0.5 text-xs font-medium text-muted tabular-nums"
+                  title={`Book ${st().position + 1} of ${st().total}`}
+                >
+                  {st().position + 1} / {st().total}
+                </span>
+              )}
+            </Show>
             <input
               class={`${input} flex-[3]`}
               aria-label="Title"
@@ -486,13 +535,52 @@ export function MatchDialog(props: { id: number; current: Current; onApply(appli
                 {result.errors.join(' · ')}
               </p>
             </Show>
-            <span class="text-xs text-faint">⌘↩ to apply · Esc to cancel</span>
-            <button type="button" class={secondaryButton} onClick={() => props.onClose()}>
-              Cancel
-            </button>
-            <button type="button" disabled={!chosenCount()} class={primaryButton} onClick={apply}>
-              {chosenCount() ? `Use ${chosenCount()} ${chosenCount() === 1 ? 'Field' : 'Fields'}` : 'Use'}
-            </button>
+            <Show
+              when={props.step}
+              fallback={
+                <>
+                  <span class="text-xs text-faint">⌘↩ to apply · Esc to cancel</span>
+                  <button type="button" class={secondaryButton} onClick={() => props.onClose()}>
+                    Cancel
+                  </button>
+                  <button type="button" disabled={!chosenCount()} class={primaryButton} onClick={() => void apply()}>
+                    {chosenCount() ? `Use ${chosenCount()} ${chosenCount() === 1 ? 'Field' : 'Fields'}` : 'Use'}
+                  </button>
+                </>
+              }
+            >
+              {(st) => (
+                <>
+                  {/* Moving between books sits apart from finishing. */}
+                  <div class="mr-auto flex gap-2">
+                    <Show when={st().onPrevious}>
+                      {(prev) => (
+                        <button type="button" class={secondaryButton} disabled={saving()} onClick={() => prev()()}>
+                          ‹ Previous
+                        </button>
+                      )}
+                    </Show>
+                    <button type="button" class={secondaryButton} disabled={saving()} onClick={() => st().onSkip()}>
+                      {last() ? 'Skip' : 'Skip ›'}
+                    </button>
+                  </div>
+                  <span class="text-xs text-faint">⌘↩ to use · Esc to stop</span>
+                  <button type="button" class={secondaryButton} disabled={saving()} onClick={() => props.onClose()}>
+                    Done
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!chosenCount() || saving()}
+                    class={primaryButton}
+                    onClick={() => void apply()}
+                  >
+                    {saving()
+                      ? 'Saving…'
+                      : `Use${chosenCount() ? ` ${chosenCount()} ${chosenCount() === 1 ? 'Field' : 'Fields'}` : ''} & ${last() ? 'Finish' : 'Next ›'}`}
+                  </button>
+                </>
+              )}
+            </Show>
           </div>
         </div>
       </dialog>

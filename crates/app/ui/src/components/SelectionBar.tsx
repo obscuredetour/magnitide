@@ -7,6 +7,7 @@ import { liftToasts } from '../toast';
 import { mergeBooks, removeFromDevice, sendToDevice } from '../transfer';
 import { selectedInOrder } from '../devices';
 import { editBooks } from '../editor';
+import { findMetadataFor } from '../lookup';
 import { ConvertMenu } from './ConvertMenu';
 import { Icon } from './Icon';
 
@@ -31,6 +32,13 @@ export function SelectionBar() {
       <Show when={library()?.kind === 'magnitide'}>
         <button class={action} title="Edit these books together (⌘E)" onClick={() => editBooks(selectedInOrder())}>
           Edit…
+        </button>
+        <button
+          class={action}
+          title="Look these books up online one after another (Open Library, Google Books)"
+          onClick={() => findMetadataFor(selectedInOrder())}
+        >
+          Find Metadata…
         </button>
       </Show>
       <For each={devices()}>

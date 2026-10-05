@@ -35,6 +35,7 @@ import {
 } from './library';
 import { onOpenSettings } from './api';
 import { bulkIds, editBooks, editingBook } from './editor';
+import { LookupHost } from './lookup';
 import { importState } from './importer';
 import { Toast } from './toast';
 import { deleteBooks } from './transfer';
@@ -273,6 +274,7 @@ export function App() {
         <SettingsDialog onClose={() => setSettingsOpen(false)} />
       </Show>
       <BookMenuHost />
+      <LookupHost />
       <ConfirmHost />
       <Toast />
       {/* What's being dragged: follows the pointer. */}
