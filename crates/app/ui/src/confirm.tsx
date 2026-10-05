@@ -3,6 +3,8 @@
 
 import { createSignal, type JSX, onMount, Show } from 'solid-js';
 
+import { dangerButton, primaryButton, secondaryButton } from './buttons';
+
 type Request = {
   title: string;
   /** Rendered inside the dialog (so it can hold its own controls). */
@@ -51,19 +53,12 @@ function ConfirmDialog(props: { request: Request }) {
         <div class="text-sm text-muted select-text">{props.request.message()}</div>
       </div>
       <div class="flex justify-end gap-2 border-t border-line px-6 py-3">
-        <button
-          class="cursor-pointer rounded-control border border-line bg-element px-4 py-1.5 text-sm font-medium hover:bg-hover"
-          onClick={() => done(false)}
-        >
+        <button class={secondaryButton} onClick={() => done(false)}>
           Cancel
         </button>
         <button
           ref={confirmButton}
-          class="cursor-pointer rounded-control px-4 py-1.5 text-sm font-semibold hover:brightness-110"
-          classList={{
-            'bg-danger text-on-status': props.request.danger,
-            'bg-accent text-on-accent': !props.request.danger,
-          }}
+          class={props.request.danger ? dangerButton : primaryButton}
           onClick={() => done(true)}
         >
           {props.request.confirm}

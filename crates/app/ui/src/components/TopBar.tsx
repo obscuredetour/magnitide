@@ -122,12 +122,12 @@ export function TopBar(props: Props) {
       </div>
 
       <div class="flex items-center gap-3 justify-self-end">
-        <ViewSwitcher />
         <Show when={viewMode() === 'grid'}>
           <div class="max-[1080px]:hidden">
             <CoverSizeSlider />
           </div>
         </Show>
+        <ViewSwitcher />
         <label>
           <span class="sr-only">Sort by</span>
           <select

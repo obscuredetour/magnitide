@@ -9,11 +9,10 @@ import { items } from '../library';
 import { Cover } from './Cover';
 import { type Applied, MatchDialog } from './MatchDialog';
 import { Icon } from './Icon';
+import { primaryButton, secondaryButton, smallButton } from '../buttons';
 
 const input =
   'h-8 w-full rounded-control border border-line bg-field px-2.5 outline-none select-text focus:border-focus focus:ring-3 focus:ring-focus/20 disabled:opacity-50';
-const smallButton =
-  'cursor-pointer rounded-control border border-line bg-element px-2.5 py-1 text-xs font-medium hover:bg-hover disabled:cursor-default disabled:opacity-50';
 
 // Lists are edited as text, the way calibre does it.
 const joinAuthors = (a: string[]) => a.join(' & ');
@@ -143,7 +142,7 @@ export function EditDialog(props: { editing: Editing }) {
     <dialog
       ref={dialog}
       aria-label="Edit book"
-      class="m-auto max-h-[calc(100vh-48px)] w-[min(820px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-dialog border border-line bg-popover p-0 text-fg shadow-lift"
+      class="m-auto max-h-[calc(100vh-48px)] w-[min(820px,calc(100vw-48px))] animate-menu-in overflow-hidden rounded-dialog border border-line bg-popover p-0 text-fg shadow-lift min-[1100px]:w-[min(1180px,calc(100vw-48px))]"
       onCancel={(e) => {
         e.preventDefault();
         closeEditor();
@@ -175,250 +174,257 @@ export function EditDialog(props: { editing: Editing }) {
           <span class="ml-auto text-xs text-faint">⌘S to save · Esc to cancel</span>
         </div>
 
-        <div class="flex min-h-0 flex-1 gap-6 overflow-y-auto px-6 py-5">
-          {/* Cover */}
-          <div class="w-40 flex-none">
-            <div class="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-element shadow-card">
-              <Cover id={id} title={form.title} authors={authors()} hasCover={row()?.hasCover ?? false} size="full" />
-            </div>
-            <div class="mt-2 flex flex-wrap gap-1.5">
-              <button type="button" class={smallButton} onClick={() => void changeCover(id, 'choose')}>
-                Change…
-              </button>
-              <Show when={row()?.hasCover}>
-                <button type="button" class={smallButton} onClick={() => void changeCover(id, 'remove')}>
-                  Remove
+        {/* Cover | fields, the description under the fields; in a wide window
+            (the dialog widens from 1100px) the description gets a third column. */}
+        <div class="@container/edit min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          <div class="grid grid-cols-[10rem_minmax(0,1fr)] gap-x-6 gap-y-3.5 @[960px]/edit:grid-cols-[10rem_minmax(0,1fr)_minmax(0,0.85fr)]">
+            {/* Cover */}
+            <div class="col-start-1 row-start-1">
+              <div class="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-element shadow-card">
+                <Cover id={id} title={form.title} authors={authors()} hasCover={row()?.hasCover ?? false} size="full" />
+              </div>
+              <div class="mt-2 flex flex-wrap gap-1.5">
+                <button type="button" class={smallButton} onClick={() => void changeCover(id, 'choose')}>
+                  Change…
                 </button>
-              </Show>
-            </div>
-            <p class="mt-1.5 text-[11px] text-faint">Cover changes apply straight away.</p>
-          </div>
-
-          {/* Fields */}
-          <div class="grid min-w-0 flex-1 grid-cols-2 content-start gap-x-4 gap-y-3.5">
-            <div class="col-span-2">
-              <Field label="Title" for="edit-title">
-                <input
-                  id="edit-title"
-                  class={input}
-                  required
-                  value={form.title}
-                  onInput={(e) => {
-                    setForm('title', e.currentTarget.value);
-                    if (!sortTouched()) setForm('titleSort', '');
-                  }}
-                />
-              </Field>
-            </div>
-            <Field label="Title sort" hint="Leave empty to derive it from the title.">
-              <input
-                class={input}
-                placeholder="Automatic"
-                value={form.titleSort}
-                onInput={(e) => {
-                  setSortTouched(true);
-                  setForm('titleSort', e.currentTarget.value);
-                }}
-              />
-            </Field>
-            <Field
-              label="Authors"
-              hint={
-                <>
-                  Separate several with “&”, in order.
-                  <Show when={authorNames().length && sorts()}>
-                    <span class="mt-0.5 flex items-baseline gap-1.5">
-                      <span class="min-w-0 truncate" title="How these authors sort in lists">
-                        Sorted as <span class="text-muted">{authorNames().map(sortOf).join(' & ')}</span>
-                      </span>
-                      <button
-                        type="button"
-                        class="flex-none cursor-pointer text-link hover:underline"
-                        onClick={() => setEditingSorts((v) => !v)}
-                      >
-                        {editingSorts() ? 'Done' : 'Change'}
-                      </button>
-                    </span>
-                  </Show>
-                </>
-              }
-            >
-              <Autocomplete
-                class={input}
-                separator="&"
-                options={names()?.authors ?? []}
-                value={authors()}
-                onInput={setAuthors}
-              />
-            </Field>
-            <Show when={editingSorts()}>
-              <div class="col-span-2 -mt-1 rounded-card bg-bg p-3">
-                <div class="mb-2 text-xs text-muted">
-                  Sort names decide where authors appear in lists sorted by author. Changing one applies to all of that
-                  author's books.
-                </div>
-                <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto] items-center gap-x-3 gap-y-1.5">
-                  <For each={authorNames()}>
-                    {(name) => (
-                      <>
-                        <span class="truncate text-xs">{name}</span>
-                        <input
-                          class={input + ' h-7 text-xs'}
-                          aria-label={`Sort name for ${name}`}
-                          value={sortOf(name)}
-                          onInput={(e) => setSortOverrides(name, e.currentTarget.value)}
-                        />
-                        <button
-                          type="button"
-                          class={smallButton}
-                          disabled={!isCustom(name)}
-                          title={`Automatic: ${known(name)?.automatic ?? ''}`}
-                          onClick={() => setSortOverrides(name, '')}
-                        >
-                          Automatic
-                        </button>
-                      </>
-                    )}
-                  </For>
-                </div>
-              </div>
-            </Show>
-            <Field label="Series">
-              <Autocomplete
-                class={input}
-                options={names()?.series ?? []}
-                value={form.series ?? ''}
-                onInput={(v) => setForm('series', v || null)}
-              />
-            </Field>
-            <Field label={form.seriesEnd != null ? 'Books in series' : 'Number in series'}>
-              <NumberRange
-                start={form.seriesIndex}
-                end={form.seriesEnd}
-                disabled={!form.series}
-                onChange={(start, end) => {
-                  setForm('seriesIndex', start);
-                  setForm('seriesEnd', end);
-                }}
-              />
-            </Field>
-            <Show when={form.series}>
-              <div class="col-span-2 -mt-1.5 space-y-2">
-                <For each={form.moreSeries}>
-                  {(s, i) => (
-                    <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-x-4">
-                      <Autocomplete
-                        class={input}
-                        placeholder="Another series"
-                        options={names()?.series ?? []}
-                        value={s.name}
-                        onInput={(v) => setForm('moreSeries', i(), 'name', v)}
-                      />
-                      <NumberRange
-                        start={s.index}
-                        end={s.end}
-                        onChange={(start, end) => {
-                          setForm('moreSeries', i(), 'index', start);
-                          setForm('moreSeries', i(), 'end', end);
-                        }}
-                      />
-                      <button
-                        type="button"
-                        class="grid size-7 cursor-pointer place-items-center rounded-control text-muted hover:bg-hover hover:text-fg"
-                        aria-label="Remove this series"
-                        onClick={() => setForm('moreSeries', (list) => list.filter((_, j) => j !== i()))}
-                      >
-                        <Icon of={X} />
-                      </button>
-                    </div>
-                  )}
-                </For>
-                <button
-                  type="button"
-                  class="cursor-pointer text-xs text-link hover:underline"
-                  onClick={() => setForm('moreSeries', (list) => [...list, { name: '', index: 1, end: null }])}
-                >
-                  + Another series
-                </button>
-              </div>
-            </Show>
-            <Show when={form.seriesEnd != null || form.collects.length}>
-              <div class="col-span-2">
-                <Collects
-                  id={id}
-                  ids={form.collects}
-                  series={form.series}
-                  start={form.seriesIndex}
-                  end={form.seriesEnd}
-                  onChange={(ids) => setForm('collects', ids)}
-                />
-              </div>
-            </Show>
-            <Field label="Publisher">
-              <Autocomplete
-                class={input}
-                options={names()?.publishers ?? []}
-                value={form.publisher ?? ''}
-                onInput={(v) => setForm('publisher', v || null)}
-              />
-            </Field>
-            <Field label="Published">
-              <input
-                class={input}
-                type="date"
-                value={form.published ?? ''}
-                onInput={(e) => setForm('published', e.currentTarget.value || null)}
-              />
-            </Field>
-            <Field label="Rating">
-              <div class="flex h-8 items-center gap-0.5" role="radiogroup" aria-label="Rating">
-                <For each={[1, 2, 3, 4, 5]}>
-                  {(n) => (
-                    <button
-                      type="button"
-                      role="radio"
-                      aria-checked={stars() === n}
-                      aria-label={`${n} star${n > 1 ? 's' : ''}`}
-                      class="cursor-pointer px-0.5 text-lg leading-none"
-                      classList={{ 'text-star': n <= stars(), 'text-faint hover:text-star': n > stars() }}
-                      // Clicking the current rating clears it.
-                      onClick={() => setForm('rating', stars() === n ? null : n * 2)}
-                    >
-                      ★
-                    </button>
-                  )}
-                </For>
-                <Show when={form.rating}>
-                  <button
-                    type="button"
-                    class="ml-2 cursor-pointer text-xs text-muted hover:text-fg"
-                    onClick={() => setForm('rating', null)}
-                  >
-                    Clear
+                <Show when={row()?.hasCover}>
+                  <button type="button" class={smallButton} onClick={() => void changeCover(id, 'remove')}>
+                    Remove
                   </button>
                 </Show>
               </div>
-            </Field>
-            <Field label="Languages" hint="ISO codes, comma-separated (eng, fra).">
-              <input class={input} value={languages()} onInput={(e) => setLanguages(e.currentTarget.value)} />
-            </Field>
-            <div class="col-span-2">
-              <Field label="Tags" hint="Comma-separated.">
-                <Autocomplete
+              <p class="mt-1.5 text-[11px] text-faint">Cover changes apply straight away.</p>
+            </div>
+
+            {/* Fields */}
+            <div class="col-start-2 row-start-1 grid min-w-0 grid-cols-2 content-start gap-x-4 gap-y-3.5">
+              <div class="col-span-2">
+                <Field label="Title" for="edit-title">
+                  <input
+                    id="edit-title"
+                    class={input}
+                    required
+                    value={form.title}
+                    onInput={(e) => {
+                      setForm('title', e.currentTarget.value);
+                      if (!sortTouched()) setForm('titleSort', '');
+                    }}
+                  />
+                </Field>
+              </div>
+              <Field label="Title sort" hint="Leave empty to derive it from the title.">
+                <input
                   class={input}
-                  separator=","
-                  options={names()?.tags ?? []}
-                  value={tags()}
-                  onInput={setTags}
+                  placeholder="Automatic"
+                  value={form.titleSort}
+                  onInput={(e) => {
+                    setSortTouched(true);
+                    setForm('titleSort', e.currentTarget.value);
+                  }}
                 />
               </Field>
-            </div>
-            <div class="col-span-2">
-              <Field label="Identifiers" hint="scheme:value, comma-separated (isbn:9780…, google:…).">
-                <input class={input} value={identifiers()} onInput={(e) => setIdentifiers(e.currentTarget.value)} />
+              <Field
+                label="Authors"
+                hint={
+                  <>
+                    Separate several with “&”, in order.
+                    <Show when={authorNames().length && sorts()}>
+                      <span class="mt-0.5 flex items-baseline gap-1.5">
+                        <span class="min-w-0 truncate" title="How these authors sort in lists">
+                          Sorted as <span class="text-muted">{authorNames().map(sortOf).join(' & ')}</span>
+                        </span>
+                        <button
+                          type="button"
+                          class="flex-none cursor-pointer text-link hover:underline"
+                          onClick={() => setEditingSorts((v) => !v)}
+                        >
+                          {editingSorts() ? 'Done' : 'Change'}
+                        </button>
+                      </span>
+                    </Show>
+                  </>
+                }
+              >
+                <Autocomplete
+                  class={input}
+                  separator="&"
+                  options={names()?.authors ?? []}
+                  value={authors()}
+                  onInput={setAuthors}
+                />
               </Field>
+              <Show when={editingSorts()}>
+                <div class="col-span-2 -mt-1 rounded-card bg-bg p-3">
+                  <div class="mb-2 text-xs text-muted">
+                    Sort names decide where authors appear in lists sorted by author. Changing one applies to all of
+                    that author's books.
+                  </div>
+                  <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto] items-center gap-x-3 gap-y-1.5">
+                    <For each={authorNames()}>
+                      {(name) => (
+                        <>
+                          <span class="truncate text-xs">{name}</span>
+                          <input
+                            class={input + ' h-7 text-xs'}
+                            aria-label={`Sort name for ${name}`}
+                            value={sortOf(name)}
+                            onInput={(e) => setSortOverrides(name, e.currentTarget.value)}
+                          />
+                          <button
+                            type="button"
+                            class={smallButton}
+                            disabled={!isCustom(name)}
+                            title={`Automatic: ${known(name)?.automatic ?? ''}`}
+                            onClick={() => setSortOverrides(name, '')}
+                          >
+                            Automatic
+                          </button>
+                        </>
+                      )}
+                    </For>
+                  </div>
+                </div>
+              </Show>
+              <Field label="Series">
+                <Autocomplete
+                  class={input}
+                  options={names()?.series ?? []}
+                  value={form.series ?? ''}
+                  onInput={(v) => setForm('series', v || null)}
+                />
+              </Field>
+              <Field label={form.seriesEnd != null ? 'Books in series' : 'Number in series'}>
+                <NumberRange
+                  start={form.seriesIndex}
+                  end={form.seriesEnd}
+                  disabled={!form.series}
+                  onChange={(start, end) => {
+                    setForm('seriesIndex', start);
+                    setForm('seriesEnd', end);
+                  }}
+                />
+              </Field>
+              <Show when={form.series}>
+                <div class="col-span-2 -mt-1.5 space-y-2">
+                  <For each={form.moreSeries}>
+                    {(s, i) => (
+                      <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-x-4">
+                        <Autocomplete
+                          class={input}
+                          placeholder="Another series"
+                          options={names()?.series ?? []}
+                          value={s.name}
+                          onInput={(v) => setForm('moreSeries', i(), 'name', v)}
+                        />
+                        <NumberRange
+                          start={s.index}
+                          end={s.end}
+                          onChange={(start, end) => {
+                            setForm('moreSeries', i(), 'index', start);
+                            setForm('moreSeries', i(), 'end', end);
+                          }}
+                        />
+                        <button
+                          type="button"
+                          class="grid size-7 cursor-pointer place-items-center rounded-control text-muted hover:bg-hover hover:text-fg"
+                          aria-label="Remove this series"
+                          onClick={() => setForm('moreSeries', (list) => list.filter((_, j) => j !== i()))}
+                        >
+                          <Icon of={X} />
+                        </button>
+                      </div>
+                    )}
+                  </For>
+                  <button
+                    type="button"
+                    class="cursor-pointer text-xs text-link hover:underline"
+                    onClick={() => setForm('moreSeries', (list) => [...list, { name: '', index: 1, end: null }])}
+                  >
+                    + Another series
+                  </button>
+                </div>
+              </Show>
+              <Show when={form.seriesEnd != null || form.collects.length}>
+                <div class="col-span-2">
+                  <Collects
+                    id={id}
+                    ids={form.collects}
+                    series={form.series}
+                    start={form.seriesIndex}
+                    end={form.seriesEnd}
+                    onChange={(ids) => setForm('collects', ids)}
+                  />
+                </div>
+              </Show>
+              <Field label="Publisher">
+                <Autocomplete
+                  class={input}
+                  options={names()?.publishers ?? []}
+                  value={form.publisher ?? ''}
+                  onInput={(v) => setForm('publisher', v || null)}
+                />
+              </Field>
+              <Field label="Published">
+                <input
+                  class={input}
+                  type="date"
+                  value={form.published ?? ''}
+                  onInput={(e) => setForm('published', e.currentTarget.value || null)}
+                />
+              </Field>
+              <Field label="Rating">
+                <div class="flex h-8 items-center gap-0.5" role="radiogroup" aria-label="Rating">
+                  <For each={[1, 2, 3, 4, 5]}>
+                    {(n) => (
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={stars() === n}
+                        aria-label={`${n} star${n > 1 ? 's' : ''}`}
+                        class="cursor-pointer px-0.5 text-lg leading-none"
+                        classList={{ 'text-star': n <= stars(), 'text-faint hover:text-star': n > stars() }}
+                        // Clicking the current rating clears it.
+                        onClick={() => setForm('rating', stars() === n ? null : n * 2)}
+                      >
+                        ★
+                      </button>
+                    )}
+                  </For>
+                  <Show when={form.rating}>
+                    <button
+                      type="button"
+                      class="ml-2 cursor-pointer text-xs text-muted hover:text-fg"
+                      onClick={() => setForm('rating', null)}
+                    >
+                      Clear
+                    </button>
+                  </Show>
+                </div>
+              </Field>
+              <Field label="Languages" hint="ISO codes, comma-separated (eng, fra).">
+                <input class={input} value={languages()} onInput={(e) => setLanguages(e.currentTarget.value)} />
+              </Field>
+              <div class="col-span-2">
+                <Field label="Tags" hint="Comma-separated.">
+                  <Autocomplete
+                    class={input}
+                    separator=","
+                    options={names()?.tags ?? []}
+                    value={tags()}
+                    onInput={setTags}
+                  />
+                </Field>
+              </div>
+              <div class="col-span-2">
+                <Field label="Identifiers" hint="scheme:value, comma-separated (isbn:9780…, google:…).">
+                  <input class={input} value={identifiers()} onInput={(e) => setIdentifiers(e.currentTarget.value)} />
+                </Field>
+              </div>
             </div>
-            <div class="col-span-2">
+
+            {/* Description: under the fields, or its own column as tall as the fields
+              (contain-size: it doesn't stretch the row; long text scrolls inside). */}
+            <div class="col-start-2 flex min-w-0 flex-col @[960px]/edit:col-start-3 @[960px]/edit:row-start-1 @[960px]/edit:contain-size">
               <span class="mb-1 block text-xs font-medium text-muted">Description</span>
               {/* Rich text: ⌘B / ⌘I work. Sanitized when saved. */}
               <div
@@ -427,7 +433,7 @@ export function EditDialog(props: { editing: Editing }) {
                 role="textbox"
                 aria-multiline="true"
                 aria-label="Description"
-                class="comments-html min-h-28 rounded-control border border-line bg-field px-3 py-2 font-serif text-sm/[1.6] outline-none select-text focus:border-focus focus:ring-3 focus:ring-focus/20"
+                class="comments-html min-h-28 flex-1 overflow-y-auto rounded-control border border-line bg-field px-3 py-2 font-serif text-sm/[1.6] outline-none select-text focus:border-focus focus:ring-3 focus:ring-focus/20"
               />
             </div>
           </div>
@@ -446,7 +452,7 @@ export function EditDialog(props: { editing: Editing }) {
               <div class="mr-auto flex items-center gap-2">
                 <button
                   type="button"
-                  class={smallButton + ' px-3 py-1.5 text-sm'}
+                  class={secondaryButton}
                   disabled={prev === undefined || saving()}
                   title="Save and edit the previous book"
                   onClick={() => void save(prev)}
@@ -455,7 +461,7 @@ export function EditDialog(props: { editing: Editing }) {
                 </button>
                 <button
                   type="button"
-                  class={smallButton + ' px-3 py-1.5 text-sm'}
+                  class={secondaryButton}
                   disabled={next === undefined || saving()}
                   title="Save and edit the next book"
                   onClick={() => void save(next)}
@@ -468,14 +474,10 @@ export function EditDialog(props: { editing: Editing }) {
               </div>
             )}
           </Show>
-          <button type="button" class={smallButton + ' px-4 py-1.5 text-sm'} onClick={() => closeEditor()}>
+          <button type="button" class={secondaryButton} onClick={() => closeEditor()}>
             Cancel
           </button>
-          <button
-            type="submit"
-            disabled={saving()}
-            class="cursor-pointer rounded-control bg-accent px-4 py-1.5 text-sm font-semibold text-on-accent hover:brightness-110 disabled:opacity-60"
-          >
+          <button type="submit" disabled={saving()} class={primaryButton}>
             {saving() ? 'Saving…' : 'Save'}
           </button>
         </div>
