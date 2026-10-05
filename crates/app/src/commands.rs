@@ -75,7 +75,10 @@ pub async fn open_library(app: AppHandle, state: State<'_, AppState>, path: Opti
             warnings: catalog.warnings.clone(),
             on_network_share: magnitide_core::fsinfo::is_network_filesystem(&root),
         };
-        Ok((Loaded { root, kind, catalog, native, thumb_dir: thumbs_root.join(cache_key) }, info))
+        Ok((
+            Loaded { root, name: info.name.clone(), kind, catalog, native, thumb_dir: thumbs_root.join(cache_key) },
+            info,
+        ))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -397,11 +400,18 @@ pub(crate) async fn write_library<T: Send + 'static>(
 /// Rename the open Magnitide library. Returns the cleaned-up name.
 #[tauri::command]
 pub async fn rename_library(state: State<'_, AppState>, name: String) -> CmdResult<String> {
-    write_library(&state, move |lib| {
-        lib.set_name(&name)?;
-        Ok(lib.info()?.name)
+    let lib = state.current().ok_or("No library is open")?;
+    let native = lib.native.clone().ok_or_else(|| READ_ONLY.to_owned())?;
+    let (name, catalog) = tauri::async_runtime::spawn_blocking(move || {
+        let mut native = native.lock().unwrap_or_else(|e| e.into_inner());
+        native.set_name(&name)?;
+        Ok::<_, magnitide_core::Error>((native.info()?.name, native.load_catalog()?))
     })
     .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    state.replace(Loaded { name: name.clone(), ..lib.with_catalog(catalog) });
+    Ok(name)
 }
 
 /// Sent while an import runs. Event name matches `onImportProgress` in ui/src/api.ts.

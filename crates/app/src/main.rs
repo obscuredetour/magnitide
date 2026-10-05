@@ -6,6 +6,7 @@ mod devices;
 mod lookup;
 #[cfg(target_os = "macos")]
 mod menu;
+mod server;
 mod themes;
 
 use std::path::PathBuf;
@@ -27,6 +28,8 @@ pub enum LibraryKind {
 /// The open library. Swapped wholesale when another library is opened.
 pub struct Loaded {
     pub root: PathBuf,
+    /// The library's name (a calibre library's is its folder's).
+    pub name: String,
     pub kind: LibraryKind,
     /// Every book, loaded once; search, sort and all views read this.
     pub catalog: Catalog,
@@ -42,6 +45,7 @@ impl Loaded {
     pub fn with_catalog(&self, catalog: Catalog) -> Self {
         Self {
             root: self.root.clone(),
+            name: self.name.clone(),
             kind: self.kind,
             catalog,
             native: self.native.clone(),
@@ -55,6 +59,8 @@ pub struct AppState {
     lib: RwLock<Option<Arc<Loaded>>>,
     /// Connected e-readers, as last scanned (see devices.rs).
     devices: RwLock<Vec<Arc<magnitide_core::devices::Scan>>>,
+    /// The library server, when it's on (see server.rs).
+    server: Mutex<server::ServerState>,
 }
 
 impl AppState {
@@ -93,6 +99,7 @@ fn main() {
         .manage(AppState::default())
         .setup(|app| {
             devices::watch(app.handle().clone());
+            server::start_if_enabled(app.handle());
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
@@ -155,7 +162,9 @@ fn main() {
             commands::merge_books,
             commands::conversion_info,
             commands::convert_targets,
-            commands::convert_books
+            commands::convert_books,
+            server::server_status,
+            server::set_server
         ])
         .run(tauri::generate_context!())
         .expect("error while running Magnitide");
