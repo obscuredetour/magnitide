@@ -116,7 +116,7 @@ export function setZebraRows(on: boolean): void {
 }
 
 /** Width of the details panel in CSS px (it also never squeezes the list below 320px). */
-export const DETAILS_WIDTH = { min: 300, max: 640, initial: 380 } as const;
+export const DETAILS_WIDTH = { min: 300, max: 680, initial: 380 } as const;
 
 const clampDetails = (n: number) => Math.min(DETAILS_WIDTH.max, Math.max(DETAILS_WIDTH.min, Math.round(n)));
 const storedDetails = Number(storage.get('detailsWidth'));

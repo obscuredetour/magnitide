@@ -1,4 +1,5 @@
 import { chooseLibrary } from '../library';
+import { primaryButton } from '../buttons';
 
 export function EmptyState(props: { message: string }) {
   return (
@@ -10,10 +11,7 @@ export function EmptyState(props: { message: string }) {
         Choose a Magnitide library, or a calibre library (the folder containing{' '}
         <code class="text-[12.5px]">metadata.db</code>). calibre libraries are opened read-only and never changed.
       </p>
-      <button
-        class="cursor-pointer rounded-control bg-accent px-[18px] py-2 font-semibold text-on-accent hover:brightness-110"
-        onClick={() => void chooseLibrary()}
-      >
+      <button class={primaryButton} onClick={() => void chooseLibrary()}>
         Choose library folder…
       </button>
     </div>

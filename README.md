@@ -82,7 +82,7 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] List view zebra stripes (setting, on by default)
 - [x] Theme roles: zebra stripes, hover, selection and highlight are theme variables (`--row-stripe`, `--hover`, `--selection`, `--highlight`), consistent across themes; Catppuccin (all four flavours), Dracula and Alucard built in
 - [x] Clear search button (Jamie)
-- [x] Resizable details panel: drag its edge (300–640px, always leaving the list 320px), double-click to reset, or focus the edge and use ←/→
+- [x] Resizable details panel: drag its edge (300–680px, always leaving the list 320px), double-click to reset, or focus the edge and use ←/→
 - [x] Add slight app blur behind dialogs (every dialog dims and blurs the app behind it, tinted per theme)
 - [x] Covers view keeps the selected book where it was on screen when the panel opens or resizes, or the cover size changes
 - [ ] Make "Send to device" & "Convert" actions more discoverable/prominent (they currently look like the format badges)

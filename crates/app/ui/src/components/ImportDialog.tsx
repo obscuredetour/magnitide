@@ -2,10 +2,7 @@ import { createSignal, For, Match, onMount, Show, Switch } from 'solid-js';
 
 import { dismissImport, importState } from '../importer';
 import { library, openLibrary } from '../library';
-
-const primary =
-  'cursor-pointer rounded-control bg-accent px-4 py-1.5 font-semibold text-on-accent hover:brightness-110';
-const secondary = 'cursor-pointer rounded-control border border-line bg-element px-4 py-1.5 font-medium hover:bg-hover';
+import { primaryButton, secondaryButton } from '../buttons';
 
 function formatBytes(n: number): string {
   if (n >= 1e9) return `${(n / 1e9).toFixed(1)} GB`;
@@ -119,11 +116,11 @@ export function ImportDialog() {
                   </Show>
                 </Show>
                 <div class="mt-2 flex justify-end gap-2">
-                  <button class={secondary} onClick={() => dismissImport()}>
+                  <button class={secondaryButton} onClick={() => dismissImport()}>
                     Keep Browsing calibre
                   </button>
                   <button
-                    class={primary}
+                    class={primaryButton}
                     onClick={async () => {
                       const dest = s().dest;
                       dismissImport();
@@ -143,7 +140,7 @@ export function ImportDialog() {
             <>
               <p class="mb-4 text-sm text-danger select-text">{s().message}</p>
               <div class="flex justify-end">
-                <button class={secondary} onClick={() => dismissImport()}>
+                <button class={secondaryButton} onClick={() => dismissImport()}>
                   Close
                 </button>
               </div>

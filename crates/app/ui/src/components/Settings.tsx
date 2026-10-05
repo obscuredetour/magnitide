@@ -33,6 +33,7 @@ import { describeWrite, plural, setWriteOnSave, writeOnSave } from '../writeback
 import { TABLE_COLUMNS } from './BookTable';
 import { CoverSizeSlider } from './CoverSizeSlider';
 import { Icon } from './Icon';
+import { smallButton } from '../buttons';
 
 type Section = 'appearance' | 'library' | 'list' | 'devices' | 'sources' | 'about';
 
@@ -45,8 +46,7 @@ const SECTIONS: { id: Section; label: string }[] = [
   { id: 'about', label: 'About' },
 ];
 
-const button =
-  'cursor-pointer rounded-control border border-line bg-element px-3 py-1 text-xs font-medium hover:bg-hover disabled:cursor-default disabled:opacity-50';
+const button = smallButton;
 
 /** The settings window (⌘,). Mount it to open; `onClose` unmounts it. */
 export function SettingsDialog(props: { onClose(): void }) {

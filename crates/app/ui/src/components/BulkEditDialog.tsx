@@ -7,11 +7,10 @@ import { items, refresh, setEditRevision } from '../library';
 import { toast } from '../toast';
 import { plural, writeOnSave } from '../writeback';
 import { Autocomplete } from './Autocomplete';
+import { primaryButton, secondaryButton, smallButton } from '../buttons';
 
 const input =
   'h-8 w-full rounded-control border border-line bg-field px-2.5 outline-none select-text placeholder:text-faint focus:border-focus focus:ring-3 focus:ring-focus/20';
-const smallButton =
-  'cursor-pointer rounded-control border border-line bg-element px-2.5 py-1 text-xs font-medium hover:bg-hover disabled:cursor-default disabled:opacity-50';
 
 const splitAuthors = (s: string) =>
   s
@@ -406,14 +405,10 @@ export function BulkEditDialog(props: { ids: number[] }) {
                 ? `Changes ${changes().join(', ')} on ${plural(n, 'book', 'books')}.`
                 : 'Nothing changed yet.')}
           </p>
-          <button type="button" class={smallButton + ' px-4 py-1.5 text-sm'} onClick={() => closeBulkEditor()}>
+          <button type="button" class={secondaryButton} onClick={() => closeBulkEditor()}>
             Cancel
           </button>
-          <button
-            type="submit"
-            disabled={saving() || !changes().length}
-            class="cursor-pointer rounded-control bg-accent px-4 py-1.5 text-sm font-semibold text-on-accent hover:brightness-110 disabled:cursor-default disabled:opacity-60"
-          >
+          <button type="submit" disabled={saving() || !changes().length} class={primaryButton}>
             {saving() ? 'Saving…' : `Save ${n} Books`}
           </button>
         </div>

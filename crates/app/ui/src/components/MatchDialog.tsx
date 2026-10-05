@@ -15,6 +15,7 @@ import {
   type SourceRecord,
 } from '../api';
 import { Icon } from './Icon';
+import { primaryButton, secondaryButton } from '../buttons';
 
 /** The edit form's values, to compare against. */
 export type Current = {
@@ -110,8 +111,6 @@ const same = (f: Field, a: Value | null, b: Value | null) =>
 
 const input =
   'h-8 min-w-0 rounded-control border border-line bg-field px-2.5 outline-none select-text focus:border-focus focus:ring-3 focus:ring-focus/20';
-const smallButton =
-  'cursor-pointer rounded-control border border-line bg-element px-3 py-1.5 text-sm font-medium hover:bg-hover disabled:cursor-default disabled:opacity-50';
 
 /** A source's cover, downloaded through Rust and shown from the cache. */
 function RemoteCover(props: { url: string | null; class?: string; withSize?: boolean }) {
@@ -340,7 +339,7 @@ export function MatchDialog(props: { id: number; current: Current; onApply(appli
               value={isbn()}
               onInput={(e) => setIsbn(e.currentTarget.value)}
             />
-            <button type="submit" class={smallButton} disabled={searching()}>
+            <button type="submit" class={secondaryButton} disabled={searching()}>
               {searching() ? 'Searching…' : 'Search'}
             </button>
           </form>
@@ -488,15 +487,10 @@ export function MatchDialog(props: { id: number; current: Current; onApply(appli
               </p>
             </Show>
             <span class="text-xs text-faint">⌘↩ to apply · Esc to cancel</span>
-            <button type="button" class={smallButton} onClick={() => props.onClose()}>
+            <button type="button" class={secondaryButton} onClick={() => props.onClose()}>
               Cancel
             </button>
-            <button
-              type="button"
-              disabled={!chosenCount()}
-              class="cursor-pointer rounded-control bg-accent px-4 py-1.5 text-sm font-semibold text-on-accent hover:brightness-110 disabled:cursor-default disabled:opacity-50"
-              onClick={apply}
-            >
+            <button type="button" disabled={!chosenCount()} class={primaryButton} onClick={apply}>
               {chosenCount() ? `Use ${chosenCount()} ${chosenCount() === 1 ? 'Field' : 'Fields'}` : 'Use'}
             </button>
           </div>
