@@ -1,4 +1,5 @@
 import './theme'; // sets data-theme before the first render
+import './zoom'; // and the interface size
 import './styles.css';
 
 import { render } from 'solid-js/web';

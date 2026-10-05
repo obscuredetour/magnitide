@@ -16,6 +16,7 @@ import { DeviceMenu } from './DeviceMenu';
 import { LibraryMenu } from './LibraryMenu';
 import { ThemeMenu } from './ThemeMenu';
 import { Icon } from './Icon';
+import { keys } from '../keys';
 
 const SORT_OPTIONS: [SortKey, string][] = [
   ['title', 'Title'],
@@ -37,7 +38,7 @@ function ViewSwitcher() {
       <button
         class={segment}
         aria-pressed={viewMode() === 'grid'}
-        title="Covers (⌘1)"
+        title={`Covers (${keys('mod+1')})`}
         onClick={() => setViewMode('grid')}
       >
         <Icon of={LayoutGrid} />
@@ -45,7 +46,7 @@ function ViewSwitcher() {
       <button
         class={segment}
         aria-pressed={viewMode() === 'table'}
-        title="List (⌘2)"
+        title={`List (${keys('mod+2')})`}
         onClick={() => setViewMode('table')}
       >
         <Icon of={List} />
@@ -161,7 +162,7 @@ export function TopBar(props: Props) {
         <ThemeMenu />
         <button
           class="grid size-8 place-items-center rounded-control text-muted hover:bg-hover hover:text-fg"
-          title="Settings (⌘,)"
+          title={`Settings (${keys('mod+,')})`}
           aria-label="Settings"
           onClick={() => props.onOpenSettings()}
         >

@@ -32,10 +32,13 @@ import { DEVICE_FORMATS, DEVICE_KIND_NAMES, preferredFormat, setPreferredFormat 
 import { describeWrite, plural, setWriteOnSave, writeOnSave } from '../writeback';
 import { TABLE_COLUMNS } from './BookTable';
 import { CoverSizeSlider } from './CoverSizeSlider';
+import { resetZoom, tryZoom, ZOOM_STEPS, zoom, zoomLabel } from '../zoom';
 import { Icon } from './Icon';
 import { smallButton } from '../buttons';
+import { backdropDismiss } from '../backdrop';
+import { keys, SHORTCUTS } from '../keys';
 
-type Section = 'appearance' | 'library' | 'list' | 'devices' | 'sources' | 'about';
+type Section = 'appearance' | 'library' | 'list' | 'devices' | 'sources' | 'shortcuts' | 'about';
 
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'appearance', label: 'Appearance' },
@@ -43,6 +46,7 @@ const SECTIONS: { id: Section; label: string }[] = [
   { id: 'list', label: 'List View' },
   { id: 'devices', label: 'Devices' },
   { id: 'sources', label: 'Metadata Sources' },
+  { id: 'shortcuts', label: 'Keyboard Shortcuts' },
   { id: 'about', label: 'About' },
 ];
 
@@ -65,8 +69,8 @@ export function SettingsDialog(props: { onClose(): void }) {
         e.preventDefault();
         props.onClose();
       }}
-      // A click on the dialog element itself (not its contents) is the backdrop.
-      onClick={(e) => e.target === dialog && props.onClose()}
+      // Settings apply as they're made, so clicking outside always closes it.
+      {...backdropDismiss(() => dialog, { close: () => props.onClose() })}
     >
       <div class="flex h-full">
         <nav
@@ -111,6 +115,9 @@ export function SettingsDialog(props: { onClose(): void }) {
             </Match>
             <Match when={section() === 'sources'}>
               <SourceSettings />
+            </Match>
+            <Match when={section() === 'shortcuts'}>
+              <ShortcutSettings />
             </Match>
             <Match when={section() === 'about'}>
               <About />
@@ -217,6 +224,51 @@ function ThemeAddonsSection() {
   );
 }
 
+/**
+ * Interface size: a slider over the zoom steps (by index, so each notch is one
+ * step). Dragging only previews the number; letting go tries the size, which
+ * then asks to be kept (see tryZoom), so the window doesn't rescale under the
+ * pointer mid-drag.
+ */
+function InterfaceSize() {
+  const [dragging, setDragging] = createSignal<number | null>(null);
+  const shown = () => dragging() ?? zoom();
+  const index = () => ZOOM_STEPS.indexOf(zoom() as (typeof ZOOM_STEPS)[number]);
+  return (
+    <Row
+      label="Interface size"
+      description={`Everything in the window, larger or smaller. Also ${keys('mod++')}, ${keys('mod+-')} and ${keys('mod+0')}.`}
+    >
+      <input
+        type="range"
+        class="w-32 accent-accent"
+        aria-label="Interface size"
+        aria-valuetext={zoomLabel(shown())}
+        min={0}
+        max={ZOOM_STEPS.length - 1}
+        step={1}
+        list="zoom-steps"
+        value={index()}
+        onInput={(e) => setDragging(ZOOM_STEPS[Number(e.currentTarget.value)] ?? null)}
+        onChange={(e) => {
+          const z = ZOOM_STEPS[Number(e.currentTarget.value)] ?? 1;
+          setDragging(null);
+          const input = e.currentTarget;
+          // Back to the size in use if it isn't kept.
+          void tryZoom(z).then(() => (input.value = String(index())));
+        }}
+      />
+      <datalist id="zoom-steps">
+        <For each={ZOOM_STEPS}>{(_, i) => <option value={i()} />}</For>
+      </datalist>
+      <span class="w-10 text-right text-xs text-muted tabular-nums">{zoomLabel(shown())}</span>
+      <button class={button} disabled={zoom() === 1} onClick={resetZoom}>
+        Reset
+      </button>
+    </Row>
+  );
+}
+
 function Appearance() {
   return (
     <>
@@ -250,7 +302,7 @@ function Appearance() {
 
       <ThemeAddonsSection />
 
-      <Row label="View" description="Also ⌘1 and ⌘2.">
+      <Row label="View" description={`Also ${keys('mod+1')} and ${keys('mod+2')}.`}>
         <div class="flex rounded-control bg-element p-0.5" role="group" aria-label="View">
           <For
             each={
@@ -275,6 +327,7 @@ function Appearance() {
       <Row label="Cover size" description="How large covers appear in the cover view.">
         <CoverSizeSlider />
       </Row>
+      <InterfaceSize />
     </>
   );
 }
@@ -437,7 +490,7 @@ function ListSettings() {
       </Row>
       <Row
         label="Column order"
-        description="Drag a column's header sideways to move it, or focus it and press ⌥← / ⌥→."
+        description={`Drag a column's header sideways to move it, or focus it and press ${keys('alt+ArrowLeft')} / ${keys('alt+ArrowRight')}.`}
       >
         <button class={button} disabled={!columnOrder().length} onClick={() => resetColumnOrder()}>
           Reset
@@ -752,6 +805,37 @@ function DeviceSettings() {
           </Show>
         }
       />
+    </>
+  );
+}
+
+function ShortcutSettings() {
+  return (
+    <>
+      <Heading>Keyboard Shortcuts</Heading>
+      <For each={SHORTCUTS}>
+        {(g) => (
+          <section class="mb-6">
+            <h4 class="mb-1 text-[11px] font-semibold tracking-[.06em] text-muted uppercase">{g.group}</h4>
+            <For each={g.items}>
+              {(s) => (
+                <div class="flex items-center justify-between gap-6 border-b border-line py-2 last:border-b-0">
+                  <span>{s.action}</span>
+                  <span class="flex flex-none flex-wrap justify-end gap-1">
+                    <For each={s.keys}>
+                      {(k) => (
+                        <kbd class="min-w-6 rounded-inset border border-line bg-element px-1.5 py-0.5 text-center font-sans text-xs text-fg shadow-[0_1px_0_var(--color-line)]">
+                          {keys(k)}
+                        </kbd>
+                      )}
+                    </For>
+                  </span>
+                </div>
+              )}
+            </For>
+          </section>
+        )}
+      </For>
     </>
   );
 }

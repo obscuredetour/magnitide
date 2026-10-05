@@ -33,7 +33,7 @@ import {
   status,
   toggleSelected,
 } from './library';
-import { onOpenSettings } from './api';
+import { onOpenSettings, onZoomMenu } from './api';
 import { bulkIds, editBooks, editingBook } from './editor';
 import { LookupHost } from './lookup';
 import { importState } from './importer';
@@ -41,6 +41,7 @@ import { Toast } from './toast';
 import { deleteBooks } from './transfer';
 import { loadThemeAddons } from './theme';
 import { coverSize, setViewMode, sidebarOpen, viewMode } from './view';
+import { resetZoom, stepZoom } from './zoom';
 import { drag, dragJustEnded, startBookDrag } from './bookDrag';
 import { addToShelf, newShelfFor, refreshShelves, shelves } from './shelves';
 import { Sidebar } from './components/Sidebar';
@@ -108,6 +109,14 @@ export function App() {
     if (cmd && e.key === ',') {
       e.preventDefault();
       setSettingsOpen(true);
+      return;
+    }
+    // ⌘+ / ⌘− / ⌘0: interface size, anywhere. On macOS the View menu owns ⌘=, ⌘− and ⌘0; ⌘⇧= (⌘+) comes here.
+    const mac = document.documentElement.classList.contains('is-mac');
+    if (cmd && !e.altKey && (e.key === '+' || (!mac && (e.key === '=' || e.key === '-' || e.key === '0')))) {
+      e.preventDefault();
+      if (e.key === '0') resetZoom();
+      else stepZoom(e.key === '-' ? -1 : 1);
       return;
     }
     if (target.closest('dialog')) return;
@@ -197,6 +206,10 @@ export function App() {
     // On macOS the menu bar item owns ⌘, (so onKeyDown's ⌘, branch only runs on other platforms).
     const unlisten = onOpenSettings(() => setSettingsOpen(true));
     onCleanup(() => void unlisten.then((off) => off()));
+    const unlistenZoom = onZoomMenu((action) =>
+      action === 'reset' ? resetZoom() : stepZoom(action === 'in' ? 1 : -1),
+    );
+    onCleanup(() => void unlistenZoom.then((off) => off()));
     void openInitialLibrary();
     watchDevices();
     void loadThemeAddons().catch(() => {}); // the cached copy already applies
