@@ -1,6 +1,7 @@
 //! The library server (Settings › Library Server): the open library, read-only,
 //! on the local network, as a web page for e-reader browsers and an OPDS
-//! catalogue for reading apps. Off until the user turns it on; the setting is
+//! catalogue for reading apps, plus KOReader's progress sync (reading
+//! positions, kept outside the library). Off until the user turns it on; the setting is
 //! remembered, and the server follows whichever library is open.
 
 use std::fs;
@@ -119,7 +120,9 @@ fn apply(app: &AppHandle, s: &Settings) {
             return;
         }
     };
-    let config = Config { port: s.port, password: s.password.clone(), cache_dir };
+    // Reading positions from KOReader's progress sync: the app's, not any library's.
+    let sync_db = app.path().app_data_dir().ok().map(|d| d.join("reading-positions.sqlite"));
+    let config = Config { port: s.port, password: s.password.clone(), cache_dir, sync_db };
     match Server::start(config, Arc::new(Open(app.clone()))) {
         Ok(started) => server.server = Some(started),
         Err(e) => server.error = Some(format!("The server couldn't start: {e}.")),

@@ -894,7 +894,7 @@ function ServerSettings() {
       <p class="mb-4 text-xs text-muted">
         Shares the open library on your Wi-Fi while Magnitide is running. E-reader web browsers (Kobo's, Kindle's, a
         phone's) get a simple page to download books from, and reading apps such as KOReader can add it as an OPDS
-        catalogue. It's read-only: nothing on it can change your library.
+        catalogue and sync reading positions through it. It's read-only: nothing on it can change your library.
       </p>
       <Show when={status()}>
         {(s) => (
@@ -997,6 +997,16 @@ function ServerSettings() {
                       <span class="font-medium">KOReader and other reading apps:</span>{' '}
                       <span class="text-muted">
                         add an OPDS catalogue at <span class="font-mono break-all select-all">{url()}opds</span>.
+                      </span>
+                    </p>
+                    <p>
+                      <span class="font-medium">KOReader progress sync:</span>{' '}
+                      <span class="text-muted">
+                        in a book, Tools › Progress sync › Custom sync server:{' '}
+                        <span class="font-mono break-all select-all">{url().replace(/\/$/, '')}</span>, then Log in with
+                        any user name and{' '}
+                        {s().hasPassword ? 'the password above' : 'any password (set one above to keep others out)'}.
+                        Each user name has its own reading positions.
                       </span>
                     </p>
                     <p class="text-muted">

@@ -10,6 +10,7 @@
 
 mod addresses;
 mod html;
+pub mod kosync;
 mod opds;
 mod routes;
 mod util;
@@ -49,6 +50,8 @@ pub struct Config {
     pub password: Option<String>,
     /// For cover thumbnails and KEPUBs converted for Kobos.
     pub cache_dir: PathBuf,
+    /// KOReader progress sync's database (see kosync); None turns sync off.
+    pub sync_db: Option<PathBuf>,
 }
 
 /// A request, as the routes see it.
@@ -142,16 +145,25 @@ impl Server {
             }
         })?;
         let port = http.server_addr().to_ip().map_or(config.port, |a| a.port());
+        let sync = match &config.sync_db {
+            Some(path) => Some(
+                kosync::SyncStore::open(path)
+                    .map_err(|e| format!("the progress sync database couldn't be opened: {e}"))?,
+            ),
+            None => None,
+        };
+        let sync = Arc::new(sync);
         let http = Arc::new(http);
         let stopping = Arc::new(AtomicBool::new(false));
         let config = Arc::new(config);
         let workers = (0..WORKERS)
             .map(|_| {
-                let (http, stopping, source, config) = (http.clone(), stopping.clone(), source.clone(), config.clone());
+                let (http, stopping, source, config, sync) =
+                    (http.clone(), stopping.clone(), source.clone(), config.clone(), sync.clone());
                 std::thread::spawn(move || {
                     while !stopping.load(Ordering::Relaxed) {
                         let Ok(request) = http.recv() else { break };
-                        respond(request, &config, source.as_ref());
+                        respond(request, &config, source.as_ref(), sync.as_ref().as_ref());
                     }
                 })
             })
@@ -193,11 +205,27 @@ impl Drop for Server {
     }
 }
 
-fn respond(mut request: tiny_http::Request, config: &Config, source: &dyn Source) {
+fn respond(mut request: tiny_http::Request, config: &Config, source: &dyn Source, sync: Option<&kosync::SyncStore>) {
     let header = |name: &'static str| {
         request.headers().iter().find(|h| h.field.equiv(name)).map(|h| h.value.as_str().to_owned())
     };
-    let reply = if !matches!(request.method(), tiny_http::Method::Get | tiny_http::Method::Head) {
+    let path = request.url().split('?').next().unwrap_or("").to_owned();
+    // KOReader's progress sync signs in its own way (its headers, not Basic
+    // auth) and is the one part of the server that takes writes.
+    let reply = if kosync::is_sync_path(&path) {
+        let (user, key) = (header("x-auth-user"), header("x-auth-key"));
+        let mut body = Vec::new();
+        let _ = request.as_reader().take(kosync::MAX_BODY).read_to_end(&mut body);
+        let method = request.method().as_str().to_owned();
+        let req = kosync::SyncRequest {
+            method: &method,
+            path: &path,
+            user: user.as_deref(),
+            key: key.as_deref(),
+            body: &body,
+        };
+        kosync::handle(&req, sync, config.password.as_deref())
+    } else if !matches!(request.method(), tiny_http::Method::Get | tiny_http::Method::Head) {
         Reply::new(405, "text/plain; charset=utf-8", "This catalogue is read-only.").header("Allow", "GET, HEAD")
     } else if !authorized(config.password.as_deref(), header("Authorization").as_deref()) {
         Reply::new(401, "text/plain; charset=utf-8", "This library needs its password.")
