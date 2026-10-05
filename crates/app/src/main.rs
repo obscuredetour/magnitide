@@ -37,6 +37,19 @@ pub struct Loaded {
     pub thumb_dir: PathBuf,
 }
 
+impl Loaded {
+    /// The same library, showing `catalog` (just reloaded from its database).
+    pub fn with_catalog(&self, catalog: Catalog) -> Self {
+        Self {
+            root: self.root.clone(),
+            kind: self.kind,
+            catalog,
+            native: self.native.clone(),
+            thumb_dir: self.thumb_dir.clone(),
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct AppState {
     lib: RwLock<Option<Arc<Loaded>>>,
