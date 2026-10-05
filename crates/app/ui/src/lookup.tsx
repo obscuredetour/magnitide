@@ -7,6 +7,7 @@ import { createResource, createSignal, Show } from 'solid-js';
 import { api, type BookEdit, coverChanged, errorMessage, type SearchResult } from './api';
 import { type Applied, type Current, MatchDialog } from './components/MatchDialog';
 import { items, library, refresh, setEditRevision } from './library';
+import { recordJob } from './jobs';
 import { toast } from './toast';
 import { plural, writeOnSave } from './writeback';
 
@@ -14,6 +15,8 @@ type Run = { queue: number[]; index: number };
 
 const [run, setRun] = createSignal<Run | null>(null);
 let updated = 0;
+/** What happened to each book, for the job history. */
+let outcomes: string[] = [];
 /** A dialog has been shown in this run (later books open without the animation). */
 let shown = false;
 
@@ -59,6 +62,7 @@ export function findMetadataFor(ids: number[]): void {
   if (!ids.length) return;
   loads.clear();
   updated = 0;
+  outcomes = [];
   shown = false;
   setRun({ queue: ids, index: 0 });
 }
@@ -67,7 +71,14 @@ function finish(): void {
   const r = run();
   setRun(null);
   loads.clear();
-  if (r && r.queue.length > 1) toast(`Updated ${updated} of ${plural(r.queue.length, 'book', 'books')}`);
+  if (!r || !outcomes.length) return;
+  const summary =
+    r.queue.length === 1
+      ? updated
+        ? 'Saved'
+        : 'Nothing changed'
+      : `Updated ${updated} of ${plural(r.queue.length, 'book', 'books')}`;
+  recordJob('Find Metadata', summary, { details: outcomes });
 }
 
 function go(index: number): void {
@@ -145,16 +156,19 @@ export function LookupHost() {
               total: r.queue.length,
               prefetched: b.result,
               onPrevious: r.index > 0 ? () => go(r.index - 1) : undefined,
-              onSkip: () => go(r.index + 1),
+              onSkip: () => {
+                outcomes.push(`Skipped “${b.edit.title}”`);
+                go(r.index + 1);
+              },
               onUse: async (applied) => {
                 try {
                   await save(b, applied);
                   updated++;
+                  outcomes.push(`Updated “${applied.title ?? b.edit.title}”`);
                   // Going back to this book shows what was saved.
                   loads.delete(b.id);
                   await refresh();
                   setEditRevision((n) => n + 1);
-                  if (r.queue.length === 1) toast('Saved');
                   go(r.index + 1);
                   return null;
                 } catch (err) {
