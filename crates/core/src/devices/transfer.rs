@@ -7,6 +7,8 @@
 //! is always recognized. A format made on the way is added to the book too
 //! when the library can be written, so it's only converted once. Removing
 //! deletes the book file and KOReader's `.sdr` folder next to it, nothing else.
+//! Device files can also be copied back: as new books, or as formats their
+//! library book lacks.
 
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -15,12 +17,13 @@ use std::sync::Mutex;
 use magnitide_catalog::{Book, Format};
 use serde::Serialize;
 
-use super::{Device, DeviceKind};
-use crate::Library;
+use super::{Device, DeviceFile, DeviceKind};
 use crate::convert::{Converter, TempDir};
 use crate::import::store::add_formats;
+use crate::import::{AddReport, add_files};
 use crate::metadata::{Author, BookMetadata, epub_write};
 use crate::paths;
+use crate::{BookId, Library, Result};
 
 /// What a device reads, best first. Kindles don't take EPUB over USB.
 pub fn readable(kind: DeviceKind) -> &'static [&'static str] {
@@ -328,6 +331,42 @@ fn remove_one(root: &Path, rel: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Copy device files (as scanned) into the library. A file matched to a
+/// library book adds its format to that book if the book lacks it; the
+/// others are added like any file (new books, or new formats for a book with
+/// the same title and first author).
+pub fn import(lib: &mut Library, device: &Device, files: &[(&DeviceFile, Option<BookId>)]) -> Result<AddReport> {
+    let others: Vec<PathBuf> =
+        files.iter().filter(|(_, m)| m.is_none()).map(|(f, _)| device.root.join(&f.path)).collect();
+    let mut report = if others.is_empty() { AddReport::default() } else { add_files(lib, &others, |_| {})? };
+    for (file, id) in files {
+        let Some(id) = *id else { continue };
+        let title = lib.book(id)?.title;
+        let has: bool = lib.conn.query_row(
+            "SELECT EXISTS (SELECT 1 FROM files WHERE book_id = ? AND format = ?)",
+            rusqlite::params![id, file.format],
+            |r| r.get(0),
+        )?;
+        if has {
+            report.duplicates.push(format!("“{title}” already has the {}", file.format));
+            continue;
+        }
+        match add_formats(lib, id, &[(file.format.clone(), device.root.join(&file.path))]) {
+            Ok(stored) => {
+                if !report.formats_added_to.contains(&id) {
+                    report.formats_added_to.push(id);
+                }
+                report.files += stored.files;
+                report.cloned += stored.cloned;
+                report.copied += stored.copied;
+                report.copied_bytes += stored.copied_bytes;
+            }
+            Err(e) => report.failed.push(e.to_string()),
+        }
+    }
+    Ok(report)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -518,6 +557,42 @@ mod tests {
         let r =
             send(&detect(&other_root).unwrap(), &[book], origin, None, Some("KEPUB"), &Converter::default(), |_| {});
         assert_eq!((r.sent, r.converted, r.kept), (1, 0, 0), "{r:?}");
+    }
+
+    #[test]
+    fn copies_new_books_and_missing_formats_back_from_a_device() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut lib = setup(tmp.path());
+        let cat = lib.load_catalog().unwrap();
+        let dispossessed: Vec<&Book> = cat.books.iter().filter(|b| b.title == "The Dispossessed").collect();
+        let id = dispossessed[0].id;
+        let root = tmp.path().join("KOBOeReader");
+        fs::create_dir_all(root.join(".kobo")).unwrap();
+        let kobo = detect(&root).unwrap();
+        // A KEPUB made for the device only, and a book the library doesn't have.
+        send(&kobo, &dispossessed, read_only(lib.root()), None, Some("KEPUB"), &Converter::default(), |_| {});
+        fs::create_dir_all(root.join("Someone")).unwrap();
+        fs::write(root.join("Someone/Elsewhere - Someone.pdf"), "%PDF elsewhere").unwrap();
+
+        let take_all = |lib: &mut Library| {
+            let cat = lib.load_catalog().unwrap();
+            let s = scan(&kobo);
+            let m = match_books(&s, &cat, lib.root());
+            let files: Vec<(&DeviceFile, Option<BookId>)> =
+                s.files.iter().zip(m).map(|(f, m)| (f, m.map(|m| m.0))).collect();
+            import(lib, &kobo, &files).unwrap()
+        };
+        let r = take_all(&mut lib);
+        assert_eq!((r.added.len(), r.formats_added_to.as_slice(), r.files), (1, [id].as_slice(), 2), "{r:?}");
+        let cat = lib.load_catalog().unwrap();
+        let formats: Vec<&str> = cat.get(id).unwrap().formats.iter().map(|f| f.format.as_str()).collect();
+        assert_eq!(formats, ["EPUB", "KEPUB"]);
+        assert!(cat.books.iter().any(|b| b.title == "Elsewhere"));
+
+        // Again: everything's there now.
+        let r = take_all(&mut lib);
+        assert_eq!((r.added.len(), r.formats_added_to.len(), r.duplicates.len()), (0, 0, 2), "{r:?}");
+        assert!(r.duplicates.contains(&"“The Dispossessed” already has the KEPUB".to_owned()), "{r:?}");
     }
 
     #[test]

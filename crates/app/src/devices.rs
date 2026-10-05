@@ -65,6 +65,8 @@ pub struct DeviceHit {
     path: String,
     format: String,
     matched_by: MatchedBy,
+    /// The library's book lacks this format, so it can be copied from the device.
+    new_format: bool,
 }
 
 /// Watch for devices for as long as the app runs.
@@ -116,7 +118,10 @@ fn info(scan: &Scan, lib: Option<&crate::Loaded>) -> DeviceInfo {
     for (f, m) in scan.files.iter().zip(matches) {
         match m {
             Some((book_id, matched_by)) => {
-                hits.push(DeviceHit { book_id, path: f.path.clone(), format: f.format.clone(), matched_by })
+                let new_format = lib
+                    .and_then(|l| l.catalog.get(book_id))
+                    .is_some_and(|b| !b.formats.iter().any(|have| have.format == f.format));
+                hits.push(DeviceHit { book_id, path: f.path.clone(), format: f.format.clone(), matched_by, new_format })
             }
             None => unmatched.push(f.path.clone()),
         }
@@ -283,8 +288,9 @@ pub async fn remove_from_device(
     .map_err(|e| e.to_string())
 }
 
-/// Add device files that aren't in the library (paths as listed in
-/// `DeviceInfo::unmatched`) to the open Magnitide library.
+/// Copy device files (paths as listed in `DeviceInfo`) into the open
+/// Magnitide library: ones matched to a book add their format to it if it's
+/// missing; the rest are added as new books.
 #[tauri::command]
 pub async fn import_from_device(
     app: AppHandle,
@@ -293,10 +299,21 @@ pub async fn import_from_device(
     paths: Vec<String>,
 ) -> CmdResult<magnitide_core::import::AddReport> {
     let scan = state.device(&id)?;
-    // Only files the scan found, so nothing outside the device is read.
-    let files: Vec<std::path::PathBuf> =
-        scan.files.iter().filter(|f| paths.contains(&f.path)).map(|f| scan.device.root.join(&f.path)).collect();
-    let report = write_library(&state, move |lib| magnitide_core::import::add_files(lib, &files, |_| {})).await?;
+    let lib = state.current().ok_or("No library is open")?;
+    let source = scan.clone();
+    let report = write_library(&state, move |native| {
+        let matches = devices::match_books(&source, &lib.catalog, &lib.root);
+        // Only files the scan found, so nothing outside the device is read.
+        let files: Vec<_> = source
+            .files
+            .iter()
+            .zip(matches)
+            .filter(|(f, _)| paths.contains(&f.path))
+            .map(|(f, m)| (f, m.map(|(book, _)| book)))
+            .collect();
+        devices::transfer::import(native, &source.device, &files)
+    })
+    .await?;
     let root = scan.device.root.clone();
     tauri::async_runtime::spawn_blocking(move || rescanned(&app, &root)).await.map_err(|e| e.to_string())?;
     Ok(report)

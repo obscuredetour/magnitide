@@ -8,4 +8,8 @@ export type DeviceHit = { bookId: number,
 /**
  * Relative to the device root.
  */
-path: string, format: string, matchedBy: MatchedBy, };
+path: string, format: string, matchedBy: MatchedBy, 
+/**
+ * The library's book lacks this format, so it can be copied from the device.
+ */
+newFormat: boolean, };

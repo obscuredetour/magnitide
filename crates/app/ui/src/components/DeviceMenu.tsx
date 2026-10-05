@@ -5,7 +5,7 @@ import { api, type DeviceInfo, errorMessage, fileManagerName } from '../api';
 import { deviceFilter, devices, ejectDevice, rescanDevice, setDeviceFilter } from '../devices';
 import { library } from '../library';
 import { shelves } from '../shelves';
-import { importFromDevice, syncDeviceShelves } from '../transfer';
+import { chooseFromDevice, newOnDevice, syncDeviceShelves } from '../transfer';
 import { toast } from '../toast';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from './Menu';
 import { Icon } from './Icon';
@@ -71,6 +71,7 @@ export function DeviceMenu() {
 function DeviceSection(props: { device: DeviceInfo }) {
   const d = () => props.device;
   const books = () => new Set(d().hits.map((h) => h.bookId)).size;
+  const missing = () => newOnDevice(d()).formats.length;
   const reveal = async () => {
     try {
       await api.revealDevice(d().id);
@@ -88,16 +89,18 @@ function DeviceSection(props: { device: DeviceInfo }) {
             {' '}
             · {d().unmatched.length.toLocaleString()} other {d().unmatched.length === 1 ? 'file' : 'files'}
           </Show>
+          <Show when={missing()}>
+            {' '}
+            · {missing().toLocaleString()} new {missing() === 1 ? 'format' : 'formats'}
+          </Show>
           <Show when={d().freeBytes !== null && d().totalBytes !== null}>
             <br />
             {formatBytes(d().freeBytes!)} free of {formatBytes(d().totalBytes!)}
           </Show>
         </div>
       </div>
-      <Show when={d().unmatched.length && library()?.kind === 'magnitide'}>
-        <MenuItem title={d().unmatched.slice(0, 20).join('\n')} onSelect={() => void importFromDevice(d())}>
-          Add {d().unmatched.length.toLocaleString()} Other {d().unmatched.length === 1 ? 'File' : 'Files'} to Library
-        </MenuItem>
+      <Show when={(d().unmatched.length || missing()) && library()?.kind === 'magnitide'}>
+        <MenuItem onSelect={() => void chooseFromDevice(d())}>Add from {d().name}…</MenuItem>
       </Show>
       <Show when={d().kind === 'kobo' && library()?.kind === 'magnitide' && shelves().length}>
         <MenuItem
