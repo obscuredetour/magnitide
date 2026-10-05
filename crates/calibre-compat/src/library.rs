@@ -136,6 +136,7 @@ impl Library {
                     collects: Vec::new(),
                     collected_in: Vec::new(),
                     tags: Vec::new(),
+                    shelves: Vec::new(),
                     publisher: None,
                     rating: None,
                     languages: Vec::new(),

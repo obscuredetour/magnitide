@@ -125,7 +125,9 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Bulk editing (⌘E with several books selected): fields show what the books share or "Mixed", only changed fields are saved; add/remove tags, series numbering in list order; "Edit One by One" steps through the selection with Previous/Next
 - [x] Omnibus editions and several series per book: an "Omnibus" tick turns the number into a range ("Books 1–3"), "+ Another series" adds more, and "Collects" links an omnibus to the books it contains (shown both ways in the details panel). Magnitide-only; files and e-readers get the first series and number
 - [ ] Bulk metadata lookup for a selection
-- [ ] MTP devices (newer Kindles) and Kobo collections/shelves
+- [x] Shelves: a sidebar of your own shelves (drag covers or rows onto one, or "Add to Shelf" in the right-click menu); click one to show its books (`shelf:"Name"` in search). Clickable series in the details panel
+- [x] Shelves on a Kobo: written as collections for Kobo's own app and KOReader when sending (or "Sync Shelves" in the device menu). Only Magnitide's shelves and books are touched; Kobo's database is backed up first
+- [ ] MTP devices (newer Kindles)
 - [ ] Accessibility scaling: ⌘+ / ⌘− / ⌘0 zoom the whole UI (remembered), respecting the OS text size where available
 - [ ] Built-in reader
 - [ ] Export to a calibre library

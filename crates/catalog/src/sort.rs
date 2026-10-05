@@ -123,6 +123,7 @@ mod tests {
             collects: vec![],
             collected_in: vec![],
             tags: vec![],
+            shelves: Vec::new(),
             publisher: None,
             rating,
             languages: vec![],

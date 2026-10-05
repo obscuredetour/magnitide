@@ -1,4 +1,5 @@
 import { createResource, createSignal, For, Show } from 'solid-js';
+import SquareLibrary from 'lucide-solid/icons/square-library';
 import X from 'lucide-solid/icons/x';
 
 import { api, type BookDetails, errorMessage, fileManagerName, type MatchedBy } from '../api';
@@ -220,7 +221,19 @@ function Details(props: { book: BookDetails }) {
             </p>
             <Show when={b().series.length}>
               <div class="text-muted">
-                <For each={b().series}>{(s) => <p>{s}</p>}</For>
+                <For each={b().series}>
+                  {(s) => (
+                    <p>
+                      {s.omnibus ? 'Books' : 'Book'} {s.number} of{' '}
+                      <button
+                        class="cursor-pointer text-link hover:underline"
+                        onClick={() => searchFor('series', s.name)}
+                      >
+                        {s.name}
+                      </button>
+                    </p>
+                  )}
+                </For>
               </div>
             </Show>
             <Show when={b().collectedIn.length}>
@@ -256,6 +269,23 @@ function Details(props: { book: BookDetails }) {
               )}
             </For>
           </dl>
+          {/* Shelves first (accent-tinted, since they're the user's own), then tags. */}
+          <Show when={b().shelves.length}>
+            <div class={chips}>
+              <For each={b().shelves}>
+                {(name) => (
+                  <button
+                    class={`${chip} inline-flex cursor-pointer items-center gap-1 bg-highlight! text-accent! hover:underline`}
+                    title={`Show the shelf “${name}”`}
+                    onClick={() => searchFor('shelf', name)}
+                  >
+                    <Icon of={SquareLibrary} size={12} />
+                    {name}
+                  </button>
+                )}
+              </For>
+            </div>
+          </Show>
           <Show when={b().tags.length}>
             <div class={chips}>
               <For each={b().tags}>

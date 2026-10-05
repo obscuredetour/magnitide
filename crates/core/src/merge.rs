@@ -27,8 +27,8 @@ impl Library {
     /// Merge book `other` into book `keep`, then remove `other`.
     ///
     /// `other`'s files move into `keep`'s folder, named for `keep`; `keep`
-    /// takes `other`'s cover if it has none, and any tags and identifier
-    /// schemes it lacks. Everything else of `keep` stays. If both have a file
+    /// takes `other`'s cover if it has none, any tags and identifier schemes
+    /// it lacks, and its shelves. Everything else of `keep` stays. If both have a file
     /// in the same format nothing happens (no file is ever discarded). All or
     /// nothing across the database and the disk.
     pub fn merge_books(&mut self, keep: BookId, other: BookId) -> Result<MergeOutcome> {
@@ -90,6 +90,11 @@ impl Library {
                 "INSERT INTO identifiers (book_id, scheme, value)
                  SELECT ?1, scheme, value FROM identifiers
                  WHERE book_id = ?2 AND scheme NOT IN (SELECT scheme FROM identifiers WHERE book_id = ?1)",
+                params![keep, other],
+            )?;
+            tx.execute(
+                "INSERT OR IGNORE INTO book_shelves (shelf_id, book_id, added_at)
+                 SELECT shelf_id, ?1, added_at FROM book_shelves WHERE book_id = ?2",
                 params![keep, other],
             )?;
             // Omnibus links and further series follow the kept book.

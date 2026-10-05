@@ -26,6 +26,8 @@ pub struct Book {
     /// Omnibuses that contain this book.
     pub collected_in: Vec<BookId>,
     pub tags: Vec<String>,
+    /// Shelves it's on, by name. Magnitide only.
+    pub shelves: Vec<String>,
     pub publisher: Option<String>,
     /// calibre stores ratings as 0..=10 (half-stars). Divide by 2 for stars.
     pub rating: Option<u8>,

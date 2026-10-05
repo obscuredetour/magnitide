@@ -36,7 +36,8 @@ function ConfirmDialog(props: { request: Request }) {
   };
   onMount(() => {
     dialog.showModal();
-    confirmButton.focus();
+    // A field in the message (marked autofocus) takes focus; else the confirm button.
+    (dialog.querySelector<HTMLElement>('[autofocus]') ?? confirmButton).focus();
   });
   return (
     <dialog
@@ -58,6 +59,7 @@ function ConfirmDialog(props: { request: Request }) {
         </button>
         <button
           ref={confirmButton}
+          data-confirm
           class={props.request.danger ? dangerButton : primaryButton}
           onClick={() => done(true)}
         >

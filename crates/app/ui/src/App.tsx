@@ -18,6 +18,8 @@ import { TopBar } from './components/TopBar';
 import { selectedInOrder, shownItems, watchDevices } from './devices';
 import {
   detailsOpen,
+  items,
+  library,
   openBook,
   openInitialLibrary,
   query,
@@ -36,7 +38,10 @@ import { importState } from './importer';
 import { Toast } from './toast';
 import { deleteBooks } from './transfer';
 import { loadThemeAddons } from './theme';
-import { coverSize, setViewMode, viewMode } from './view';
+import { coverSize, setViewMode, sidebarOpen, viewMode } from './view';
+import { drag, dragJustEnded, startBookDrag } from './bookDrag';
+import { addToShelf, newShelfFor, refreshShelves, shelves } from './shelves';
+import { Sidebar } from './components/Sidebar';
 
 export function App() {
   let view: ViewHandle | undefined;
@@ -56,6 +61,7 @@ export function App() {
 
   /** A click in a view: ⌘ adds or removes, Shift selects a range, else select just this one. */
   const click = (id: number, e: MouseEvent) => {
+    if (dragJustEnded()) return;
     if (e.metaKey || e.ctrlKey) toggleSelected(id);
     else if (e.shiftKey) selectRange(id, shownItems());
     else select(id);
@@ -161,7 +167,30 @@ export function App() {
     }
   };
 
+  // Drag books (a cover or row; the selection if it's in it) onto a shelf in the sidebar.
+  const pressBook = (e: PointerEvent) => {
+    const el = (e.target as Element | null)?.closest<HTMLElement>('[data-book-id]');
+    if (!el || library()?.kind !== 'magnitide') return;
+    const id = Number(el.dataset.bookId);
+    startBookDrag(
+      e,
+      () => (selectedIds().has(id) ? selectedInOrder() : [id]),
+      (target, ids) => {
+        if (target === 'new') void newShelfFor(ids);
+        else {
+          const shelf = shelves().find((s) => s.id === target);
+          if (shelf) void addToShelf(shelf, ids);
+        }
+      },
+    );
+  };
+
+  // Shelf counts follow the books (deleting, merging, adding).
+  createEffect(on([items, library], () => void refreshShelves()));
+
   onMount(() => {
+    document.addEventListener('pointerdown', pressBook);
+    onCleanup(() => document.removeEventListener('pointerdown', pressBook));
     document.addEventListener('keydown', onKeyDown);
     // On macOS the menu bar item owns ⌘, (so onKeyDown's ⌘, branch only runs on other platforms).
     const unlisten = onOpenSettings(() => setSettingsOpen(true));
@@ -188,6 +217,9 @@ export function App() {
           <main class="fixed inset-x-0 top-(--chrome-h) bottom-0 flex flex-col">
             <NetworkWarning />
             <div class="relative flex min-h-0 flex-1">
+              <Show when={sidebarOpen()}>
+                <Sidebar />
+              </Show>
               <Show
                 when={viewMode() === 'table'}
                 fallback={
@@ -241,6 +273,19 @@ export function App() {
       <BookMenuHost />
       <ConfirmHost />
       <Toast />
+      {/* What's being dragged: follows the pointer. */}
+      <Show when={drag()}>
+        {(d) => (
+          <div
+            class="pointer-events-none fixed z-50 rounded-chip bg-accent px-2.5 py-1 text-xs font-semibold text-on-accent shadow-lift"
+            style={{ left: `${d().x + 14}px`, top: `${d().y + 10}px` }}
+          >
+            {d().ids.length === 1
+              ? (items().find((b) => b.id === d().ids[0])?.title ?? '1 book')
+              : `${d().ids.length} books`}
+          </div>
+        )}
+      </Show>
     </>
   );
 }
