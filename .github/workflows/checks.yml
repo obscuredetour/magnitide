@@ -1,6 +1,8 @@
 # Runs on every push to main and every pull request: Rust formatting, lints
 # and tests, and the UI's type check, formatting and release build. Linux
 # only (the cheapest runner); a newer push cancels the run it replaces.
+# Draft pull requests wait until they're marked ready for review, and changes
+# that only touch documentation don't run at all.
 # The runner is pinned (not ubuntu-latest) so a new Ubuntu, and the
 # WebKitGTK packages Tauri builds against, arrive when we choose.
 name: Checks
@@ -8,7 +10,11 @@ name: Checks
 on:
   push:
     branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
   pull_request:
+    # ready_for_review: a draft's first run, once it's marked ready.
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore: ["**.md", "docs/**"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -20,6 +26,7 @@ permissions:
 jobs:
   rust:
     name: Rust (format, clippy, tests)
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -41,6 +48,7 @@ jobs:
 
   ui:
     name: UI (types, formatting, build)
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:
