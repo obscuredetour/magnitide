@@ -13,8 +13,10 @@ export default defineConfig({
     fs: { allow: ['.', '../icons'] },
   },
   build: {
-    // Oldest engine we ship on: macOS WKWebView (Windows WebView2 is newer Chromium).
-    target: 'safari15',
+    // Oldest engine we support: Safari 16.4's WebKit (what Tailwind v4 needs),
+    // which macOS 13+ has (minimumSystemVersion in tauri.conf.json). Windows'
+    // WebView2 is a current Chromium.
+    target: 'safari16.4',
     outDir: 'dist',
     emptyOutDir: true,
   },
