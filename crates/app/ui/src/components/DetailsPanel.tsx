@@ -8,7 +8,7 @@ import { DETAILS_WIDTH, detailsWidth, setDetailsWidth } from '../view';
 import { editRevision, library, openBook, search, setSelectedId } from '../library';
 import { toast } from '../toast';
 import { devices, onDevice } from '../devices';
-import { removeFormat, removeFromDevice, sendToDevice } from '../transfer';
+import { addFromDevice, removeFormat, removeFromDevice, sendToDevice } from '../transfer';
 import { writeBookFiles } from '../writeback';
 import { ConvertMenu } from './ConvertMenu';
 import { Cover } from './Cover';
@@ -401,6 +401,15 @@ function Details(props: { book: BookDetails }) {
                     >
                       <span class="font-medium whitespace-nowrap text-success">On {o.device.name}</span>
                       <span class="min-w-0 truncate">{o.hit.path}</span>
+                      <Show when={o.hit.newFormat && editable()}>
+                        <button
+                          class="ml-0.5 cursor-pointer whitespace-nowrap text-link hover:underline"
+                          title={`Copy the ${o.hit.format} on ${o.device.name} into the library`}
+                          onClick={() => void addFromDevice(o.device, [o.hit.path])}
+                        >
+                          Add {o.hit.format}
+                        </button>
+                      </Show>
                       <button
                         class="ml-0.5 cursor-pointer whitespace-nowrap text-link hover:underline"
                         onClick={() => void removeFromDevice(o.device, [b().id])}

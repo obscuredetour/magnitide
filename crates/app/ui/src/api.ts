@@ -253,7 +253,7 @@ export const api = {
   /** Delete books' files (and KOReader's notes for them) from a device. */
   removeFromDevice: (id: string, bookIds: number[]) => invoke<RemoveReport>('remove_from_device', { id, bookIds }),
 
-  /** Add device files that aren't in the library (paths from `DeviceInfo.unmatched`). */
+  /** Copy device files into the library: unmatched ones as new books, matched ones as formats their book lacks. */
   importFromDevice: (id: string, paths: string[]) => invoke<AddReport>('import_from_device', { id, paths }),
 
   /** What can convert here (calibre's ebook-convert, if installed). */
