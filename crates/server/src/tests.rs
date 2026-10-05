@@ -298,4 +298,9 @@ fn over_a_socket() {
     assert!(file.contains("Content-Type: application/pdf") && file.ends_with("%PDF"), "{file}");
     server.stop();
     assert!(TcpStream::connect(("127.0.0.1", port)).is_err(), "stopped");
+
+    // The port is free straight away, so the app can restart on it.
+    let (_dir2, source) = fixture();
+    let again = Config { port, password: None, cache_dir: dir.path().join("cache") };
+    Server::start(again, source).expect("restarts on the same port").stop();
 }
