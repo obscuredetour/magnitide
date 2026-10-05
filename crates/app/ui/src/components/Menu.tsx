@@ -7,6 +7,7 @@ import {
   onMount,
   type ParentProps,
   Show,
+  untrack,
   useContext,
 } from 'solid-js';
 import { Portal } from 'solid-js/web';
@@ -125,6 +126,8 @@ type MenuProps = {
   align?: 'start' | 'end';
   /** Extra classes for the panel, e.g. a width. */
   panelClass?: string;
+  /** Called when it opens. */
+  onOpen?(): void;
   children: JSX.Element;
 };
 
@@ -141,6 +144,7 @@ export function Menu(props: MenuProps) {
 
   createEffect(() => {
     if (!open()) return;
+    untrack(() => props.onOpen?.());
     const onPointerDown = (e: PointerEvent) => {
       if (!root.contains(e.target as Node)) close(false);
     };

@@ -4,7 +4,7 @@ import { createStore } from 'solid-js/store';
 import { api, type BulkEdit, errorMessage, onBulkProgress, type Shared } from '../api';
 import { closeBulkEditor, editOneByOne } from '../editor';
 import { items, refresh, setEditRevision } from '../library';
-import { toast } from '../toast';
+import { startJob } from '../jobs';
 import { plural, writeOnSave } from '../writeback';
 import { Autocomplete } from './Autocomplete';
 import { primaryButton, secondaryButton, smallButton } from '../buttons';
@@ -124,22 +124,27 @@ export function BulkEditDialog(props: { ids: number[] }) {
       addTags: splitList(addTags()),
       removeTags: [...removeTags()],
     };
+    const job = startJob('Edit books', `Saving ${plural(props.ids.length, 'book', 'books')}…`);
     const unlisten = await onBulkProgress((p) => {
-      if (p.total > 3 && p.done < p.total) toast(`Saving ${p.done + 1} of ${p.total}…`, { duration: Infinity });
+      if (p.total > 3 && p.done < p.total) job.progress(`Saving ${p.done + 1} of ${p.total}…`);
     });
     try {
       const r = await api.bulkEdit(props.ids, change);
       if (writeOnSave()) for (const id of props.ids) await api.writeMetadataToFiles(id).catch(() => null);
       await refresh();
       setEditRevision((x) => x + 1);
-      for (const f of r.failed) console.warn(f);
       closeBulkEditor();
       const parts = [`Saved ${plural(r.edited, 'book', 'books')}`];
       if (r.moved) parts.push('files renamed to match');
       if (r.failed.length) parts.push(`${r.failed.length} couldn’t be saved`);
-      toast(parts.join(' · '), { error: r.failed.length > 0, duration: r.failed.length ? 6000 : 2500 });
+      job.finish(parts.join(' · '), {
+        error: r.failed.length > 0,
+        details: r.failed,
+        duration: r.failed.length ? 6000 : 2500,
+      });
     } catch (err) {
       setError(errorMessage(err));
+      job.finish(errorMessage(err), { error: true });
     } finally {
       unlisten();
       setSaving(false);
