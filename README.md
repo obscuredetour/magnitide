@@ -85,7 +85,7 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Resizable details panel: drag its edge (300–680px, always leaving the list 320px), double-click to reset, or focus the edge and use ←/→
 - [x] Add slight app blur behind dialogs (every dialog dims and blurs the app behind it, tinted per theme)
 - [x] Covers view keeps the selected book where it was on screen when the panel opens or resizes, or the cover size changes
-- [ ] Make "Send to device" & "Convert" actions more discoverable/prominent (they currently look like the format badges)
+- [x] "Send to device" & "Convert" are real buttons under the formats in the details panel (Send is the panel's main action when a device is connected)
 - [x] Table column reordering: drag a header sideways (or ⌥←/⌥→ on a focused one); reset from the ⋯ menu or Settings
 - [x] Right-click menu for books (also the keyboard's menu key or Shift-F10): open, edit, send/remove from devices, convert, remove a format, write metadata, show in Finder, merge, move to Trash
 - [x] Native Magnitide library (schema v1) and calibre import, in the app with progress (also `cargo run --release -p magnitide-core --example import_calibre -- <calibre> <dest>`)
