@@ -168,6 +168,10 @@ dialog::backdrop {
     opacity: 0;
   }
 }
+/* The next book of a step-through replaces the dialog without re-animating. */
+dialog[data-quiet]::backdrop {
+  animation: none;
+}
 @media (prefers-reduced-motion: reduce) {
   dialog::backdrop {
     animation: none;

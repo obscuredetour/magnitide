@@ -7,6 +7,7 @@ import { api, errorMessage, fileManagerName, trashName } from '../api';
 import { booksOn, devices, preferredFormat } from '../devices';
 import type { DeviceInfo } from '../api';
 import { editBooks, openEditor } from '../editor';
+import { findMetadataFor } from '../lookup';
 import { items, library, openBook, setDetailsOpen } from '../library';
 import { toast } from '../toast';
 import {
@@ -71,6 +72,9 @@ function BookMenu(props: { request: Request; onClose(): void }) {
       <Show when={editable()}>
         <MenuItem shortcut="⌘E" onSelect={() => (one() ? void openEditor(ids[0]!) : editBooks(ids))}>
           {one() ? 'Edit…' : `Edit ${ids.length} Books…`}
+        </MenuItem>
+        <MenuItem onSelect={() => findMetadataFor(ids)}>
+          {one() ? 'Find Metadata…' : `Find Metadata for ${ids.length} Books…`}
         </MenuItem>
       </Show>
 
