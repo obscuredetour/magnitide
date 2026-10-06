@@ -108,10 +108,11 @@ My Library/
 ## Library server (in the app)
 
 Settings › Library Server serves the open library on the local network while
-the app runs. It's off until turned on, and read-only by construction: the
-`server` crate only reads a `Catalog` and the library's files (through a
-`Source` trait asked on every request, so it follows whichever library is
-open), and only answers GET and HEAD.
+the app runs. It's off until turned on, and the library is read-only to it by
+construction: the `server` crate only reads a `Catalog` and the library's
+files (through a `Source` trait asked on every request, so it follows
+whichever library is open), and the catalogue only answers GET and HEAD. The
+one thing it writes is KOReader reading positions, in their own database.
 
 - **Web page** for e-reader browsers (Kobo's beta browser is old WebKit):
   server-rendered HTML, no scripts, black on white, no flexbox `gap`.
@@ -123,6 +124,16 @@ open), and only answers GET and HEAD.
 - **Password** (optional): HTTP Basic, any user name, compared in constant
   time. Plain HTTP on a home network, so it keeps out housemates, not
   eavesdroppers.
+- **KOReader progress sync** (`kosync`): koreader-sync-server's protocol
+  (`/users/auth`, `/users/create`, `PUT /syncs/progress`,
+  `GET /syncs/progress/<document>`, `/healthcheck`), so KOReader's custom
+  sync server can be Magnitide. KOReader signs in with its own headers
+  (a user name and the MD5 of a password), not Basic auth: with a server
+  password, any user name and that password; without one, open. User names
+  only keep people's positions apart. Positions live in
+  `reading-positions.sqlite` in the app's data folder, never in a library,
+  keyed by user name and KOReader's document fingerprint
+  (`core::fingerprint::partial_md5`, checked against KOReader's own value).
 - tiny_http with four worker threads. The address shown comes from the
   network adapters, skipping VPN tunnels and virtual adapters (point-to-point,
   /32, or tunnel-like names): with a VPN up, the default route's address is
@@ -139,7 +150,8 @@ In order of value for effort:
    catalogue and e-reader page, which the desktop app already serves.
 2. **Accounts**: authentication, per-user state, rate limiting. TLS is
    expected from a reverse proxy; the docs will show how.
-3. **KOReader progress sync** (kosync protocol).
+3. **KOReader progress sync**: the protocol is done (the desktop app serves
+   it); a server adds real accounts and per-user libraries.
 4. **Kobo sync** (the feature many Calibre-Web users rely on).
 5. calibre's wireless-device protocol, so KOReader's "Calibre" plugin can
    connect.
@@ -195,3 +207,4 @@ a library file directly.
 | 2026-10-04 | Longer work (sends, conversions, adding, deleting) runs as jobs: shown in a status bar along the bottom (with the book count) and kept in an activity history for the session only, in memory, capped at 50. What a job changed is in the library already; the history is the account of it.                                                                           |
 | 2026-10-05 | Shelves are Magnitide's own collections (schema v4) and are written to a Kobo for both Kobo's app (`KoboReader.sqlite` `Shelf`/`ShelfContent`, as calibre's KoboTouch driver writes them, after a backup) and KOReader (`collection.lua`, read and rewritten in KOReader's own format). Only Magnitide's shelves and recognised books are changed; nothing is deleted. |
 | 2026-10-05 | The app's library server is its own crate (tiny_http, no async runtime) behind a `Source` trait, off by default and read-only (GET/HEAD only). Kobo's browser gets KEPUBs converted on demand into the cache; e-reader pages are script-free HTML for old WebKit; OPDS 1.2 for reading apps.                                                                           |
+| 2026-10-05 | KOReader progress sync speaks koreader-sync-server's protocol on the library server. Positions go in their own app-level database (calibre libraries sync too, and the library stays read-only to the server), keyed by KOReader's partial-MD5 fingerprint, which core computes the same way.                                                                          |

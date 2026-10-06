@@ -10,6 +10,7 @@ pub mod delete;
 pub mod devices;
 pub mod edit;
 pub mod error;
+pub mod fingerprint;
 pub mod fsinfo;
 pub mod html;
 mod images;

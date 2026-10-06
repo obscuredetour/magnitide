@@ -16,6 +16,7 @@ chrono = { version = "0.4.45", default-features = false, features = ["std", "clo
 flate2 = "1.1.10"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
 magnitide-catalog = { version = "0.1.0", path = "../catalog" }
+md-5 = "0.11.0"
 quick-xml = "0.42"
 reflink-copy = "0.1.30"
 roxmltree = "0.21.1"

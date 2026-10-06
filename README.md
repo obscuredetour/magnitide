@@ -134,4 +134,6 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [ ] Built-in reader
 - [ ] Export to a calibre library
 - [x] Library server (Settings → Library Server, off by default): the open library on your Wi-Fi, read-only, with an optional password. Kobo's browser (and any other) gets a plain, script-free page to browse, search and download from, with KEPUBs made on the fly from EPUBs; KOReader and other reading apps add `http://<address>/opds` as an OPDS catalogue. Shows the address and a QR code
-- [ ] Server mode: a headless server (Docker, NAS) with accounts, KOReader sync, Kobo sync
+- [x] KOReader progress sync: the library server is also a KOReader sync server (Tools → Progress sync → Custom sync server). Positions are kept per user name in their own database, outside the library
+- [ ] Reading positions in the app: match synced positions to library books (by KOReader's fingerprint of the copy on the device) and show how far you are
+- [ ] Server mode: a headless server (Docker, NAS) with accounts, Kobo sync

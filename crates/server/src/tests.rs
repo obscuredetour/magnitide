@@ -279,7 +279,12 @@ fn http(port: u16, request: &str) -> String {
 #[test]
 fn over_a_socket() {
     let (dir, source) = fixture();
-    let config = Config { port: 0, password: Some("pw".into()), cache_dir: dir.path().join("cache") };
+    let config = Config {
+        port: 0,
+        password: Some("pw".into()),
+        cache_dir: dir.path().join("cache"),
+        sync_db: Some(dir.path().join("sync.sqlite")),
+    };
     let server = Server::start(config, source).unwrap();
     let port = server.port();
     assert_ne!(port, 0);
@@ -301,6 +306,44 @@ fn over_a_socket() {
 
     // The port is free straight away, so the app can restart on it.
     let (_dir2, source) = fixture();
-    let again = Config { port, password: None, cache_dir: dir.path().join("cache") };
+    let again = Config { port, password: None, cache_dir: dir.path().join("cache"), sync_db: None };
     Server::start(again, source).expect("restarts on the same port").stop();
+}
+
+#[test]
+fn sync_over_a_socket() {
+    use md5::{Digest, Md5};
+    let (dir, source) = fixture();
+    let db = dir.path().join("sync.sqlite");
+    let config =
+        Config { port: 0, password: Some("pw".into()), cache_dir: dir.path().join("cache"), sync_db: Some(db.clone()) };
+    let server = Server::start(config, source).unwrap();
+    let port = server.port();
+    let key: String = Md5::digest(b"pw").iter().map(|b| format!("{b:02x}")).collect();
+
+    // KOReader's headers, no Basic auth; its URL ends in "/", hence "//".
+    let auth = format!("x-auth-user: jamie\r\nx-auth-key: {key}\r\nAccept: application/vnd.koreader.v1+json\r\n");
+    let ok = http(port, &format!("GET //users/auth HTTP/1.0\r\n{auth}\r\n"));
+    assert!(ok.contains(" 200 ") && ok.contains(r#"{"authorized":"OK"}"#), "{ok}");
+    let body = r#"{"document":"0123456789abcdef0123456789abcdef","progress":"/body/DocFragment[3]/body/p[1]/text().0","percentage":0.25,"device":"KOReader","device_id":"D1"}"#;
+    let put = http(
+        port,
+        &format!(
+            "PUT /syncs/progress HTTP/1.0\r\n{auth}Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        ),
+    );
+    assert!(put.contains(" 200 ") && put.contains("Content-Type: application/json"), "{put}");
+    let got = http(port, &format!("GET /syncs/progress/0123456789abcdef0123456789abcdef HTTP/1.0\r\n{auth}\r\n"));
+    assert!(got.contains(r#""percentage":0.25"#) && got.contains("DocFragment[3]"), "{got}");
+    // The wrong password is refused, with KOReader's error shape.
+    let wrong = http(port, "GET /users/auth HTTP/1.0\r\nx-auth-user: jamie\r\nx-auth-key: 00\r\n\r\n");
+    assert!(wrong.contains(" 401 ") && wrong.contains(r#""code":2001"#), "{wrong}");
+    // Writes stay limited to sync: the catalogue still refuses them.
+    let post = http(port, "POST /books HTTP/1.0\r\nAuthorization: Basic OnB3\r\nContent-Length: 0\r\n\r\n");
+    assert!(post.contains(" 405 "), "{post}");
+    server.stop();
+    // Positions outlive the server.
+    let store = kosync::SyncStore::open(&db).unwrap();
+    assert_eq!(store.entries().unwrap()[0].position.percentage, 0.25);
 }
