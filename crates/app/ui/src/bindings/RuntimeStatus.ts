@@ -21,6 +21,11 @@ size: number | null,
  */
 downloadSize: number | null, 
 /**
+ * The published archive's file name and URL for this computer, when
+ * available (for installing from a file downloaded by hand).
+ */
+downloadFile: string | null, downloadUrl: string | null, 
+/**
  * Why it can't run (a missing system library, say), when installed.
  */
 problem: string | null, };

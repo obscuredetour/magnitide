@@ -1558,9 +1558,9 @@ function PluginRuntime(props: { status: RuntimeStatus; onChange(r: RuntimeStatus
   const [working, setWorking] = createSignal<'install' | 'remove' | 'check' | null>(null);
   const mb = (bytes: number | null | undefined) => (bytes == null ? '' : `${Math.max(1, Math.round(bytes / 1e6))} MB`);
 
-  const install = async () => {
+  const install = async (file: string | null = null) => {
     setWorking('install');
-    const job = startJob('Plugin runtime', 'Downloading the plugin runtime…');
+    const job = startJob('Plugin runtime', file ? 'Installing the plugin runtime…' : 'Downloading the plugin runtime…');
     const unlisten = await onPluginRuntimeProgress((p) => {
       if (p.phase === 'downloading') {
         job.progress(
@@ -1573,7 +1573,7 @@ function PluginRuntime(props: { status: RuntimeStatus; onChange(r: RuntimeStatus
       else if (p.phase === 'compiling') job.progress('Preparing the plugin runtime…');
     });
     try {
-      const r = await api.installPluginRuntime();
+      const r = file ? await api.installPluginRuntimeFromFile(file) : await api.installPluginRuntime();
       props.onChange(r);
       job.finish(r.problem ? `Installed, but it can't start here: ${r.problem}` : 'Plugin runtime installed', {
         error: !!r.problem,
@@ -1585,6 +1585,11 @@ function PluginRuntime(props: { status: RuntimeStatus; onChange(r: RuntimeStatus
       unlisten();
       setWorking(null);
     }
+  };
+
+  const installFromFile = async () => {
+    const path = await api.chooseRuntimeArchive();
+    if (path) await install(path);
   };
 
   const remove = async () => {
@@ -1672,6 +1677,27 @@ function PluginRuntime(props: { status: RuntimeStatus; onChange(r: RuntimeStatus
           >
             Install
           </button>
+          {' · '}
+          <button
+            class="cursor-pointer text-link hover:underline"
+            disabled={!!working()}
+            title={
+              props.status.downloadFile
+                ? `${props.status.downloadFile}, from ${props.status.downloadUrl}`
+                : 'The published archive for this computer'
+            }
+            onClick={() => void installFromFile()}
+          >
+            Install from file…
+          </button>
+          <Show when={props.status.downloadFile}>
+            {(file) => (
+              <span class="mt-0.5 block text-faint">
+                Can't download here? Get <span class="select-text">{file()}</span> from the plugin-runtime release and
+                install it from the file; only that archive is accepted.
+              </span>
+            )}
+          </Show>
         </span>
       </Match>
     </Switch>

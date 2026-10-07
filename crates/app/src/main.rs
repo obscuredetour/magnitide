@@ -185,6 +185,7 @@ fn main() {
             plugins::set_plugin_output_format,
             plugins::plugin_runtime_status,
             plugins::install_plugin_runtime,
+            plugins::install_plugin_runtime_from_file,
             plugins::cancel_plugin_runtime_install,
             plugins::remove_plugin_runtime
         ])

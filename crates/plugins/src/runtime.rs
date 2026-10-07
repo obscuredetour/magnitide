@@ -219,6 +219,26 @@ impl Runtime {
         Runtime::install_from(base, &Source::Url(release.url()), release.sha256, release.size, cancel, progress)
     }
 
+    /// [`Runtime::install`] from an archive already on disk (downloaded by
+    /// hand, say): it must be this computer's published archive, by hash.
+    pub fn install_file(
+        base: &Path,
+        archive: &Path,
+        cancel: &AtomicBool,
+        progress: &mut dyn FnMut(Progress),
+    ) -> Result<Runtime, String> {
+        let release =
+            release().ok_or_else(|| format!("There's no plugin runtime for this computer ({}) yet.", this_target()))?;
+        Runtime::install_from(
+            base,
+            &Source::File(archive.to_path_buf()),
+            release.sha256,
+            release.size,
+            cancel,
+            progress,
+        )
+    }
+
     /// [`Runtime::install`] from any source, checked against `sha256` (and
     /// `size`, when known).
     pub fn install_from(
@@ -244,9 +264,15 @@ impl Runtime {
         let got = sha256_file(&archive)?;
         if got != sha256 {
             let _ = std::fs::remove_file(&download);
-            return Err(format!(
-                "The downloaded runtime doesn't match what Magnitide expects (sha256 {got}); it wasn't installed."
-            ));
+            return Err(match source {
+                Source::Url(_) => format!(
+                    "The downloaded runtime doesn't match what Magnitide expects (sha256 {got}); it wasn't installed."
+                ),
+                Source::File(path) => format!(
+                    "{} isn't the plugin runtime this Magnitide expects for this computer (sha256 {got}); it wasn't installed.",
+                    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+                ),
+            });
         }
         let _ = std::fs::remove_dir_all(&tmp);
         let result = (|| -> Result<(), String> {
@@ -570,6 +596,22 @@ mod tests {
     }
 
     #[test]
+    fn a_file_that_isnt_this_computers_runtime_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let junk = dir.path().join("magnitide-plugin-runtime-1-nope.tar.zst");
+        std::fs::write(&junk, b"not an archive").unwrap();
+        let base = dir.path().join("base");
+        let err = Runtime::install_file(&base, &junk, &AtomicBool::new(false), &mut |_| {}).unwrap_err();
+        // No release for this target, or the wrong file for it: either way nothing is installed.
+        assert!(
+            err.contains("isn't the plugin runtime") || err.contains("no plugin runtime for this computer"),
+            "{err}"
+        );
+        assert!(junk.exists(), "the user's file is kept");
+        assert!(!base.join(VERSION).exists());
+    }
+
+    #[test]
     fn a_wrong_hash_installs_nothing() {
         let dir = tempfile::tempdir().unwrap();
         let (archive, _sha, size) = fixture_archive(dir.path());
@@ -583,7 +625,7 @@ mod tests {
             &mut |_| {},
         )
         .unwrap_err();
-        assert!(err.contains("doesn't match"), "{err}");
+        assert!(err.contains("isn't the plugin runtime this Magnitide expects"), "{err}");
         assert!(!base.join(VERSION).exists() && !base.join(format!("{VERSION}.tmp")).exists());
     }
 

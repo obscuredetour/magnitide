@@ -196,6 +196,10 @@ pub struct RuntimeStatus {
     pub size: Option<u64>,
     /// The archive's size in bytes, when not installed and available.
     pub download_size: Option<u64>,
+    /// The published archive's file name and URL for this computer, when
+    /// available (for installing from a file downloaded by hand).
+    pub download_file: Option<String>,
+    pub download_url: Option<String>,
     /// Why it can't run (a missing system library, say), when installed.
     pub problem: Option<String>,
 }
@@ -358,6 +362,8 @@ impl Plugins {
                 path: Some(rt.dir.display().to_string()),
                 size: Some(rt.size_on_disk()),
                 download_size: None,
+                download_file: release.map(|r| r.file.to_owned()),
+                download_url: release.map(|r| r.url()),
                 problem: None,
             },
             None => RuntimeStatus {
@@ -371,6 +377,8 @@ impl Plugins {
                 path: None,
                 size: None,
                 download_size: release.map(|r| r.size),
+                download_file: release.map(|r| r.file.to_owned()),
+                download_url: release.map(|r| r.url()),
                 problem: None,
             },
         }
@@ -386,6 +394,23 @@ impl Plugins {
             return Err("The plugin runtime is already being installed.".into());
         }
         let result = Runtime::install(&self.runtime_base, cancel, progress);
+        self.installing.store(false, Ordering::SeqCst);
+        result?;
+        Ok(self.runtime_status())
+    }
+
+    /// Install the runtime from an archive on disk (the published one for
+    /// this computer, downloaded by hand).
+    pub fn install_runtime_from_file(
+        &self,
+        archive: &Path,
+        cancel: &AtomicBool,
+        progress: &mut dyn FnMut(Progress),
+    ) -> Result<RuntimeStatus, String> {
+        if self.installing.swap(true, Ordering::SeqCst) {
+            return Err("The plugin runtime is already being installed.".into());
+        }
+        let result = Runtime::install_file(&self.runtime_base, archive, cancel, progress);
         self.installing.store(false, Ordering::SeqCst);
         result?;
         Ok(self.runtime_status())

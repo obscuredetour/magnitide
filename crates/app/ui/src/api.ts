@@ -363,6 +363,18 @@ export const api = {
   /** Download and install the plugin runtime; `onPluginRuntimeProgress` reports meanwhile. */
   installPluginRuntime: () => invoke<RuntimeStatus>('install_plugin_runtime'),
 
+  /** Install the plugin runtime from its published archive, downloaded by hand (checked by its hash). */
+  installPluginRuntimeFromFile: (path: string) => invoke<RuntimeStatus>('install_plugin_runtime_from_file', { path }),
+
+  async chooseRuntimeArchive(): Promise<string | null> {
+    const picked = await open({
+      title: 'Choose the plugin runtime archive',
+      multiple: false,
+      filters: [{ name: 'Plugin runtime archive', extensions: ['zst'] }],
+    });
+    return typeof picked === 'string' ? picked : null;
+  },
+
   cancelPluginRuntimeInstall: () => invoke<void>('cancel_plugin_runtime_install'),
 
   /** Remove the plugin runtime (plugins and their settings are kept). */

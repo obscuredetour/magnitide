@@ -16,6 +16,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
 use calibre_compat::write::WriteOptions;
@@ -673,6 +674,24 @@ pub async fn plugin_runtime_status(app: AppHandle) -> CmdResult<RuntimeStatus> {
 /// events meanwhile. Returns its state once installed.
 #[tauri::command]
 pub async fn install_plugin_runtime(app: AppHandle) -> CmdResult<RuntimeStatus> {
+    install_runtime_with(app, |plugins, cancel, report| plugins.install_runtime(cancel, report)).await
+}
+
+/// Install the plugin runtime from an archive on disk: the published one
+/// for this computer, downloaded by hand (checked by its hash).
+#[tauri::command]
+pub async fn install_plugin_runtime_from_file(app: AppHandle, path: String) -> CmdResult<RuntimeStatus> {
+    let archive = PathBuf::from(path);
+    install_runtime_with(app, move |plugins, cancel, report| {
+        plugins.install_runtime_from_file(&archive, cancel, report)
+    })
+    .await
+}
+
+async fn install_runtime_with(
+    app: AppHandle,
+    install: impl FnOnce(&Plugins, &AtomicBool, &mut dyn FnMut(Progress)) -> Result<RuntimeStatus, String> + Send + 'static,
+) -> CmdResult<RuntimeStatus> {
     let cancel = app.state::<RuntimeInstall>().0.clone();
     cancel.store(false, std::sync::atomic::Ordering::SeqCst);
     let handle = app.clone();
@@ -687,7 +706,7 @@ pub async fn install_plugin_runtime(app: AppHandle) -> CmdResult<RuntimeStatus> 
                 let _ = handle.emit(PLUGIN_RUNTIME_PROGRESS_EVENT, p);
             }
         };
-        let status = plugins.install_runtime(&cancel, &mut report)?;
+        let status = install(&plugins, &cancel, &mut report)?;
         Ok(plugins
             .check_runtime()
             .problem

@@ -228,8 +228,10 @@ Still to do:
 - Windows: links need Developer Mode there; without it files are copied.
 - The runtime release (`plugin-runtime-v1`, published 2026-10-07, hashes in
   `runtime.rs`) sits on a private repository, so the app's download gets a
-  404 until the repository or the release is public; `fetch.sh` and CI use
-  `gh` with a token meanwhile.
+  404 until the repository or the release is public. Meanwhile Settings ›
+  Plugins › "Install from file…" installs the archive downloaded by hand
+  from the release (only the one for this computer, by hash); `fetch.sh`
+  and CI use `gh` with a token.
 
 Better built natively than hosted, because they mostly drive calibre's
 library view rather than doing work of their own:
