@@ -1382,8 +1382,8 @@ function PluginSettings() {
               label="Plugin conversions"
               description="When a plugin converts books (FanFicFare after downloading, say), they're converted to this. Plugins see it as calibre's output format."
             >
-              <select
-                class="h-7 rounded-control border border-line bg-field px-2 text-xs"
+              <Select
+                class="h-7 pl-2 text-xs"
                 aria-label="Format plugins convert to"
                 value={s().outputFormat}
                 onChange={(e) => {
@@ -1395,7 +1395,7 @@ function PluginSettings() {
                 }}
               >
                 <For each={PLUGIN_OUTPUT_FORMATS}>{(f) => <option value={f}>{f}</option>}</For>
-              </select>
+              </Select>
             </Row>
             <Show
               when={s().plugins.length}
