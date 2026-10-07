@@ -40,9 +40,18 @@ if [ -f "$dest/python/magnitide-runtime.json" ] && [ "$(cat "$dest/.sha256" 2>/d
   echo "fetch.sh: $target runtime $version already in $dest"
 else
   if [ ! -f "$cache/$file" ] || [ "$(shasum -a 256 "$cache/$file" | cut -d' ' -f1)" != "$expected" ]; then
-    echo "fetch.sh: downloading $base/$file"
-    curl -fSL --retry 3 -o "$cache/$file.part" "$base/$file"
-    mv "$cache/$file.part" "$cache/$file"
+    rm -f "$cache/$file"
+    # While the repository is private the assets need a GitHub token: the
+    # gh CLI (GH_TOKEN on CI, a login elsewhere) gets them; curl otherwise.
+    if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+      echo "fetch.sh: downloading $file from the plugin-runtime-v$version release (gh)"
+      gh release download "plugin-runtime-v$version" --repo "${MAGNITIDE_REPO:-obscuredetour/magnitide}" \
+        --pattern "$file" --dir "$cache" --clobber
+    else
+      echo "fetch.sh: downloading $base/$file"
+      curl -fSL --retry 3 -o "$cache/$file.part" "$base/$file"
+      mv "$cache/$file.part" "$cache/$file"
+    fi
   fi
   actual="$(shasum -a 256 "$cache/$file" | cut -d' ' -f1)"
   if [ "$actual" != "$expected" ]; then

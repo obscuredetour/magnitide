@@ -1,0 +1,5 @@
+20fd707df18f6c011a05c58ac3e51ccf7f920eca0d254e613e1fc4c2c887b79a  magnitide-plugin-runtime-1-aarch64-apple-darwin.tar.zst
+c3a434c92e6012bf8fda60359364427b08706199fd9a4d1bdbe9d1c61fbccef4  magnitide-plugin-runtime-1-aarch64-unknown-linux-gnu.tar.zst
+853029f6755d05b865fe2ac93d54f8ac31dbb9c23aa3e9ee7c069311b02741ee  magnitide-plugin-runtime-1-x86_64-apple-darwin.tar.zst
+dadc297379a8f6f63f9bbe33c8e7c56407ddb40fde0534d5bbd3757e5f804e4b  magnitide-plugin-runtime-1-x86_64-pc-windows-msvc.tar.zst
+4cb619a9a3543b7c226747fcc5002589062259643e58053fdad0c49f2ced901e  magnitide-plugin-runtime-1-x86_64-unknown-linux-gnu.tar.zst

@@ -226,9 +226,10 @@ Still to do:
   writes through the link into the library. None of the surveyed plugins
   do, but it isn't prevented.
 - Windows: links need Developer Mode there; without it files are copied.
-- Publishing the first runtime release (`plugin-runtime-v1`) and pasting its
-  hashes into `runtime.rs`; until then Settings shows the runtime as not
-  available for download.
+- The runtime release (`plugin-runtime-v1`, published 2026-10-07, hashes in
+  `runtime.rs`) sits on a private repository, so the app's download gets a
+  404 until the repository or the release is public; `fetch.sh` and CI use
+  `gh` with a token meanwhile.
 
 Better built natively than hosted, because they mostly drive calibre's
 library view rather than doing work of their own:

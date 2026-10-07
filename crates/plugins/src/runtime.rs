@@ -37,7 +37,43 @@ pub struct Release {
 
 /// Printed by `build.py --rust-table manifest.json` after a release; must
 /// match `scripts/plugin-runtime/sha256sums.txt` (a test checks).
-pub const RELEASES: &[Release] = &[];
+pub const RELEASES: &[Release] = &[
+    Release {
+        target: "aarch64-apple-darwin",
+        file: "magnitide-plugin-runtime-1-aarch64-apple-darwin.tar.zst",
+        sha256: "20fd707df18f6c011a05c58ac3e51ccf7f920eca0d254e613e1fc4c2c887b79a",
+        size: 39349347,
+        installed_size: 149831372,
+    },
+    Release {
+        target: "aarch64-unknown-linux-gnu",
+        file: "magnitide-plugin-runtime-1-aarch64-unknown-linux-gnu.tar.zst",
+        sha256: "c3a434c92e6012bf8fda60359364427b08706199fd9a4d1bdbe9d1c61fbccef4",
+        size: 60106425,
+        installed_size: 238428825,
+    },
+    Release {
+        target: "x86_64-apple-darwin",
+        file: "magnitide-plugin-runtime-1-x86_64-apple-darwin.tar.zst",
+        sha256: "853029f6755d05b865fe2ac93d54f8ac31dbb9c23aa3e9ee7c069311b02741ee",
+        size: 41990656,
+        installed_size: 151951724,
+    },
+    Release {
+        target: "x86_64-pc-windows-msvc",
+        file: "magnitide-plugin-runtime-1-x86_64-pc-windows-msvc.tar.zst",
+        sha256: "dadc297379a8f6f63f9bbe33c8e7c56407ddb40fde0534d5bbd3757e5f804e4b",
+        size: 33321369,
+        installed_size: 126522126,
+    },
+    Release {
+        target: "x86_64-unknown-linux-gnu",
+        file: "magnitide-plugin-runtime-1-x86_64-unknown-linux-gnu.tar.zst",
+        sha256: "4cb619a9a3543b7c226747fcc5002589062259643e58053fdad0c49f2ced901e",
+        size: 65979179,
+        installed_size: 242895173,
+    },
+];
 
 /// This build's target triple, as the archives are named.
 pub const fn this_target() -> &'static str {

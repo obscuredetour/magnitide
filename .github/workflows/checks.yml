@@ -53,6 +53,8 @@ jobs:
       - name: Plugin runtime
         id: runtime
         if: hashFiles('scripts/plugin-runtime/sha256sums.txt') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}  # fetch.sh downloads the release through gh while the repository is private
         run: |
           sudo apt-get install -y --no-install-recommends zstd xvfb libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
             libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-sync1 libxcb-xfixes0 \
