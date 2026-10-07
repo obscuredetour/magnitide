@@ -20,6 +20,10 @@ core with a Tauri desktop app, built to stay quick with 50,000 books and more.
   on a Kobo, for Kobo's own app and KOReader alike.
 - **On your network.** An optional library server with an OPDS catalogue for reading apps, a simple page for
   e-reader browsers, and KOReader progress sync.
+- **calibre plugins.** The plugins you rely on run in your own installed calibre, unchanged, with their settings
+  kept apart from calibre's. Metadata sources join Find Metadata. Toolbar plugins work on the selected books from
+  the Plugins button or the book menu; their windows open as in calibre, and what they change comes back into the
+  library through Magnitide's own editing. Still in progress: see the roadmap.
 - **Make it yours.** Themes (light, dark, sepia, Catppuccin, Dracula and more), accent colours, and interface size.
 
 Magnitide is in active development: the [roadmap](#roadmap) tracks what's done and what's next. How the pieces fit,
