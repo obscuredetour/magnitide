@@ -46,11 +46,12 @@ QT_KEEP = ('Core', 'Gui', 'Widgets', 'Network', 'PrintSupport', 'Svg', 'SvgWidge
            'OpenGL', 'OpenGLWidgets', 'DBus')
 QT_PLUGIN_DIRS_KEEP = ('platforms', 'styles', 'imageformats', 'iconengines', 'tls', 'printsupport', 'generic',
                        'platforminputcontexts', 'platformthemes', 'xcbglintegrations', 'wayland-decoration-client',
-                       'wayland-graphics-integration-client', 'wayland-shell-integration', 'egldeviceintegrations',
-                       'networkinformation')
+                       'wayland-graphics-integration-client', 'wayland-shell-integration', 'networkinformation')
 QT_PLATFORM_PLUGINS_KEEP = ('cocoa', 'windows', 'xcb', 'wayland', 'wayland-egl', 'minimal', 'offscreen')
-# Qt frameworks/libraries that the kept ones may link to without a PyQt6 module of their own.
-QT_LIB_EXTRA_KEEP = ('Concurrent',)
+# Qt frameworks/libraries that the kept ones may link to without a PyQt6
+# module of their own: on Linux the xcb and Wayland platform plugins (and
+# their integration plugins) link Qt's private platform libraries.
+QT_LIB_EXTRA_KEEP = ('Concurrent', 'XcbQpa', 'WaylandClient', 'WlShellIntegration', 'WaylandEglClientHwIntegration')
 
 MAX_INSTALLED_MB = 240
 MAX_ARCHIVE_MB = 90
