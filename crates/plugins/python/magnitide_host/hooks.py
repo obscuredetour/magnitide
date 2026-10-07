@@ -282,7 +282,19 @@ def m_plugin_configure(params):
                 except Exception:
                     traceback.print_exc()
         else:
-            changed = bool(p.do_user_config(parent))
+            if isinstance(p, InterfaceActionBase) and p.actual_plugin_ is None and p.actual_plugin:
+                # Its settings live in the actual plugin: load it first (as
+                # calibre has by now), and say why when that fails.
+                try:
+                    p.load_actual_plugin(parent)
+                except Exception as e:
+                    raise ValueError(
+                        f"{p.name} couldn't be loaded, so its settings can't be opened: {type(e).__name__}: {e}"
+                    ) from e
+            try:
+                changed = bool(p.do_user_config(parent))
+            except NotImplementedError:
+                raise ValueError(f'{p.name} has no settings to configure.') from None
             if changed and isinstance(p, InterfaceActionBase):
                 ac = p.actual_plugin_
                 if ac is not None and hasattr(ac, 'apply_settings'):

@@ -177,6 +177,11 @@ plugins do).
 - `crates/plugins/python-tests/` is the compat package's own pytest suite
   (`QT_QPA_PLATFORM=offscreen pytest crates/plugins/python-tests`, with the
   runtime's wheels on the path); `ruff` lints and formats the Python.
+- A plugin that needs a Python package the runtime doesn't ship can have it
+  installed into `<app config>/calibre-plugins/site-packages` (for example
+  `python3.14 -m pip install --target <that folder> <package>`); the host
+  adds that folder to its path. The runtime ships `pycryptodome` (plugins
+  that sign or encrypt books import `Crypto`/`Cryptodome`) from version 2.
 - Linux needs Qt's xcb libraries (see `scripts/plugin-runtime/README.md`);
   `python -I -m magnitide_host doctor` reports what's missing, as Settings
   does.

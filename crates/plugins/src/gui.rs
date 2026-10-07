@@ -95,7 +95,9 @@ impl Plugins {
                             .iter()
                             .find(|p| self.path_of(p).to_string_lossy() == path.as_str())
                             .map_or(path.as_str(), |p| p.name.as_str());
-                        format!("{name}: {}", why.as_str().unwrap_or_default())
+                        let why = why.as_str().unwrap_or_default();
+                        self.note_error(name, why);
+                        format!("{name}: {why}")
                     })
                     .collect()
             })

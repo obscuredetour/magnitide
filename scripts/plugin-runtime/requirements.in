@@ -35,3 +35,7 @@ pypdf
 msgpack
 apsw
 xxhash
+
+# Cryptography for plugins that sign or encrypt books (`Crypto` / `Cryptodome`);
+# calibre itself doesn't bundle it, so such plugins ask users to install it.
+pycryptodome

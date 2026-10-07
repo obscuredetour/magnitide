@@ -56,7 +56,10 @@ export function loadPluginMenus(): Promise<void> {
       .then(
         (m) => {
           setPluginMenus(m);
-          for (const e of m.errors) console.warn(e);
+          for (const e of m.errors) {
+            console.warn(e);
+            toast(`A plugin couldn't be loaded. ${e}`, { error: true, duration: 9000 });
+          }
         },
         (err) => {
           setPluginMenus({ menus: [], errors: [errorMessage(err)] });
