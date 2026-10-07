@@ -3,12 +3,17 @@
 // generates from the Rust structs (`cargo test` regenerates them).
 
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
-import { createSignal } from 'solid-js';
+import { batch, createSignal } from 'solid-js';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open, save } from '@tauri-apps/plugin-dialog';
 
 import type { BookDetails } from './bindings/BookDetails';
+import type { CustomDetail } from './bindings/CustomDetail';
+import type { CustomField } from './bindings/CustomField';
+import type { FieldKind } from './bindings/FieldKind';
+import type { FieldValue } from './bindings/FieldValue';
+import type { NewField } from './bindings/NewField';
 import type { ConversionInfo } from './bindings/ConversionInfo';
 import type { ConvertReport } from './bindings/ConvertReport';
 import type { CoverPreview } from './bindings/CoverPreview';
@@ -68,6 +73,11 @@ import type { SortDir } from './bindings/SortDir';
 import type { SortKey } from './bindings/SortKey';
 
 export type {
+  CustomDetail,
+  CustomField,
+  FieldKind,
+  FieldValue,
+  NewField,
   AddReport,
   ApplyReport,
   InstalledPlugin,
@@ -134,7 +144,18 @@ export const api = {
   openLibrary: (path: string | null) => invoke<LibraryInfo>('open_library', { path }),
 
   /** Books matching `query` (calibre-style search subset), in `sort` order. */
-  listBooks: (query: string, sort: SortKey, dir: SortDir) => invoke<BookRow[]>('list_books', { query, sort, dir }),
+  /** With `field` (a custom field's key), sorted by that instead of `sort`. */
+  listBooks: (query: string, sort: SortKey, dir: SortDir, field: string | null) =>
+    invoke<BookRow[]>('list_books', { query, sort, dir, field }),
+
+  /** The open library's custom fields, in order (calibre libraries' too). */
+  customFields: () => invoke<CustomField[]>('custom_fields'),
+  addCustomField: (field: NewField) => invoke<CustomField>('add_custom_field', { field }),
+  /** Rename a field; for a choice field, also set its choices. */
+  updateCustomField: (id: number, name: string, choices: string[] | null) =>
+    invoke<CustomField>('update_custom_field', { id, name, choices }),
+  /** Delete a field and every book's value for it. */
+  deleteCustomField: (id: number) => invoke<void>('delete_custom_field', { id }),
 
   bookDetails: (id: number) => invoke<BookDetails>('book_details', { id }),
 
@@ -395,6 +416,19 @@ let coverBase: string | undefined;
 // showing its cached copy. The Rust protocol ignores the query string.
 const [coverVersions, setCoverVersions] = createSignal<ReadonlyMap<number, number>>(new Map());
 
+// Book ids are only unique within a library, so the open library's key is part
+// of every cover URL: otherwise, after switching libraries (e.g. calibre → its
+// import), the webview shows the previous library's cached cover for each id.
+const [coverLibrary, setCoverLibrary] = createSignal('');
+
+/** Call when a library is opened, with its `LibraryInfo.cacheKey`. */
+export function coverLibraryChanged(cacheKey: string): void {
+  batch(() => {
+    setCoverLibrary(cacheKey);
+    setCoverVersions(new Map());
+  });
+}
+
 /** Mark a book's cover as changed (its images reload everywhere). */
 export function coverChanged(id: number): void {
   setCoverVersions((m) => new Map(m).set(id, (m.get(id) ?? 0) + 1));
@@ -404,7 +438,7 @@ export function coverChanged(id: number): void {
 export function coverUrl(size: CoverSize, id: number): string {
   coverBase ??= convertFileSrc('', 'cover');
   const v = coverVersions().get(id);
-  return `${coverBase}${size}/${id}${v ? `?v=${v}` : ''}`;
+  return `${coverBase}${size}/${id}?l=${encodeURIComponent(coverLibrary())}${v ? `&v=${v}` : ''}`;
 }
 
 /** A downloaded source cover (see `api.coverPreview`), via the Rust `cover://` protocol. */

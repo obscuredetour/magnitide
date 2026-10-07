@@ -5,6 +5,7 @@
 pub mod bulk;
 pub mod catalog;
 pub mod convert;
+pub mod custom;
 pub mod db;
 pub mod delete;
 pub mod devices;
@@ -26,6 +27,7 @@ pub mod shelves;
 pub mod tidy;
 pub mod writeback;
 
+pub use custom::{CustomField, FieldKind, FieldValue, NewField};
 pub use edit::{AuthorSort, BookEdit, EditOutcome};
 pub use error::{Error, Result};
 pub use library::{Book, BookId, LOCAL_USER, Library, LibraryInfo, NewBook, UserId};

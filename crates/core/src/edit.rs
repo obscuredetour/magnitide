@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Error, Result};
 use magnitide_catalog::SeriesEntry;
 
+use crate::custom::{FieldValue, write_custom};
 use crate::library::{BookId, LOCAL_USER, Library, author_id, now, publisher_id, series_id, tag_id};
 use crate::{html, images, names, paths};
 
@@ -53,6 +54,10 @@ pub struct BookEdit {
     pub identifiers: BTreeMap<String, String>,
     /// HTML; sanitized when saved.
     pub description_html: Option<String>,
+    /// Custom fields by key ("pages"): null clears one. Fields left out are
+    /// unchanged; the editor gets every field.
+    #[serde(default)]
+    pub custom: BTreeMap<String, Option<FieldValue>>,
 }
 
 /// What a successful edit did on disk.
@@ -87,6 +92,7 @@ impl Library {
             languages: b.languages,
             identifiers: b.identifiers,
             description_html: b.description_html,
+            custom: self.custom_edit_values(id)?,
         })
     }
 
@@ -94,6 +100,7 @@ impl Library {
     /// author changed. All-or-nothing across the database and the disk.
     pub fn update_book(&mut self, id: BookId, edit: &BookEdit) -> Result<EditOutcome> {
         let clean = Clean::from(edit)?;
+        let custom = self.clean_custom(&edit.custom)?;
         let root = self.root.clone();
         let tx = self.conn.transaction()?;
 
@@ -105,6 +112,7 @@ impl Library {
 
         debug_assert!(!old_path.is_empty());
         write_metadata(&tx, id, &clean)?;
+        write_custom(&tx, id, &custom)?;
         // Folder and file names follow the (new) title and first author.
         sync_names(&tx, &root, id, &clean.title, &clean.authors[0])?.commit(tx, &root)
     }

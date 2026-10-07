@@ -6,6 +6,8 @@ import { api, type AuthorSort, type BookEdit, type BookRow } from '../api';
 import { Autocomplete } from './Autocomplete';
 import { changeCover, closeEditor, type Editing, saveEdit } from '../editor';
 import { items } from '../library';
+import { customFields } from '../fields';
+import { CustomFieldInput, customFieldHint } from './CustomFieldInput';
 import { Cover } from './Cover';
 import { type Applied, MatchDialog } from './MatchDialog';
 import { Icon } from './Icon';
@@ -425,6 +427,25 @@ export function EditDialog(props: { editing: Editing }) {
                   <input class={input} value={identifiers()} onInput={(e) => setIdentifiers(e.currentTarget.value)} />
                 </Field>
               </div>
+              <Show when={customFields().length}>
+                <h3 class="col-span-2 mt-2 border-t border-line pt-3 text-xs font-semibold tracking-[.06em] text-muted uppercase">
+                  Custom fields
+                </h3>
+                <For each={customFields()}>
+                  {(f) => (
+                    <div classList={{ 'col-span-2': f.kind === 'longText' || f.kind === 'series' }}>
+                      <Field label={f.name} hint={customFieldHint(f)} for={`custom-${f.key}`}>
+                        <CustomFieldInput
+                          field={f}
+                          inputClass={input}
+                          value={form.custom[f.key] ?? null}
+                          onChange={(v) => setForm('custom', f.key, v)}
+                        />
+                      </Field>
+                    </div>
+                  )}
+                </For>
+              </Show>
             </div>
 
             {/* Description: under the fields, or its own column as tall as the fields
@@ -582,7 +603,7 @@ function Collects(props: {
     () => query().trim(),
     async (q) => {
       if (q.length < 2) return [];
-      const rows = await api.listBooks(q, 'title', 'asc').catch(() => [] as BookRow[]);
+      const rows = await api.listBooks(q, 'title', 'asc', null).catch(() => [] as BookRow[]);
       return rows.filter((r) => r.id !== props.id && !props.ids.includes(r.id)).slice(0, 6);
     },
   );
@@ -590,7 +611,7 @@ function Collects(props: {
   const [inRange] = createResource(
     () => (props.series && props.end != null ? ([props.series, props.start, props.end] as const) : null),
     async ([series, start, end]) => {
-      const rows = await api.listBooks(`series:"${series}"`, 'series', 'asc').catch(() => [] as BookRow[]);
+      const rows = await api.listBooks(`series:"${series}"`, 'series', 'asc', null).catch(() => [] as BookRow[]);
       return rows.filter((r) => {
         const n = Number(r.seriesIndex);
         return r.id !== props.id && r.series === series && Number.isFinite(n) && n >= start && n <= end;

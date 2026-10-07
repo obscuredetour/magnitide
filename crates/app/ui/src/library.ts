@@ -3,7 +3,16 @@
 
 import { batch, createSignal } from 'solid-js';
 
-import { api, type BookRow, errorMessage, type LibraryInfo, type SortDir, type SortKey } from './api';
+import {
+  api,
+  type BookRow,
+  coverLibraryChanged,
+  errorMessage,
+  type LibraryInfo,
+  type SortDir,
+  type SortKey,
+} from './api';
+import { customFields, loadCustomFields, naturalFieldDir } from './fields';
 import { storage } from './storage';
 import { toast } from './toast';
 
@@ -97,6 +106,8 @@ export const [editRevision, setEditRevision] = createSignal(0);
 
 const storedSort = storage.get('sort');
 export const [sort, setSortSignal] = createSignal<SortKey>(isSortKey(storedSort) ? storedSort : 'title');
+/** Sorted by this custom field (its key) instead of `sort`, when set. */
+export const [sortField, setSortFieldSignal] = createSignal<string | null>(storage.get('sortField') || null);
 const storedDir = storage.get('sortDir');
 export const [sortDir, setSortDirSignal] = createSignal<SortDir>(
   isSortDir(storedDir) ? storedDir : NATURAL_DIR[sort()],
@@ -141,7 +152,7 @@ let refreshSeq = 0;
 export async function refresh(): Promise<void> {
   const seq = ++refreshSeq;
   try {
-    const result = await api.listBooks(query(), sort(), sortDir());
+    const result = await api.listBooks(query(), sort(), sortDir(), sortField());
     if (seq !== refreshSeq) return;
     batch(() => {
       setItems(result);
@@ -157,16 +168,37 @@ export function setSort(key: SortKey, dir: SortDir = NATURAL_DIR[key]): void {
   batch(() => {
     setSortSignal(key);
     setSortDirSignal(dir);
+    setSortFieldSignal(null);
   });
   storage.set('sort', key);
   storage.set('sortDir', dir);
+  storage.set('sortField', '');
+  void refresh();
+}
+
+/** Sort by a custom field (its key); without `dir`, in its natural direction. */
+export function setFieldSort(key: string, dir?: SortDir): void {
+  const field = customFields().find((f) => f.key === key);
+  const d = dir ?? (field ? naturalFieldDir(field.kind) : 'asc');
+  batch(() => {
+    setSortFieldSignal(key);
+    setSortDirSignal(d);
+  });
+  storage.set('sortField', key);
+  storage.set('sortDir', d);
   void refresh();
 }
 
 /** Table header click: same column flips direction, a new column starts natural. */
 export function toggleSort(key: SortKey): void {
-  if (key === sort()) setSort(key, sortDir() === 'asc' ? 'desc' : 'asc');
+  if (key === sort() && sortField() === null) setSort(key, sortDir() === 'asc' ? 'desc' : 'asc');
   else setSort(key);
+}
+
+/** The same for a custom field's column. */
+export function toggleFieldSort(key: string): void {
+  if (key === sortField()) setFieldSort(key, sortDir() === 'asc' ? 'desc' : 'asc');
+  else setFieldSort(key);
 }
 
 export function search(text: string): void {
@@ -181,7 +213,9 @@ export async function openLibrary(path: string | null): Promise<boolean> {
     for (const w of info.warnings) console.warn(w);
     storage.set('libraryPath', info.path);
     rememberLibrary(info);
+    await loadCustomFields();
     batch(() => {
+      coverLibraryChanged(info.cacheKey);
       setLibrary(info);
       setSelectedId(null);
       setDetailsOpen(false);

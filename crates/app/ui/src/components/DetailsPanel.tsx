@@ -1,4 +1,4 @@
-import { createResource, createSignal, For, Show } from 'solid-js';
+import { createResource, createSignal, For, Match, Show, Switch } from 'solid-js';
 import SquareLibrary from 'lucide-solid/icons/square-library';
 import X from 'lucide-solid/icons/x';
 
@@ -6,6 +6,7 @@ import { api, type BookDetails, errorMessage, fileManagerName, type MatchedBy } 
 import { openEditor } from '../editor';
 import { DETAILS_WIDTH, detailsWidth, setDetailsWidth } from '../view';
 import { editRevision, library, openBook, search, setSelectedId } from '../library';
+import { formatCustom } from '../fields';
 import { toast } from '../toast';
 import { devices, onDevice } from '../devices';
 import { addFromDevice, removeFormat, removeFromDevice, sendToDevice } from '../transfer';
@@ -441,6 +442,33 @@ function Details(props: { book: BookDetails }) {
                 </button>
               </p>
             </Show>
+          </section>
+        </Show>
+
+        <Show when={b().custom.length}>
+          <section class={section}>
+            <h3 class={sectionLabel}>Custom fields</h3>
+            <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
+              <For each={b().custom}>
+                {(c) => (
+                  <>
+                    <dt class="text-muted">{c.name}</dt>
+                    <Switch fallback={<dd class="[overflow-wrap:anywhere]">{formatCustom(c.kind, c.value)}</dd>}>
+                      <Match when={c.kind === 'rating'}>
+                        <dd class="tracking-[1px] text-star" title={`${Number(c.value) / 2} of 5`}>
+                          {'★'.repeat(Math.floor(Number(c.value) / 2))}
+                          {Number(c.value) % 2 ? '½' : ''}
+                        </dd>
+                      </Match>
+                      <Match when={c.kind === 'longText'}>
+                        {/* Sanitized in Rust, like the description. */}
+                        <dd class="comments-html font-serif" innerHTML={c.value} />
+                      </Match>
+                    </Switch>
+                  </>
+                )}
+              </For>
+            </dl>
           </section>
         </Show>
 

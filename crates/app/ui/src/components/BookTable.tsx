@@ -20,7 +20,9 @@ import Ellipsis from 'lucide-solid/icons/ellipsis';
 
 import type { BookRow, SortKey } from '../api';
 import { onDevice } from '../devices';
-import { sort, sortDir, toggleSort } from '../library';
+import { sort, sortDir, sortField, toggleFieldSort, toggleSort } from '../library';
+import { customFields, formatCustom, isNumeric } from '../fields';
+import type { CustomField } from '../api';
 import {
   columnOrder,
   columnSizing,
@@ -53,6 +55,8 @@ const features = tableFeatures({
 type Meta = {
   /** The Rust sort key for this column; absent when it isn't sortable. */
   sortKey?: SortKey;
+  /** A custom field's column: its key (sorts by the field). */
+  field?: string;
   align?: 'end';
   /** Shown in the column picker. */
   label: string;
@@ -180,6 +184,32 @@ const columns: ColumnDef<typeof features, BookRow, any>[] = [
   }),
 ];
 
+/** The column for a custom field ("custom:pages"); hidden until turned on (see view.ts). */
+function customColumn(f: CustomField): ColumnDef<typeof features, BookRow, any> {
+  return col.accessor((row) => row.custom[f.key], {
+    id: `custom:${f.key}`,
+    size: isNumeric(f.kind) || f.kind === 'bool' ? 100 : 160,
+    meta: { field: f.key, label: f.name, align: isNumeric(f.kind) ? 'end' : undefined } satisfies Meta,
+    header: f.name,
+    cell: (info) => {
+      const raw = info.getValue() as string | undefined;
+      if (f.kind === 'rating') return stars(raw ? Number(raw) : null);
+      // Long text is HTML: shown as plain text here.
+      const text =
+        f.kind === 'longText'
+          ? (raw ?? '')
+              .replace(/<[^>]*>/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim()
+          : raw;
+      return muted(formatCustom(f.kind, text));
+    },
+  });
+}
+
+/** Every column: the built-in ones, then the open library's custom fields. */
+const allColumns = () => [...columns, ...customFields().map(customColumn)];
+
 /** A check mark when the book is on a connected device. */
 function DeviceCheck(props: { id: number }) {
   const where = () => onDevice().get(props.id);
@@ -224,7 +254,9 @@ export function BookTable(props: Props) {
 
   const table = createTable({
     features,
-    columns,
+    get columns() {
+      return allColumns();
+    },
     get data() {
       return props.rows;
     },
@@ -457,7 +489,10 @@ function HeaderCell(props: {
 }) {
   const h = () => props.header;
   const key = () => meta(h()).sortKey;
-  const active = () => key() !== undefined && key() === sort();
+  const field = () => meta(h()).field;
+  const sortable = () => key() !== undefined || field() !== undefined;
+  const active = () =>
+    field() !== undefined ? field() === sortField() : key() !== undefined && key() === sort() && sortField() === null;
   return (
     <div
       role="columnheader"
@@ -476,14 +511,17 @@ function HeaderCell(props: {
         classList={{
           'justify-end': meta(h()).align === 'end',
           'text-fg': active(),
-          'hover:text-fg': key() !== undefined,
+          'hover:text-fg': sortable(),
         }}
-        title={`${key() ? 'Click to sort; drag' : 'Drag'} to move (or ${keys('alt+ArrowLeft')} ${keys('alt+ArrowRight')})`}
+        title={`${sortable() ? 'Click to sort; drag' : 'Drag'} to move (or ${keys('alt+ArrowLeft')} ${keys('alt+ArrowRight')})`}
         onPointerDown={(e) => props.onDragStart(e)}
         onKeyDown={(e) => props.onKeyDown(e)}
         onClick={() => {
+          if (props.suppressClick()) return;
           const k = key();
-          if (k && !props.suppressClick()) toggleSort(k);
+          const f = field();
+          if (f !== undefined) toggleFieldSort(f);
+          else if (k) toggleSort(k);
         }}
       >
         <span class="truncate">
@@ -538,8 +576,9 @@ function ColumnPicker(props: { table: ReturnType<typeof createTable<typeof featu
   );
 }
 
-/** Table columns for the settings panel: id, label, and whether it can be hidden. */
-export const TABLE_COLUMNS = columns.map((c) => {
-  const id = c.id ?? ('accessorKey' in c ? String(c.accessorKey) : '');
-  return { id, label: (c.meta as Meta).label, locked: id === LOCKED_COLUMN };
-});
+/** Table columns for the settings panel (custom fields' too): id, label, and whether it can be hidden. */
+export const tableColumns = () =>
+  allColumns().map((c) => {
+    const id = c.id ?? ('accessorKey' in c ? String(c.accessorKey) : '');
+    return { id, label: (c.meta as Meta).label, locked: id === LOCKED_COLUMN };
+  });

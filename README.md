@@ -113,7 +113,7 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Metadata editing (⌘E): all built-in fields, rich-text description, cover change/remove; folder and file names follow title and first author (all-or-nothing with the database)
 - [x] Autocomplete for authors, tags, series and publishers in the edit form
 - [x] Author sort names: "Sorted as …" under Authors in the edit form, with per-author overrides ("Le Guin, Ursula K.") that apply to all of that author's books
-- [ ] Editing custom fields
+- [x] Custom fields: make, rename and delete them (Settings › Library), see them in the details panel and as list columns, edit them with a book or several at once, sort and search by them (`#pages:300`). calibre libraries’ custom columns show too, read-only
 - [x] File name clean-up: names follow edits, and Settings → Library → "Tidy file names" fixes drifted books and reports files missing from disk
 - [x] Write metadata and covers back into EPUB/KEPUB files (details panel "Write to file", Settings → Library for every book, optional write on save); only files that differ are rewritten
 - [x] Metadata lookup from Open Library and Google Books (your own API key) with a field-by-field matching dialog: "Find Metadata…" in the edit window, sources in Settings → Metadata Sources. On request only; ranking is plain string matching, no AI

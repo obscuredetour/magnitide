@@ -15,6 +15,7 @@ import { setSidebarOpen, setViewMode, sidebarOpen, viewMode } from '../view';
 import { CoverSizeSlider } from './CoverSizeSlider';
 import { DeviceMenu } from './DeviceMenu';
 import { LibraryMenu } from './LibraryMenu';
+import { Select } from './Select';
 import { ThemeMenu } from './ThemeMenu';
 import { PluginsMenu } from './PluginMenus';
 import { Icon } from './Icon';
@@ -144,15 +145,11 @@ export function TopBar(props: Props) {
         <ViewSwitcher />
         <label>
           <span class="sr-only">Sort by</span>
-          <select
-            class="h-[30px] rounded-control border border-line bg-field px-2.5"
-            value={sort()}
-            onChange={(e) => setSort(e.currentTarget.value as SortKey)}
-          >
+          <Select class="h-[30px] pl-2.5" value={sort()} onChange={(e) => setSort(e.currentTarget.value as SortKey)}>
             {SORT_OPTIONS.map(([key, label]) => (
               <option value={key}>{label}</option>
             ))}
-          </select>
+          </Select>
         </label>
         <button
           class="-ml-2 grid size-7 place-items-center rounded-control text-muted hover:bg-hover hover:text-fg"
