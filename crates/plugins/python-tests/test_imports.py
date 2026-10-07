@@ -42,6 +42,20 @@ def test_qt_core_has_the_usual_names(qapp):
     # PyQt5-style unscoped enum members, as plugins written for calibre 5 use them.
     assert QToolButton.MenuButtonPopup == QToolButton.ToolButtonPopupMode.MenuButtonPopup
     assert Qt.AlignCenter == Qt.AlignmentFlag.AlignCenter
+    # PyQt5's exec_() and QFontMetrics.width(), on subclasses too.
+    from qt.core import QEventLoop, QFontMetrics, QMenu, QMessageBox
+
+    class MyDialog(QDialog):
+        pass
+
+    for cls in (QDialog, MyDialog, QMenu, QMessageBox, QEventLoop, QApplication):
+        assert cls.exec_ is not None, cls
+    loop = QEventLoop()
+    from qt.core import QTimer
+
+    QTimer.singleShot(0, loop.quit)
+    assert loop.exec_() == 0
+    assert QFontMetrics.width is not None
 
 
 def test_pyqt5_is_redirected(qapp):

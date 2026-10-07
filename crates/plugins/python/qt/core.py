@@ -26,12 +26,17 @@ _loaded = {}
 _names = {}
 
 
-def _alias_unscoped_enums(m):
-    """PyQt5 let an enum member be reached from its class (`QToolButton.
-    MenuButtonPopup`, `Qt.AlignCenter`); PyQt6 only through the enum
-    (`QToolButton.ToolButtonPopupMode.MenuButtonPopup`). Plugins written
-    for calibre 5 still use the short form, so each class gets the members
-    of its enums as attributes too (where the name is free)."""
+def _pyqt5_compat(m):
+    """Names plugins written for calibre 5 (PyQt5) still use:
+
+    - an enum member reached from its class (`QToolButton.MenuButtonPopup`,
+      `Qt.AlignCenter`), where PyQt6 wants `QToolButton.ToolButtonPopupMode.
+      MenuButtonPopup`: each class gets its enums' members as attributes
+      too, where the name is free;
+    - `exec_()` on dialogs, menus, applications, event loops and threads,
+      which PyQt6 spells `exec()`;
+    - `QFontMetrics.width()`, now `horizontalAdvance()`.
+    """
     for name in dir(m):
         if name.startswith('_'):
             continue
@@ -39,10 +44,10 @@ def _alias_unscoped_enums(m):
         if not isinstance(cls, type):
             continue
         try:
-            attrs = list(vars(cls).items())
+            attrs = dict(vars(cls))
         except TypeError:
             continue
-        for attr, value in attrs:
+        for attr, value in attrs.items():
             if isinstance(value, type) and issubclass(value, enum.Enum):
                 for member_name, member in value.__members__.items():
                     if not hasattr(cls, member_name):
@@ -50,6 +55,16 @@ def _alias_unscoped_enums(m):
                             setattr(cls, member_name, member)
                         except TypeError, AttributeError:
                             break
+        if 'exec' in attrs and not hasattr(cls, 'exec_'):
+            try:
+                cls.exec_ = cls.exec
+            except TypeError, AttributeError:
+                pass
+        if name in ('QFontMetrics', 'QFontMetricsF') and not hasattr(cls, 'width'):
+            try:
+                cls.width = cls.horizontalAdvance
+            except TypeError, AttributeError:
+                pass
 
 
 def _load(mod):
@@ -61,7 +76,7 @@ def _load(mod):
         _loaded[mod] = None
         return None
     _loaded[mod] = m
-    _alias_unscoped_enums(m)
+    _pyqt5_compat(m)
     g = globals()
     for name in dir(m):
         if not name.startswith('_') and name not in g:
