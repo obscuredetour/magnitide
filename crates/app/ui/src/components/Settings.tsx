@@ -51,6 +51,7 @@ import { smallButton } from '../buttons';
 import { backdropDismiss } from '../backdrop';
 import { keys, SHORTCUTS } from '../keys';
 
+export type SettingsSection = Section;
 type Section = 'appearance' | 'library' | 'list' | 'devices' | 'server' | 'sources' | 'plugins' | 'shortcuts' | 'about';
 
 const SECTIONS: { id: Section; label: string }[] = [
@@ -68,9 +69,9 @@ const SECTIONS: { id: Section; label: string }[] = [
 const button = smallButton;
 
 /** The settings window (⌘,). Mount it to open; `onClose` unmounts it. */
-export function SettingsDialog(props: { onClose(): void }) {
+export function SettingsDialog(props: { onClose(): void; section?: Section }) {
   let dialog!: HTMLDialogElement;
-  const [section, setSection] = createSignal<Section>('appearance');
+  const [section, setSection] = createSignal<Section>(props.section ?? 'appearance');
 
   onMount(() => dialog.showModal());
 

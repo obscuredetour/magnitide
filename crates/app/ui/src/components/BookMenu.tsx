@@ -1,11 +1,11 @@
 // The right-click menu for books: what can be done with the books it was
 // opened on (the selection, or the one book right-clicked outside it).
 
-import { createResource, createSignal, For, onMount, Show } from 'solid-js';
+import { createResource, createSignal, For, Show } from 'solid-js';
 
 import { api, errorMessage, fileManagerName, trashName } from '../api';
 import { booksOn, devices, preferredFormat } from '../devices';
-import type { DeviceInfo, PluginMenu, PluginMenuItem } from '../api';
+import type { DeviceInfo } from '../api';
 import { editBooks, openEditor } from '../editor';
 import { findMetadataFor } from '../lookup';
 import { items, library, openBook, setDetailsOpen } from '../library';
@@ -21,8 +21,9 @@ import {
 } from '../transfer';
 import { activeShelf, addToShelf, newShelfFor, removeFromShelf, shelves } from '../shelves';
 import { writeBookFiles } from '../writeback';
-import { guiPlugins, loadPluginMenus, pluginMenus, runPlugin } from '../plugins';
-import { ContextMenu, MenuItem, MenuLabel, MenuSeparator, SubMenu } from './Menu';
+import { guiPlugins } from '../plugins';
+import { ContextMenu, MenuItem, MenuSeparator, SubMenu } from './Menu';
+import { PluginItems } from './PluginMenus';
 import { deleteKeys, keys } from '../keys';
 
 type Request = { x: number; y: number; ids: number[] };
@@ -77,7 +78,7 @@ function BookMenu(props: { request: Request; onClose(): void }) {
         </MenuItem>
         <Show when={guiPlugins().length}>
           <SubMenu label="Plugins">
-            <PluginItems ids={ids} />
+            <PluginItems ids={() => ids} />
           </SubMenu>
         </Show>
       </Show>
@@ -155,87 +156,6 @@ function BookMenu(props: { request: Request; onClose(): void }) {
         </MenuItem>
       </Show>
     </ContextMenu>
-  );
-}
-
-/** The GUI plugins' menus, as in calibre: one submenu per plugin. Loaded (starting calibre) when first shown. */
-function PluginItems(props: { ids: number[] }) {
-  onMount(() => {
-    if (!pluginMenus()) void loadPluginMenus();
-  });
-  return (
-    <Show
-      when={pluginMenus()}
-      fallback={
-        <MenuItem disabled onSelect={() => {}}>
-          Starting calibre…
-        </MenuItem>
-      }
-    >
-      {(m) => (
-        <>
-          <For each={m().errors}>
-            {(e) => (
-              <MenuItem disabled title={e} onSelect={() => {}}>
-                <span class="max-w-72 truncate">{e}</span>
-              </MenuItem>
-            )}
-          </For>
-          <For each={m().menus}>
-            {(menu) => (
-              <Show
-                when={menu.items.length}
-                fallback={<MenuItem onSelect={() => void runPlugin(menu, null, [], props.ids)}>{menu.text}</MenuItem>}
-              >
-                <SubMenu label={menu.text}>
-                  <Show when={menu.main}>
-                    <MenuItem onSelect={() => void runPlugin(menu, null, [], props.ids)}>{menu.text}</MenuItem>
-                    <MenuSeparator />
-                  </Show>
-                  <PluginMenuItems menu={menu} items={menu.items} texts={[]} ids={props.ids} />
-                </SubMenu>
-              </Show>
-            )}
-          </For>
-          <Show when={!m().menus.length && !m().errors.length}>
-            <MenuLabel>No plugin menus</MenuLabel>
-          </Show>
-        </>
-      )}
-    </Show>
-  );
-}
-
-function PluginMenuItems(props: { menu: PluginMenu; items: PluginMenuItem[]; texts: string[]; ids: number[] }) {
-  return (
-    <For each={props.items}>
-      {(item) => (
-        <Show when={!item.separator} fallback={<MenuSeparator />}>
-          <Show
-            when={item.children.length}
-            fallback={
-              <MenuItem
-                disabled={!item.enabled}
-                checked={item.checkable ? item.checked : undefined}
-                checkbox={item.checkable}
-                onSelect={() => void runPlugin(props.menu, item, [...props.texts, item.text], props.ids)}
-              >
-                {item.text}
-              </MenuItem>
-            }
-          >
-            <SubMenu label={item.text} disabled={!item.enabled}>
-              <PluginMenuItems
-                menu={props.menu}
-                items={item.children}
-                texts={[...props.texts, item.text]}
-                ids={props.ids}
-              />
-            </SubMenu>
-          </Show>
-        </Show>
-      )}
-    </For>
   );
 }
 
