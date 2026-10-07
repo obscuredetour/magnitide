@@ -51,6 +51,32 @@ class Inert:
         return hash(self._name)
 
 
+class TagsView:
+    """calibre's Tag browser, as far as plugins drive it: `recount()` after
+    changing tags or columns means the library changed (Magnitide reloads
+    when the plugin is done); the rest is inert."""
+
+    def recount(self, *args, **kwargs):
+        state['changed'] = True
+
+    def recount_with_position_based_index(self, *args, **kwargs):
+        state['changed'] = True
+
+    def refresh(self, *args, **kwargs):
+        state['changed'] = True
+
+    def set_database(self, *args, **kwargs):
+        pass
+
+    def model(self):
+        return Inert('gui.tags_view.model()')
+
+    def __getattr__(self, name):
+        if name.startswith('__'):
+            raise AttributeError(name)
+        return Inert(f'gui.tags_view.{name}')
+
+
 def build_gui():
     from calibre.gui2.jobs import JobManager
     from calibre.gui2.keyboard import Manager
@@ -264,7 +290,7 @@ def build_gui():
             self.job_manager = JobManager()
             self.library_view = LibraryView(self)
             self.search = Search()
-            self.tags_view = Inert('gui.tags_view')
+            self.tags_view = TagsView()
             self.device_manager = Inert('gui.device_manager')
             self.book_details = Inert('gui.book_details')
             self.cover_flow = Inert('gui.cover_flow')

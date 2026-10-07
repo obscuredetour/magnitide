@@ -12,6 +12,7 @@ from qt.core import (
     QCheckBox,
     QDialog,
     QDialogButtonBox,
+    QGridLayout,
     QHBoxLayout,
     QIcon,
     QLabel,
@@ -74,42 +75,37 @@ class MessageBox(QDialog):
         else:
             self.icon = QIcon.ic(q_icon)
         self.only_copy_details = only_copy_details
-        self.setWindowTitle(title)
-        self.setWindowIcon(self.icon)
-        l = QVBoxLayout(self)
-        h = QHBoxLayout()
-        l.addLayout(h)
-        self.icon_widget = Icon(self)
-        self.icon_widget.set_icon(self.icon)
-        h.addWidget(self.icon_widget)
-        self.msg = QLabel(msg, self)
-        self.msg.setWordWrap(True)
-        self.msg.setOpenExternalLinks(True)
-        self.msg.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.LinksAccessibleByMouse
-        )
-        h.addWidget(self.msg, 10)
-        self.det_msg = QPlainTextEdit(self)
-        self.det_msg.setReadOnly(True)
-        self.det_msg.setPlainText(det_msg or '')
-        self.det_msg.setVisible(False)
-        l.addWidget(self.det_msg)
-        self.toggle_checkbox = QCheckBox(self)
-        self.toggle_checkbox.setVisible(False)
-        l.addWidget(self.toggle_checkbox)
-        self.bb = QDialogButtonBox(self)
-        l.addWidget(self.bb)
-        self.bb.accepted.connect(self.accept)
-        self.bb.rejected.connect(self.reject)
         self.msg_text = msg
         self.det_msg_text = det_msg or ''
         self.is_question = type_ == self.QUESTION
+        self.default_yes = default_yes
+        self.setup_ui()
+        self.setWindowTitle(title)
+        self.setWindowIcon(self.icon)
+        self.icon_widget.set_icon(self.icon)
+        self.msg.setText(msg)
+        self.det_msg.setPlainText(det_msg or '')
+        self.det_msg.setVisible(False)
+        self.toggle_checkbox.setVisible(False)
+        # calibre's names for the buttons: plugins subclassing MessageBox
+        # reach for them (det_msg_toggle, ctc_button).
+        self.det_msg_toggle = self.bb.addButton(_('Show &details'), QDialogButtonBox.ButtonRole.ActionRole)
+        self.det_msg_toggle.setVisible(bool(det_msg))
+        self.det_msg_toggle.clicked.connect(self.toggle_det_msg)
+        self.det_button = self.det_msg_toggle
+        self.show_det_msg = _('Show &details')
+        self.hide_det_msg = _('Hide &details')
+        if show_copy_button:
+            self.ctc_button = self.bb.addButton(_('&Copy to clipboard'), QDialogButtonBox.ButtonRole.ActionRole)
+            self.ctc_button.clicked.connect(self.copy_to_clipboard)
+        if add_abort_button:
+            self.abort_button = self.bb.addButton(_('Abort'), QDialogButtonBox.ButtonRole.ActionRole)
+            self.abort_button.clicked.connect(self.on_abort)
         if self.is_question:
             self.bb.setStandardButtons(QDialogButtonBox.StandardButton.Yes | QDialogButtonBox.StandardButton.No)
             self.bb.button(
                 QDialogButtonBox.StandardButton.Yes if default_yes else QDialogButtonBox.StandardButton.No
             ).setDefault(True)
-            self.default_yes = default_yes
             if yes_text is not None:
                 self.bb.button(QDialogButtonBox.StandardButton.Yes).setText(yes_text)
             if no_text is not None:
@@ -125,19 +121,40 @@ class MessageBox(QDialog):
         else:
             self.bb.setStandardButtons(QDialogButtonBox.StandardButton.Ok)
             self.bb.button(QDialogButtonBox.StandardButton.Ok).setDefault(True)
-        if add_abort_button:
-            self.abort_button = self.bb.addButton('Abort', QDialogButtonBox.ButtonRole.ActionRole)
-            self.abort_button.clicked.connect(self.on_abort)
-        if show_copy_button:
-            self.ctc_button = self.bb.addButton('&Copy to clipboard', QDialogButtonBox.ButtonRole.ActionRole)
-            self.ctc_button.clicked.connect(self.copy_to_clipboard)
-        self.show_det_msg = '&Show details'
-        self.hide_det_msg = '&Hide details'
-        self.det_button = self.bb.addButton(self.show_det_msg, QDialogButtonBox.ButtonRole.ActionRole)
-        self.det_button.setVisible(bool(det_msg))
-        self.det_button.clicked.connect(self.toggle_det_msg)
         self.resize_needed.connect(self.do_resize, type=Qt.ConnectionType.QueuedConnection)
         self.do_resize()
+
+    def setup_ui(self):
+        """calibre's layout: a grid with the icon and message on the first
+        row, the details below, a checkbox row, then the buttons; subclasses
+        add their own widgets to `gridLayout`."""
+        self.setObjectName('Dialog')
+        self.resize(497, 235)
+        self.gridLayout = l = QGridLayout(self)
+        l.setObjectName('gridLayout')
+        self.icon_widget = Icon(self)
+        l.addWidget(self.icon_widget, 0, 0, 1, 1)
+        self.msg = la = QLabel(self)
+        la.setWordWrap(True)
+        la.setOpenExternalLinks(True)
+        la.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.LinksAccessibleByMouse
+        )
+        la.setObjectName('msg')
+        l.addWidget(la, 0, 1, 1, 1)
+        self.det_msg = dm = QPlainTextEdit(self)
+        dm.setReadOnly(True)
+        dm.setObjectName('det_msg')
+        l.addWidget(dm, 1, 0, 1, 2)
+        self.bb = bb = QDialogButtonBox(self)
+        bb.setStandardButtons(QDialogButtonBox.StandardButton.Ok)
+        bb.setObjectName('bb')
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        l.addWidget(bb, 3, 0, 1, 2)
+        self.toggle_checkbox = tc = QCheckBox(self)
+        tc.setObjectName('toggle_checkbox')
+        l.addWidget(tc, 2, 0, 1, 2)
 
     def on_abort(self):
         self.aborted = True
@@ -150,7 +167,7 @@ class MessageBox(QDialog):
 
     def toggle_det_msg(self, *args):
         vis = self.det_msg.isVisible()
-        self.det_button.setText(self.show_det_msg if vis else self.hide_det_msg)
+        self.det_msg_toggle.setText(self.show_det_msg if vis else self.hide_det_msg)
         self.det_msg.setVisible(not vis)
         self.do_resize()
 
@@ -165,7 +182,7 @@ class MessageBox(QDialog):
         )
         QApplication.clipboard().setText(text)
         if hasattr(self, 'ctc_button'):
-            self.ctc_button.setText('Copied')
+            self.ctc_button.setText(_('Copied'))
 
     def showEvent(self, ev):
         ret = QDialog.showEvent(self, ev)
@@ -185,9 +202,9 @@ class MessageBox(QDialog):
             msg = ''
         self.det_msg.setPlainText(msg)
         self.det_msg_text = msg
-        self.det_button.setVisible(bool(msg))
+        self.det_msg_toggle.setVisible(bool(msg))
         self.det_msg.setVisible(False)
-        self.det_button.setText(self.show_det_msg)
+        self.det_msg_toggle.setText(self.show_det_msg)
         self.do_resize()
 
 
