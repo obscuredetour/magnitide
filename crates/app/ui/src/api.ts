@@ -9,6 +9,11 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open, save } from '@tauri-apps/plugin-dialog';
 
 import type { BookDetails } from './bindings/BookDetails';
+import type { CustomDetail } from './bindings/CustomDetail';
+import type { CustomField } from './bindings/CustomField';
+import type { FieldKind } from './bindings/FieldKind';
+import type { FieldValue } from './bindings/FieldValue';
+import type { NewField } from './bindings/NewField';
 import type { ConversionInfo } from './bindings/ConversionInfo';
 import type { ConvertReport } from './bindings/ConvertReport';
 import type { CoverPreview } from './bindings/CoverPreview';
@@ -58,6 +63,11 @@ import type { SortDir } from './bindings/SortDir';
 import type { SortKey } from './bindings/SortKey';
 
 export type {
+  CustomDetail,
+  CustomField,
+  FieldKind,
+  FieldValue,
+  NewField,
   AddReport,
   ServerStatus,
   AuthorSort,
@@ -114,7 +124,18 @@ export const api = {
   openLibrary: (path: string | null) => invoke<LibraryInfo>('open_library', { path }),
 
   /** Books matching `query` (calibre-style search subset), in `sort` order. */
-  listBooks: (query: string, sort: SortKey, dir: SortDir) => invoke<BookRow[]>('list_books', { query, sort, dir }),
+  /** With `field` (a custom field's key), sorted by that instead of `sort`. */
+  listBooks: (query: string, sort: SortKey, dir: SortDir, field: string | null) =>
+    invoke<BookRow[]>('list_books', { query, sort, dir, field }),
+
+  /** The open library's custom fields, in order (calibre libraries' too). */
+  customFields: () => invoke<CustomField[]>('custom_fields'),
+  addCustomField: (field: NewField) => invoke<CustomField>('add_custom_field', { field }),
+  /** Rename a field; for a choice field, also set its choices. */
+  updateCustomField: (id: number, name: string, choices: string[] | null) =>
+    invoke<CustomField>('update_custom_field', { id, name, choices }),
+  /** Delete a field and every book's value for it. */
+  deleteCustomField: (id: number) => invoke<void>('delete_custom_field', { id }),
 
   bookDetails: (id: number) => invoke<BookDetails>('book_details', { id }),
 

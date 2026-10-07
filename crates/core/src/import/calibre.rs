@@ -184,7 +184,7 @@ fn import_book(
 
 /// Create (or reuse, on a repeat import) a custom field per calibre custom
 /// column. Returns lookup name ("#genre") → (field id, datatype).
-fn import_custom_fields(
+pub(crate) fn import_custom_fields(
     lib: &mut Library,
     columns: &[CustomColumn],
     report: &mut ImportReport,
@@ -237,31 +237,44 @@ fn import_custom_fields(
     Ok(map)
 }
 
-fn insert_custom_values(
+pub(crate) fn insert_custom_values(
     tx: &Transaction<'_>,
     book_id: BookId,
     book: &calibre_compat::Book,
     fields: &HashMap<String, (i64, Datatype)>,
 ) -> Result<()> {
+    for (key, value) in &book.custom {
+        let Some((field, datatype)) = fields.get(key) else { continue };
+        insert_custom_value(tx, book_id, *field, datatype, value)?;
+    }
+    Ok(())
+}
+
+/// Store one custom value: a `custom_values` row per item (one, except for
+/// multi-valued text), text in `text_value` and numbers in `num_value`.
+pub(crate) fn insert_custom_value(
+    tx: &Transaction<'_>,
+    book_id: BookId,
+    field: i64,
+    datatype: &Datatype,
+    value: &CustomValue,
+) -> Result<()> {
+    let rows: Vec<(Option<String>, Option<f64>)> = match value {
+        CustomValue::Text(s) if *datatype == Datatype::Comments => vec![(Some(html::sanitize(s)), None)],
+        CustomValue::Text(s) => vec![(Some(s.clone()), None)],
+        CustomValue::TextList(v) => v.iter().map(|s| (Some(s.clone()), None)).collect(),
+        CustomValue::Series { name, index } => vec![(Some(name.clone()), Some(*index))],
+        CustomValue::Int(i) => vec![(None, Some(*i as f64))],
+        CustomValue::Float(f) => vec![(None, Some(*f))],
+        CustomValue::Bool(b) => vec![(None, Some(if *b { 1.0 } else { 0.0 }))],
+        CustomValue::Rating(r) => vec![(None, Some(f64::from(*r)))],
+        CustomValue::Datetime(d) => vec![(Some(timestamp(*d)), None)],
+    };
     let mut insert = tx.prepare_cached(
         "INSERT INTO custom_values (book_id, field_id, position, text_value, num_value) VALUES (?, ?, ?, ?, ?)",
     )?;
-    for (key, value) in &book.custom {
-        let Some((field, datatype)) = fields.get(key) else { continue };
-        let rows: Vec<(Option<String>, Option<f64>)> = match value {
-            CustomValue::Text(s) if *datatype == Datatype::Comments => vec![(Some(html::sanitize(s)), None)],
-            CustomValue::Text(s) => vec![(Some(s.clone()), None)],
-            CustomValue::TextList(v) => v.iter().map(|s| (Some(s.clone()), None)).collect(),
-            CustomValue::Series { name, index } => vec![(Some(name.clone()), Some(*index))],
-            CustomValue::Int(i) => vec![(None, Some(*i as f64))],
-            CustomValue::Float(f) => vec![(None, Some(*f))],
-            CustomValue::Bool(b) => vec![(None, Some(if *b { 1.0 } else { 0.0 }))],
-            CustomValue::Rating(r) => vec![(None, Some(f64::from(*r)))],
-            CustomValue::Datetime(d) => vec![(Some(timestamp(*d)), None)],
-        };
-        for (pos, (text, num)) in (0_i64..).zip(rows) {
-            insert.execute(params![book_id, field, pos, text, num])?;
-        }
+    for (pos, (text, num)) in (0_i64..).zip(rows) {
+        insert.execute(params![book_id, field, pos, text, num])?;
     }
     Ok(())
 }

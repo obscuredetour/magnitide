@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use serde::Deserialize;
 
-use crate::model::Book;
+use crate::model::{Book, CustomValue};
 
 /// Book orderings shared by the CLI and the app.
 ///
@@ -83,8 +83,29 @@ fn value(b: &Book, key: SortKey) -> Option<Value> {
 }
 
 pub fn sort_books(books: &mut [&Book], key: SortKey, dir: SortDir) {
+    sort_by_value(books, dir, |b| value(b, key));
+}
+
+/// Order by a custom field ("#pages") the same way: books without a value
+/// last, ties by title. Numbers, dates, ratings and yes/no compare as values.
+pub fn sort_books_by_field(books: &mut [&Book], field: &str, dir: SortDir) {
+    sort_by_value(books, dir, |b| {
+        b.custom.get(field).and_then(|v| match v {
+            CustomValue::Text(s) => (!s.is_empty()).then(|| Value::Text(s.to_lowercase())),
+            CustomValue::TextList(l) => (!l.is_empty()).then(|| Value::Text(l.join(", ").to_lowercase())),
+            CustomValue::Series { name, index } => Some(Value::Series(name.to_lowercase(), *index, 1)),
+            CustomValue::Int(i) => Some(Value::Number(*i as f64)),
+            CustomValue::Float(x) => Some(Value::Number(*x)),
+            CustomValue::Rating(r) => Some(Value::Number(f64::from(*r))),
+            CustomValue::Bool(b) => Some(Value::Number(f64::from(u8::from(*b)))),
+            CustomValue::Datetime(d) => Some(Value::Number(d.timestamp_micros() as f64)),
+        })
+    });
+}
+
+fn sort_by_value(books: &mut [&Book], dir: SortDir, value: impl Fn(&Book) -> Option<Value>) {
     let mut keyed: Vec<_> =
-        books.iter().map(|b| (value(b, key), b.sort.as_deref().unwrap_or(&b.title).to_lowercase(), *b)).collect();
+        books.iter().map(|b| (value(b), b.sort.as_deref().unwrap_or(&b.title).to_lowercase(), *b)).collect();
     keyed.sort_by(|(va, ta, _), (vb, tb, _)| {
         let primary = match (va, vb) {
             (Some(a), Some(b)) => {
@@ -171,5 +192,23 @@ mod tests {
         assert_eq!(ids(&v), [2, 4, 1, 3]);
         sort_books(&mut v, SortKey::Series, SortDir::Desc);
         assert_eq!(ids(&v), [1, 4, 2, 3]);
+    }
+
+    #[test]
+    fn by_a_custom_field() {
+        let mut books: Vec<Book> =
+            ["A", "B", "C", "D"].iter().enumerate().map(|(i, t)| book(i as i64, t, None, None)).collect();
+        for (b, pages) in books.iter_mut().zip([Some(300), None, Some(1200), Some(300)]) {
+            if let Some(p) = pages {
+                b.custom.insert("#pages".into(), CustomValue::Int(p));
+            }
+        }
+        let mut refs: Vec<&Book> = books.iter().collect();
+        sort_books_by_field(&mut refs, "#pages", SortDir::Desc);
+        let titles: Vec<&str> = refs.iter().map(|b| b.title.as_str()).collect();
+        assert_eq!(titles, ["C", "A", "D", "B"], "highest first, ties by title, none last");
+        sort_books_by_field(&mut refs, "#pages", SortDir::Asc);
+        let titles: Vec<&str> = refs.iter().map(|b| b.title.as_str()).collect();
+        assert_eq!(titles, ["A", "D", "C", "B"]);
     }
 }

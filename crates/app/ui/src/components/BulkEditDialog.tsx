@@ -1,12 +1,14 @@
 import { createResource, createSignal, For, type JSX, onMount, type ParentProps, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
-import { api, type BulkEdit, errorMessage, onBulkProgress, type Shared } from '../api';
+import { api, type BulkEdit, errorMessage, type FieldValue, onBulkProgress, type Shared } from '../api';
 import { closeBulkEditor, editOneByOne } from '../editor';
 import { items, refresh, setEditRevision } from '../library';
 import { startJob } from '../jobs';
 import { plural, writeOnSave } from '../writeback';
 import { Autocomplete } from './Autocomplete';
+import { customFields } from '../fields';
+import { CustomFieldInput, customFieldHint } from './CustomFieldInput';
 import { primaryButton, secondaryButton, smallButton } from '../buttons';
 import { keys } from '../keys';
 import { backdropDismiss } from '../backdrop';
@@ -74,6 +76,16 @@ export function BulkEditDialog(props: { ids: number[] }) {
   const [values] = createResource(() => api.bulkValues(props.ids));
   const [names] = createResource(() => api.nameLists().catch(() => null));
   const [draft, setDraft] = createStore<Draft>({});
+  /** Custom fields changed, by key: a value to set on every book, or null to clear it on all. */
+  const [customDraft, setCustomDraft] = createStore<Record<string, FieldValue | null>>({});
+  const sharedCustom = (key: string) => values()?.custom[key];
+  const setCustom = (key: string, value: FieldValue | null) => {
+    const shared = sharedCustom(key);
+    // As for the other fields: emptying a mixed field keeps each book's;
+    // back to the shared value is no change.
+    const same = shared?.mixed ? value === null : JSON.stringify(value) === JSON.stringify(shared?.value ?? null);
+    setCustomDraft(key, same ? (undefined as never) : value);
+  };
   const [addTags, setAddTags] = createSignal('');
   const [removeTags, setRemoveTags] = createSignal<ReadonlySet<string>>(new Set());
   const [numbering, setNumbering] = createSignal(false);
@@ -108,6 +120,7 @@ export function BulkEditDialog(props: { ids: number[] }) {
     if (splitList(addTags()).length) c.push('add tags');
     if (removeTags().size) c.push('remove tags');
     if (numbering()) c.push('series numbers');
+    for (const f of customFields()) if (f.key in customDraft) c.push(f.name);
     return c;
   };
 
@@ -125,6 +138,7 @@ export function BulkEditDialog(props: { ids: number[] }) {
       seriesStart: numbering() ? seriesStart() : null,
       addTags: splitList(addTags()),
       removeTags: [...removeTags()],
+      custom: { ...customDraft },
     };
     const job = startJob('Edit books', `Saving ${plural(props.ids.length, 'book', 'books')}…`);
     const unlisten = await onBulkProgress((p) => {
@@ -399,6 +413,37 @@ export function BulkEditDialog(props: { ids: number[] }) {
                   </div>
                 </Row>
               </Show>
+              <For each={customFields()}>
+                {(f) => {
+                  const changed = () => f.key in customDraft;
+                  const shared = () => sharedCustom(f.key);
+                  return (
+                    <Row
+                      label={f.name}
+                      changed={changed()}
+                      onRevert={() => setCustomDraft(f.key, undefined as never)}
+                      onClear={
+                        shared()?.value != null || shared()?.mixed ? () => setCustomDraft(f.key, null) : undefined
+                      }
+                      hint={
+                        changed() && customDraft[f.key] === null
+                          ? 'Will be cleared on every book.'
+                          : shared()?.mixed && !changed()
+                            ? 'These books differ; leave it to keep each one’s.'
+                            : customFieldHint(f)
+                      }
+                    >
+                      <CustomFieldInput
+                        field={f}
+                        inputClass={input}
+                        value={changed() ? customDraft[f.key]! : (shared()?.value ?? null)}
+                        mixed={shared()?.mixed && !changed()}
+                        onChange={(v) => setCustom(f.key, v)}
+                      />
+                    </Row>
+                  );
+                }}
+              </For>
             </div>
           )}
         </Show>

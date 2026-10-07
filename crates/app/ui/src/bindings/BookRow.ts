@@ -28,4 +28,10 @@ tags: string, formats: Array<string>,
 /**
  * Bytes of the largest format.
  */
-size: number | null, };
+size: number | null, 
+/**
+ * Custom fields with a value, by key ("pages"), as text the UI formats by
+ * the field's kind: numbers, "true"/"false", ISO dates, "Name [2]" for
+ * series, comma-separated lists.
+ */
+custom: { [key in string]: string }, };
