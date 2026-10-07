@@ -217,6 +217,17 @@ fn gui_plugin_end_to_end() {
     // Its menu, as the plugin builds it (rebuilt on show, with a submenu).
     let opened = plugins.gui_open(&shadow.library()).unwrap();
     assert!(opened.errors.is_empty(), "{:?}", opened.errors);
+    // What plugins' settings pages read off the book list model.
+    let model = plugins
+        .host()
+        .unwrap()
+        .call(
+            "test.exec",
+            json!({ "code": "from magnitide_host.gui import main_window\nm = main_window().library_view.model()\nresult = (m.orig_headers['rating'], m.headers['title'], m.column_map[0], m.db is not None)\n" }),
+            Duration::from_secs(10),
+        )
+        .unwrap();
+    assert_eq!(model["result"], "('Rating', 'Title', 'title', True)");
     let menu = &opened.menus[0];
     assert_eq!((menu.plugin.as_str(), menu.text.as_str(), menu.main), ("Magnitide Test Action", "Test Action", true));
     let texts: Vec<&str> = menu.items.iter().filter(|i| !i.separator).map(|i| i.text.as_str()).collect();

@@ -98,10 +98,42 @@ def build_gui():
             QAbstractTableModel.__init__(self, gui)
             self.gui = gui
             self.ids = []
+            self.last_search = ''
+            # calibre's column display names (settings pages list columns by these).
+            self.orig_headers = {
+                'title': _('Title'),
+                'ondevice': _('On Device'),
+                'authors': _('Author(s)'),
+                'size': _('Size (MB)'),
+                'timestamp': _('Date'),
+                'pubdate': _('Published'),
+                'rating': _('Rating'),
+                'publisher': _('Publisher'),
+                'tags': _('Tags'),
+                'series': _('Series'),
+                'last_modified': _('Modified'),
+                'languages': _('Languages'),
+                'formats': _('Formats'),
+                'id': _('Id'),
+                'path': _('Path'),
+                'author_sort': _('Author sort'),
+                'sort': _('Title sort'),
+                'uuid': 'UUID',
+                'comments': _('Comments'),
+                'identifiers': _('Ids'),
+            }
 
         @property
         def db(self):
             return self.gui.current_db
+
+        @property
+        def headers(self):
+            """Display names of every column: calibre's, then the library's custom ones."""
+            ans = dict(self.orig_headers)
+            for key, meta in self.custom_columns.items():
+                ans[key] = meta.get('name') or key
+            return ans
 
         def reload(self):
             self.beginResetModel()
@@ -177,6 +209,15 @@ def build_gui():
         def current_changed(self, *args):
             pass
 
+        def sort(self, *args, **kwargs):
+            pass
+
+        def set_highlight_only(self, *args):
+            pass
+
+        def set_search_restriction(self, *args):
+            pass
+
         def __getattr__(self, name):
             if name.startswith('__'):
                 raise AttributeError(name)
@@ -193,6 +234,16 @@ def build_gui():
             m = self.model()
             ids = [m.id(i) for i in self.selectionModel().selectedRows()]
             return set(ids) if as_set else ids
+
+        # Sorting and scrolling are Magnitide's; plugins asking for them lose nothing.
+        def sort_by_named_field(self, field, order, reset=True):
+            pass
+
+        def scroll_to_row(self, row):
+            pass
+
+        def resizeColumnsToContents(self):
+            pass
 
         def set_selection(self, ids):
             m, sel = self.model(), QItemSelection()
@@ -295,6 +346,7 @@ def build_gui():
             self.book_details = Inert('gui.book_details')
             self.cover_flow = Inert('gui.cover_flow')
             self.stack = Inert('gui.stack')
+            self.must_restart_before_config = False
             self.library_broker = Inert('gui.library_broker')
             set_gui(self)
 
