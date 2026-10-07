@@ -3,7 +3,7 @@
 // generates from the Rust structs (`cargo test` regenerates them).
 
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
-import { createSignal } from 'solid-js';
+import { batch, createSignal } from 'solid-js';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open, save } from '@tauri-apps/plugin-dialog';
@@ -333,6 +333,19 @@ let coverBase: string | undefined;
 // showing its cached copy. The Rust protocol ignores the query string.
 const [coverVersions, setCoverVersions] = createSignal<ReadonlyMap<number, number>>(new Map());
 
+// Book ids are only unique within a library, so the open library's key is part
+// of every cover URL: otherwise, after switching libraries (e.g. calibre → its
+// import), the webview shows the previous library's cached cover for each id.
+const [coverLibrary, setCoverLibrary] = createSignal('');
+
+/** Call when a library is opened, with its `LibraryInfo.cacheKey`. */
+export function coverLibraryChanged(cacheKey: string): void {
+  batch(() => {
+    setCoverLibrary(cacheKey);
+    setCoverVersions(new Map());
+  });
+}
+
 /** Mark a book's cover as changed (its images reload everywhere). */
 export function coverChanged(id: number): void {
   setCoverVersions((m) => new Map(m).set(id, (m.get(id) ?? 0) + 1));
@@ -342,7 +355,7 @@ export function coverChanged(id: number): void {
 export function coverUrl(size: CoverSize, id: number): string {
   coverBase ??= convertFileSrc('', 'cover');
   const v = coverVersions().get(id);
-  return `${coverBase}${size}/${id}${v ? `?v=${v}` : ''}`;
+  return `${coverBase}${size}/${id}?l=${encodeURIComponent(coverLibrary())}${v ? `&v=${v}` : ''}`;
 }
 
 /** A downloaded source cover (see `api.coverPreview`), via the Rust `cover://` protocol. */

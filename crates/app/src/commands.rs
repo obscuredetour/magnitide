@@ -20,6 +20,10 @@ pub(crate) type CmdResult<T> = Result<T, String>;
 pub struct LibraryInfo {
     path: String,
     name: String,
+    /// Identifies the library (its uuid, or a hash of its folder). Book ids are
+    /// only unique within a library, so cover URLs carry this to keep the
+    /// webview from showing another library's cached cover for the same id.
+    cache_key: String,
     kind: LibraryKind,
     book_count: usize,
     load_ms: u128,
@@ -69,6 +73,7 @@ pub async fn open_library(app: AppHandle, state: State<'_, AppState>, path: Opti
         let info = LibraryInfo {
             path: root.display().to_string(),
             name,
+            cache_key: cache_key.clone(),
             kind,
             book_count: catalog.books.len(),
             load_ms: t.elapsed().as_millis(),
