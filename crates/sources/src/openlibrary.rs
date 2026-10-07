@@ -72,6 +72,7 @@ fn parse_search(v: &Value) -> Vec<SourceRecord> {
             }
             Some(SourceRecord {
                 source: Some(SourceId::OpenLibrary),
+                source_name: SourceId::OpenLibrary.name().to_owned(),
                 source_key: work.to_owned(),
                 link: Some(format!("https://openlibrary.org{}", edition["key"].as_str().unwrap_or(work))),
                 subtitle: doc["subtitle"].as_str().map(str::to_owned),

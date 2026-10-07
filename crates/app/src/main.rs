@@ -6,6 +6,7 @@ mod devices;
 mod lookup;
 #[cfg(target_os = "macos")]
 mod menu;
+mod plugins;
 mod server;
 mod themes;
 
@@ -100,6 +101,7 @@ fn main() {
         .setup(|app| {
             devices::watch(app.handle().clone());
             server::start_if_enabled(app.handle());
+            tauri::Manager::manage(app, plugins::create(app.handle()));
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
@@ -164,7 +166,12 @@ fn main() {
             commands::convert_targets,
             commands::convert_books,
             server::server_status,
-            server::set_server
+            server::set_server,
+            plugins::plugins_status,
+            plugins::install_plugin,
+            plugins::remove_plugin,
+            plugins::set_plugin_enabled,
+            plugins::plugin_log
         ])
         .run(tauri::generate_context!())
         .expect("error while running Magnitide");

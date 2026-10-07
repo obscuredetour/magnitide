@@ -67,6 +67,7 @@ fn parse_volumes(v: &Value) -> Vec<SourceRecord> {
                 .filter(|c| c != "General");
             Some(SourceRecord {
                 source: Some(SourceId::Google),
+                source_name: SourceId::Google.name().to_owned(),
                 source_key: id.to_owned(),
                 link: info["canonicalVolumeLink"].as_str().map(str::to_owned),
                 title,

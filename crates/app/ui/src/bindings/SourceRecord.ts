@@ -4,7 +4,15 @@ import type { SourceId } from "./SourceId";
 /**
  * One source's description of a book.
  */
-export type SourceRecord = { source: SourceId | null, 
+export type SourceRecord = { 
+/**
+ * A built-in source; None for a record from a calibre plugin.
+ */
+source: SourceId | null, 
+/**
+ * What to call the source: "Open Library", or the plugin's name.
+ */
+sourceName: string, 
 /**
  * The source's id for it (Open Library work key, Google volume id).
  */

@@ -1,4 +1,6 @@
-//! Book metadata lookup from online sources: Open Library and Google Books.
+//! Book metadata lookup from online sources: Open Library and Google Books
+//! (built in), and calibre metadata-source plugins (see magnitide-plugins),
+//! whose records join the same ranking.
 //!
 //! Nothing here runs unless the user asks (a "Find Metadata" search, a cover
 //! download). Requests carry only what was searched for, identify Magnitide
@@ -63,7 +65,11 @@ pub struct Lookup {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SourceRecord {
+    /// A built-in source; None for a record from a calibre plugin.
     pub source: Option<SourceId>,
+    /// What to call the source: "Open Library", or the plugin's name.
+    #[serde(default)]
+    pub source_name: String,
     /// The source's id for it (Open Library work key, Google volume id).
     pub source_key: String,
     /// The book's page on the source's website.
@@ -92,7 +98,7 @@ pub struct SourceRecord {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct Match {
-    /// In source order (Open Library, Google Books).
+    /// In source order (Open Library, Google Books, then plugins).
     pub records: Vec<SourceRecord>,
     /// 0–1.
     pub score: f64,
@@ -132,6 +138,13 @@ impl Settings {
 
 /// Ask every enabled source at once and group what they say into matches.
 pub fn search(lookup: &Lookup, settings: &Settings) -> SearchResult {
+    let (records, errors) = search_records(lookup, settings);
+    rank(lookup, records, errors)
+}
+
+/// Ask every enabled built-in source at once: their records, and the errors
+/// of those that failed ("Google Books: …").
+pub fn search_records(lookup: &Lookup, settings: &Settings) -> (Vec<SourceRecord>, Vec<String>) {
     let sources: Vec<SourceId> = SourceId::ALL.into_iter().filter(|s| settings.enabled(*s)).collect();
     let answers: Vec<(SourceId, Result<Vec<SourceRecord>>)> = std::thread::scope(|scope| {
         let handles: Vec<_> = sources
@@ -157,6 +170,12 @@ pub fn search(lookup: &Lookup, settings: &Settings) -> SearchResult {
             Err(e) => errors.push(format!("{}: {e}", source.name())),
         }
     }
+    (records, errors)
+}
+
+/// Group records describing the same book (from any sources, plugins
+/// included) and rank the groups against the lookup.
+pub fn rank(lookup: &Lookup, records: Vec<SourceRecord>, errors: Vec<String>) -> SearchResult {
     SearchResult { matches: group(lookup, records), errors }
 }
 

@@ -62,6 +62,8 @@ export type Step = {
 };
 
 const SOURCE_NAME: Record<SourceId, string> = { openLibrary: 'Open Library', google: 'Google Books' };
+/** What to call a record's source: a built-in one, or the calibre plugin it came from. */
+const sourceName = (r: SourceRecord) => r.sourceName || (r.source ? SOURCE_NAME[r.source] : 'Plugin');
 const KIND_LABEL: Record<MatchKind, string> = {
   isbn: 'ISBN match',
   strong: 'Strong match',
@@ -259,13 +261,13 @@ export function MatchDialog(props: {
 
   /** A field's distinct values in the selected match, with the sources giving each. */
   const options = (f: Field) => {
-    const out: { value: Value; sources: SourceId[] }[] = [];
+    const out: { value: Value; sources: string[] }[] = [];
     for (const r of match()?.records ?? []) {
       const v = f.from(r, props.current);
       if (v === null) continue;
       const existing = out.find((o) => same(f, o.value, v));
-      if (existing) existing.sources.push(r.source!);
-      else out.push({ value: v, sources: [r.source!] });
+      if (existing) existing.sources.push(sourceName(r));
+      else out.push({ value: v, sources: [sourceName(r)] });
     }
     return out;
   };
@@ -295,7 +297,9 @@ export function MatchDialog(props: {
   );
 
   const covers = () => {
-    const urls = (match()?.records ?? []).flatMap((r) => (r.coverUrl ? [{ url: r.coverUrl, source: r.source! }] : []));
+    const urls = (match()?.records ?? []).flatMap((r) =>
+      r.coverUrl ? [{ url: r.coverUrl, source: sourceName(r) }] : [],
+    );
     return urls.filter((u, i) => urls.findIndex((x) => x.url === u.url) === i);
   };
   const coverPick = () => Math.min(picked.cover ?? 0, Math.max(covers().length - 1, 0));
@@ -435,9 +439,7 @@ export function MatchDialog(props: {
                           </span>
                           <For each={m.records}>
                             {(x) => (
-                              <span class="rounded-chip bg-element px-1.5 text-[10px] text-muted">
-                                {SOURCE_NAME[x.source!]}
-                              </span>
+                              <span class="rounded-chip bg-element px-1.5 text-[10px] text-muted">{sourceName(x)}</span>
                             )}
                           </For>
                         </div>
@@ -490,11 +492,7 @@ export function MatchDialog(props: {
                           </>
                         )
                       }
-                      sources={
-                        row.opts.length > 1
-                          ? row.opts.map((o) => o.sources.map((s) => SOURCE_NAME[s]).join(' & '))
-                          : null
-                      }
+                      sources={row.opts.length > 1 ? row.opts.map((o) => o.sources.join(' & ')) : null}
                       pick={row.pick}
                       onPick={(i) => setPicked(row.f.key, i)}
                     />
@@ -513,17 +511,14 @@ export function MatchDialog(props: {
                       <span class="text-faint">—</span>
                     )
                   }
-                  sources={covers().length > 1 ? covers().map((c) => SOURCE_NAME[c.source]) : null}
+                  sources={covers().length > 1 ? covers().map((c) => c.source) : null}
                   pick={coverPick()}
                   onPick={(i) => setPicked('cover', i)}
                 />
                 <Show when={match()?.records.some((r) => r.link)}>
                   <p class="mt-3 text-[11px] text-faint">
-                    From{' '}
-                    {match()!
-                      .records.map((r) => SOURCE_NAME[r.source!])
-                      .join(' and ')}
-                    . Fields that are empty now are ticked; replacing what's there is up to you.
+                    From {match()!.records.map(sourceName).join(' and ')}. Fields that are empty now are ticked;
+                    replacing what's there is up to you.
                   </p>
                 </Show>
               </Show>

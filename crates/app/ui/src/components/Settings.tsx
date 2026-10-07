@@ -5,6 +5,9 @@ import X from 'lucide-solid/icons/x';
 import {
   api,
   type DeviceKind,
+  type InstalledPlugin,
+  type PluginKind,
+  type PluginsStatus,
   errorMessage,
   fileManagerName,
   type ServerStatus,
@@ -25,6 +28,7 @@ import { startImport } from '../importer';
 import { addonReport, addThemeFile, loadThemeAddons, setTheme, themeAttrs, themeChoice, themes } from '../theme';
 import { AccentPicker } from './AccentPicker';
 import { toast } from '../toast';
+import { confirm } from '../confirm';
 import {
   columnOrder,
   isColumnVisible,
@@ -46,7 +50,7 @@ import { smallButton } from '../buttons';
 import { backdropDismiss } from '../backdrop';
 import { keys, SHORTCUTS } from '../keys';
 
-type Section = 'appearance' | 'library' | 'list' | 'devices' | 'server' | 'sources' | 'shortcuts' | 'about';
+type Section = 'appearance' | 'library' | 'list' | 'devices' | 'server' | 'sources' | 'plugins' | 'shortcuts' | 'about';
 
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'appearance', label: 'Appearance' },
@@ -55,6 +59,7 @@ const SECTIONS: { id: Section; label: string }[] = [
   { id: 'devices', label: 'Devices' },
   { id: 'server', label: 'Library Server' },
   { id: 'sources', label: 'Metadata Sources' },
+  { id: 'plugins', label: 'Plugins' },
   { id: 'shortcuts', label: 'Keyboard Shortcuts' },
   { id: 'about', label: 'About' },
 ];
@@ -124,6 +129,9 @@ export function SettingsDialog(props: { onClose(): void }) {
             </Match>
             <Match when={section() === 'server'}>
               <ServerSettings />
+            </Match>
+            <Match when={section() === 'plugins'}>
+              <PluginSettings />
             </Match>
             <Match when={section() === 'sources'}>
               <SourceSettings />
@@ -691,6 +699,13 @@ const SOURCE_NOTES: Record<SourceId, string> = {
 
 function SourceSettings() {
   const [sources, { mutate }] = createResource(() => api.metadataSources().catch(() => []));
+  const [plugins, { mutate: setPlugins }] = createResource(() =>
+    api
+      .pluginsStatus()
+      .then((s) => s.plugins)
+      .catch(() => [] as InstalledPlugin[]),
+  );
+  const pluginSources = () => (plugins() ?? []).filter((p) => p.kind === 'metadataSource');
   const [keyDraft, setKeyDraft] = createSignal('');
 
   const update = async (s: SourceStatus, enabled: boolean, apiKey: string | null = null) => {
@@ -764,6 +779,29 @@ function SourceSettings() {
           </>
         )}
       </For>
+      <Show when={pluginSources().length}>
+        <h4 class="mt-6 mb-1 text-[11px] font-semibold tracking-[.06em] text-muted uppercase">From calibre plugins</h4>
+        <For each={pluginSources()}>
+          {(p) => (
+            <Row
+              label={p.name}
+              description={`${p.description.trim().replace(/[^.!?]$/, '$&.')} Added in Settings › Plugins.`}
+            >
+              <input
+                type="checkbox"
+                class="size-4 accent-accent"
+                aria-label={`Use ${p.name}`}
+                checked={p.enabled}
+                onChange={(e) =>
+                  void api
+                    .setPluginEnabled(p.name, e.currentTarget.checked)
+                    .then(setPlugins, (err) => toast(errorMessage(err), { error: true }))
+                }
+              />
+            </Row>
+          )}
+        </For>
+      </Show>
     </>
   );
 }
@@ -1027,5 +1065,162 @@ function ServerSettings() {
         )}
       </Show>
     </>
+  );
+}
+
+const PLUGIN_KINDS: Record<PluginKind, string> = {
+  metadataSource: 'Metadata source',
+  interfaceAction: 'Library tool',
+  fileType: 'File type',
+  metadataReader: 'Metadata reader',
+  metadataWriter: 'Metadata writer',
+  conversionInput: 'Conversion input',
+  conversionOutput: 'Conversion output',
+  catalog: 'Catalog',
+  other: 'Other',
+};
+
+function PluginSettings() {
+  const [status, { mutate, refetch }] = createResource(() => api.pluginsStatus().catch(() => undefined));
+  const [busy, setBusy] = createSignal(false);
+  const [log, setLog] = createSignal<string[] | null>(null);
+  const setPlugins = (plugins: InstalledPlugin[]) => {
+    const s = status();
+    if (s) mutate({ ...s, plugins });
+  };
+
+  const add = async () => {
+    const path = await api.choosePluginZip();
+    if (!path) return;
+    setBusy(true);
+    try {
+      const p = await api.installPlugin(path);
+      await refetch();
+      toast(
+        p.kind === 'metadataSource'
+          ? `Added ${p.name}: it's now asked in Find Metadata`
+          : `Added ${p.name}. Magnitide can't run this kind of plugin yet; it's kept for when it can.`,
+      );
+    } catch (err) {
+      toast(errorMessage(err), { error: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const run = (f: () => Promise<InstalledPlugin[]>) =>
+    f().then(setPlugins, (err) => toast(errorMessage(err), { error: true }));
+
+  const remove = async (p: InstalledPlugin) => {
+    const ok = await confirm({
+      title: `Remove ${p.name}?`,
+      message: () => 'Its settings are kept, in case you add it again.',
+      confirm: 'Remove',
+      danger: true,
+    });
+    if (ok) void run(() => api.removePlugin(p.name));
+  };
+
+  return (
+    <>
+      <Heading>Plugins</Heading>
+      <p class="mb-4 text-xs text-muted">
+        Magnitide runs calibre plugins in your installed calibre, so they work as they do there, with their own settings
+        kept apart from calibre's. Metadata sources work now, in Find Metadata; other kinds of plugin can be added and
+        will start working as Magnitide supports them. Plugins are programs that run on your computer: only add ones you
+        trust.
+      </p>
+      <Show when={status()} fallback={<p class="text-xs text-muted">Checking for calibre…</p>}>
+        {(s) => (
+          <>
+            <Row label="calibre" description={<PluginCalibre status={s()} />}>
+              <button class={button} disabled={!s().calibre || busy()} onClick={() => void add()}>
+                {busy() ? 'Adding…' : 'Add Plugin…'}
+              </button>
+            </Row>
+            <Show
+              when={s().plugins.length}
+              fallback={
+                <p class="py-3.5 text-xs text-muted">
+                  No plugins yet. calibre plugins are zip files, from calibre's plugin index (in calibre: Preferences ›
+                  Plugins › Get new plugins) or their authors' pages.
+                </p>
+              }
+            >
+              <For each={s().plugins}>
+                {(p) => (
+                  <Row
+                    label={`${p.name} ${p.version}`}
+                    description={
+                      <>
+                        {p.description}
+                        <span class="mt-0.5 block">
+                          {PLUGIN_KINDS[p.kind]} · by {p.author}
+                          <Show when={p.kind !== 'metadataSource'}>
+                            <span class="text-warning"> · Not supported yet</span>
+                          </Show>
+                        </span>
+                      </>
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      class="size-4 accent-accent"
+                      aria-label={`Use ${p.name}`}
+                      checked={p.enabled}
+                      disabled={p.kind !== 'metadataSource'}
+                      onChange={(e) => void run(() => api.setPluginEnabled(p.name, e.currentTarget.checked))}
+                    />
+                    <button class={button} onClick={() => void remove(p)}>
+                      Remove
+                    </button>
+                  </Row>
+                )}
+              </For>
+            </Show>
+            <Show when={s().calibre && s().plugins.length}>
+              <div class="mt-4">
+                <button
+                  class="cursor-pointer text-xs text-link hover:underline"
+                  onClick={() =>
+                    log()
+                      ? setLog(null)
+                      : void api.pluginLog().then(setLog, (err) => toast(errorMessage(err), { error: true }))
+                  }
+                >
+                  {log() ? 'Hide the plugin log' : 'Show the plugin log'}
+                </button>
+                <Show when={log()}>
+                  {(lines) => (
+                    <pre class="mt-2 max-h-64 overflow-auto rounded-control border border-line bg-bg/50 p-2 text-[11px] whitespace-pre-wrap select-text">
+                      {lines().length ? lines().join('\n') : 'Nothing logged yet.'}
+                    </pre>
+                  )}
+                </Show>
+              </div>
+            </Show>
+          </>
+        )}
+      </Show>
+    </>
+  );
+}
+
+function PluginCalibre(props: { status: PluginsStatus }) {
+  return (
+    <Show
+      when={props.status.calibre}
+      fallback={
+        <span class="text-danger">
+          Not installed. calibre plugins run in calibre, so install it (free, from calibre-ebook.com) to use them.
+        </span>
+      }
+    >
+      {(c) => (
+        <>
+          {c().version ? `calibre ${c().version}` : 'calibre'} at <span class="break-all">{c().path}</span>
+        </>
+      )}
+    </Show>
   );
 }

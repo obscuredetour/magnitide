@@ -25,6 +25,9 @@ import type { ThemeAddons } from './bindings/ThemeAddons';
 import type { MergeOutcome } from './bindings/MergeOutcome';
 import type { RemoveReport } from './bindings/RemoveReport';
 import type { SendReport } from './bindings/SendReport';
+import type { Installed as InstalledPlugin } from './bindings/Installed';
+import type { PluginKind } from './bindings/PluginKind';
+import type { PluginsStatus } from './bindings/PluginsStatus';
 import type { ServerStatus } from './bindings/ServerStatus';
 import type { TransferProgress } from './bindings/TransferProgress';
 import type { Lookup } from './bindings/Lookup';
@@ -59,6 +62,9 @@ import type { SortKey } from './bindings/SortKey';
 
 export type {
   AddReport,
+  InstalledPlugin,
+  PluginKind,
+  PluginsStatus,
   ServerStatus,
   AuthorSort,
   BookDetails,
@@ -300,6 +306,29 @@ export const api = {
   addThemeFile: (path: string) => invoke<ThemeAddons>('add_theme_file', { path }),
 
   openThemesFolder: () => invoke<void>('open_themes_folder'),
+
+  /** calibre plugins: whether calibre is installed (so they can run), and those installed. */
+  pluginsStatus: () => invoke<PluginsStatus>('plugins_status'),
+
+  /** Install a calibre plugin zip, or update one already installed. */
+  installPlugin: (path: string) => invoke<InstalledPlugin>('install_plugin', { path }),
+
+  removePlugin: (name: string) => invoke<InstalledPlugin[]>('remove_plugin', { name }),
+
+  setPluginEnabled: (name: string, enabled: boolean) =>
+    invoke<InstalledPlugin[]>('set_plugin_enabled', { name, enabled }),
+
+  /** The plugin host's recent output (what plugins printed, tracebacks). */
+  pluginLog: () => invoke<string[]>('plugin_log'),
+
+  async choosePluginZip(): Promise<string | null> {
+    const picked = await open({
+      title: 'Choose a calibre plugin',
+      multiple: false,
+      filters: [{ name: 'calibre plugins', extensions: ['zip'] }],
+    });
+    return typeof picked === 'string' ? picked : null;
+  },
 
   async chooseThemeFile(): Promise<string | null> {
     const picked = await open({

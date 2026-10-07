@@ -22,6 +22,7 @@ ts-rs = "12.0.1"
 magnitide-core = { version = "0.1.0", path = "../core", features = ["ts"] }
 magnitide-sources = { version = "0.1.0", path = "../sources", features = ["ts"] }
 magnitide-server = { version = "0.1.0", path = "../server" }
+magnitide-plugins = { version = "0.1.0", path = "../plugins", features = ["ts"] }
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 trash = "5.2.9"
 

@@ -2326,6 +2326,7 @@ dependencies = [
  "image",
  "magnitide-catalog",
  "magnitide-core",
+ "magnitide-plugins",
  "magnitide-server",
  "magnitide-sources",
  "open",
@@ -2375,6 +2376,19 @@ dependencies = [
  "thiserror 2.0.21",
  "ts-rs",
  "uuid",
+ "zip",
+]
+
+[[package]]
+name = "magnitide-plugins"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "magnitide-sources",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "ts-rs",
  "zip",
 ]
 
