@@ -13,7 +13,7 @@
 //! `books_plugin_data` tables) survive rebuilds. The shadow is never one of
 //! the user's calibre libraries.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -65,10 +65,20 @@ impl Shadow {
 
     /// What changed in the shadow since it was built from `before`.
     pub fn changes(&self, before: &Catalog, library_root: &Path) -> Result<Changes, String> {
-        let root = self.library();
-        let after = calibre_compat::Library::open(&root)
+        self.diff(before, &self.read()?, library_root)
+    }
+
+    /// The shadow as it is now.
+    pub fn read(&self) -> Result<Catalog, String> {
+        calibre_compat::Library::open(self.library())
             .and_then(|l| l.load())
-            .map_err(|e| format!("reading the plugin library: {e:#}"))?;
+            .map_err(|e| format!("reading the plugin library: {e:#}"))
+    }
+
+    /// How the shadow (`after`, from [`Shadow::read`]) differs from `before`,
+    /// whose files are in `library_root`.
+    pub fn diff(&self, before: &Catalog, after: &Catalog, library_root: &Path) -> Result<Changes, String> {
+        let root = self.library();
         let mut out = Changes::default();
         let known: HashSet<String> = before.custom_columns.iter().map(|c| c.label.to_lowercase()).collect();
         out.new_columns = after
@@ -104,6 +114,32 @@ impl Shadow {
         }
         Ok(out)
     }
+}
+
+/// What to measure a plugin's further changes against once the library has
+/// caught up with the shadow mid-run (Magnitide applied its changes so far,
+/// or the user edited or deleted books it asked about): the library's books
+/// (`library`) under their ids in the shadow (`ids`: shadow id → library id
+/// for the books added since the shadow was built; the rest share ids), with
+/// the shadow's modification times, so only books the plugin changes after
+/// this are compared field by field. Books not in the shadow are left out.
+pub fn baseline(library: &Catalog, shadow: &Catalog, ids: &HashMap<BookId, BookId>) -> Catalog {
+    let to_shadow: HashMap<BookId, BookId> = ids.iter().map(|(&theirs, &ours)| (ours, theirs)).collect();
+    let books = library
+        .books
+        .iter()
+        .filter_map(|b| {
+            let id = to_shadow.get(&b.id).copied().unwrap_or(b.id);
+            let there = shadow.get(id)?;
+            // A shadow book with the same id that isn't this one (a book added
+            // there whose id is also a book added here) isn't a match.
+            if !to_shadow.contains_key(&b.id) && ids.contains_key(&id) {
+                return None;
+            }
+            Some(Book { id, last_modified: there.last_modified, ..b.clone() })
+        })
+        .collect();
+    Catalog::new(shadow.library_uuid.clone(), library.custom_columns.clone(), books, vec![])
 }
 
 /// Keep plugin settings stored in the library across a rebuild.
@@ -386,6 +422,45 @@ mod tests {
         assert_eq!(changes.added[0].book.title, "Merged");
         assert_eq!(changes.added[0].files, [("EPUB".into(), lib.join("New/Merged (3)/Merged - New.epub"))]);
         assert_eq!(changes.new_columns.iter().map(|c| c.label.as_str()).collect::<Vec<_>>(), ["pages"]);
+    }
+
+    #[test]
+    fn a_baseline_after_catching_up_finds_only_later_changes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (root, shadow) = (tmp.path().join("lib"), Shadow::new(tmp.path().join("shadow")));
+        let catalog = library(&root);
+        shadow.build(&catalog, &root, &WriteOptions::default()).unwrap();
+        // The plugin adds book 3 and retitles book 1.
+        sql(
+            &shadow,
+            "INSERT INTO books (id, title, path, last_modified) VALUES (3, 'Merged', 'Author/Merged (3)', '2030-01-01 00:00:00+00:00');
+             UPDATE books SET title = 'Uno', last_modified = '2030-01-01 00:00:00+00:00' WHERE id = 1;",
+        );
+        let after = shadow.read().unwrap();
+        assert_eq!(shadow.diff(&catalog, &after, &root).unwrap().added.len(), 1);
+
+        // Magnitide applied that: book 3 became its book 7, book 1 is "Uno".
+        let mut caught_up = catalog.books.clone();
+        caught_up[0].title = "Uno".into();
+        let mut merged = book(7, "Merged");
+        merged.formats.clear();
+        merged.has_cover = false;
+        caught_up.push(merged);
+        let library_now = Catalog::new(catalog.library_uuid.clone(), catalog.custom_columns.clone(), caught_up, vec![]);
+        let ids = HashMap::from([(3, 7)]);
+        let base = baseline(&library_now, &after, &ids);
+        assert_eq!(base.books.iter().map(|b| b.id).collect::<Vec<_>>(), [1, 2, 3]);
+        assert!(shadow.diff(&base, &after, &root).unwrap().is_empty(), "nothing applied twice");
+
+        // A later change to the added book is a change to it, under its shadow id.
+        sql(
+            &shadow,
+            "UPDATE books SET title = 'Merged Anthology', last_modified = '2030-02-01 00:00:00+00:00' WHERE id = 3;",
+        );
+        let later = shadow.diff(&base, &shadow.read().unwrap(), &root).unwrap();
+        assert!(later.added.is_empty());
+        assert_eq!(later.books.len(), 1);
+        assert_eq!((later.books[0].id, later.books[0].fields.title.as_deref()), (3, Some("Merged Anthology")));
     }
 
     #[test]

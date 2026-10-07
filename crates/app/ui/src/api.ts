@@ -33,6 +33,7 @@ import type { PluginMenu } from './bindings/PluginMenu';
 import type { MenuItem as PluginMenuItem } from './bindings/MenuItem';
 import type { PluginDone } from './bindings/PluginDone';
 import type { PluginMessage } from './bindings/PluginMessage';
+import type { PluginAsk } from './bindings/PluginAsk';
 import type { ApplyReport } from './bindings/ApplyReport';
 import type { ServerStatus } from './bindings/ServerStatus';
 import type { TransferProgress } from './bindings/TransferProgress';
@@ -70,6 +71,7 @@ export type {
   AddReport,
   ApplyReport,
   InstalledPlugin,
+  PluginAsk,
   PluginDone,
   PluginKind,
   PluginMenu,
@@ -343,6 +345,9 @@ export const api = {
   runPlugin: (plugin: string, path: number[], texts: string[], selection: number[]) =>
     invoke<void>('run_plugin', { plugin, path, texts, selection }),
 
+  /** Magnitide's editor closed, or its delete finished, for a plugin waiting on it (`onPluginAsk`). */
+  pluginAnswer: (token: number, kind: string, ids: number[]) => invoke<void>('plugin_answer', { token, kind, ids }),
+
   /** The plugin host's recent output (what plugins printed, tracebacks). */
   pluginLog: () => invoke<string[]>('plugin_log'),
 
@@ -437,6 +442,11 @@ export function onPluginDone(handler: (d: PluginDone) => void): Promise<Unlisten
 /** A GUI plugin's status message, or an error in it. */
 export function onPluginMessage(handler: (m: PluginMessage) => void): Promise<UnlistenFn> {
   return listen<PluginMessage>('plugin-message', (e) => handler(e.payload));
+}
+
+/** A GUI plugin called calibre's Edit Metadata or Remove Books, and waits for Magnitide's. */
+export function onPluginAsk(handler: (a: PluginAsk) => void): Promise<UnlistenFn> {
+  return listen<PluginAsk>('plugin-ask', (e) => handler(e.payload));
 }
 
 /** A GUI plugin selected books. */

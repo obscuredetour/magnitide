@@ -10,6 +10,7 @@ import {
   type ApplyReport,
   coverChanged,
   errorMessage,
+  onPluginAsk,
   onPluginDone,
   onPluginMessage,
   onPluginSelect,
@@ -18,6 +19,7 @@ import {
   type PluginMenus,
 } from './api';
 import { type JobHandle, recordJob, startJob } from './jobs';
+import { editBooks, openEditor, untilEditorsClosed } from './editor';
 import { refresh, selectBooks, setEditRevision } from './library';
 import { toast } from './toast';
 import { deleteBooks } from './transfer';
@@ -142,4 +144,26 @@ export function initPlugins(): void {
     }
   });
   void onPluginSelect((ids) => selectBooks(ids));
+  // calibre's Edit Metadata and Remove Books are Magnitide's: what the plugin
+  // did so far is in the library already; the plugin waits for the answer.
+  void onPluginAsk(async (a) => {
+    const run = running.get(a.plugin);
+    try {
+      setEditRevision((n) => n + 1);
+      await refresh();
+      selectBooks(a.ids);
+      if (a.kind === 'edit') {
+        run?.job.progress('Waiting for the book to be edited…');
+        if (a.ids.length === 1) await openEditor(a.ids[0]!);
+        else editBooks(a.ids);
+        await untilEditorsClosed();
+      } else {
+        run?.job.progress('Waiting to delete…');
+        await deleteBooks(a.ids);
+      }
+      run?.job.progress(`${a.plugin}…`);
+    } finally {
+      await api.pluginAnswer(a.token, a.kind, a.ids).catch((err) => toast(errorMessage(err), { error: true }));
+    }
+  });
 }

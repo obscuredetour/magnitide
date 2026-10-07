@@ -50,6 +50,10 @@ class TestAction(InterfaceAction):
         add('add', 'Add a book', self.add_book)
         add('status', 'Say hello', self.say_hello)
         add('dialog', 'Open dialog…', self.open_dialog)
+        m.addSeparator()
+        add('new_edit', 'New book, then edit it', self.new_then_edit)
+        add('remove', 'Remove selected', self.remove_selected)
+        add('apply', 'Apply metadata changes', self.apply_changes)
         sub = m.addMenu('More')
         off = sub.addAction('Unavailable')
         off.setEnabled(False)
@@ -111,3 +115,37 @@ class TestAction(InterfaceAction):
         QTimer.singleShot(1500, d.accept)
         if d.exec() == QDialog.DialogCode.Accepted:
             self.mark()
+
+    def new_then_edit(self):
+        """As EpubMerge does: make the book, select it, have it edited (the
+        plugin waits), then build its file from what was saved."""
+        db = self.gui.current_db.new_api
+        new_id = db.create_book_entry(Metadata('Untitled Merge', ['Plugin Author']))
+        self.gui.library_view.model().books_added(1)
+        self.gui.library_view.select_rows([new_id])
+        self.gui.iactions['Edit Metadata'].edit_metadata(False)
+        title = db.field_for('title', new_id)
+        db.add_format(new_id, 'TXT', io.BytesIO(f'Merged as {title}'.encode()), run_hooks=False)
+        self.gui.status_bar.show_message(f'Merged as “{title}”', 3000)
+
+    def remove_selected(self):
+        """As EpubMerge and FanFicFare do: hand books to Remove Books."""
+        ids = self.selected()
+        self.gui.iactions['Remove Books'].do_library_delete(ids)
+        db = self.gui.current_db.new_api
+        gone = [i for i in ids if not db.has_id(i)]
+        self.gui.status_bar.show_message(f'Removed {len(gone)} of {len(ids)}', 3000)
+
+    def apply_changes(self):
+        """As kiwidude's plugins do: a batch of metadata, merged into what's there."""
+        id_map = {}
+        for i in self.selected():
+            mi = Metadata(_('Unknown'))
+            mi.tags = ['Applied']
+            mi.publisher = 'Plugin Press'
+            id_map[i] = mi
+
+        def done(applied):
+            self.gui.status_bar.show_message(f'Applied to {len(applied)}', 3000)
+
+        self.gui.iactions['Edit Metadata'].apply_metadata_changes(id_map, callback=done)

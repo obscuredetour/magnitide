@@ -147,11 +147,22 @@ calibre-format writer.
      its own edit path (`core::external`): metadata, custom values, new
      custom columns, replaced/added/removed formats, covers, new books. Books
      a plugin removed are only deleted after Magnitide asks.
+   - **calibre's Edit Metadata and Remove Books are Magnitide's.** A plugin
+     calling `edit_metadata`/`edit_metadata_for` or
+     `do_library_delete`/`delete_books` waits, as it would in calibre, at a
+     sync point: Magnitide applies what the plugin did so far (so a book
+     EpubMerge or EpubSplit just made is in the library), opens its editor or
+     asks before moving books to the Trash, sets the result in the shadow
+     through calibre's API (a cover set in the editor is linked, not
+     re-encoded), measures from there, and lets the plugin go on with it.
+     `apply_metadata_changes` (kiwidude's plugins) runs calibre's own logic
+     on the shadow.
 
    Still to do in this step:
-   - Stand-ins for calibre's own actions plugins call through `gui.iactions`
-     (Edit Metadata, Remove Books, Convert Books, Choose Library, Add Books),
-     mapped to Magnitide's; today they're inert and logged.
+   - Stand-ins for the rest of calibre's own actions plugins call through
+     `gui.iactions` (Convert Books, Choose Library, Add Books, and Edit
+     Metadata's `download_metadata`), mapped to Magnitide's; today they're
+     inert and logged.
    - Trying the surveyed plugins themselves (their zips aren't in the repo).
    - Creating custom columns in Magnitide for plugins that ask the user to
      (Count Pages): today a column a plugin creates in the shadow comes back,

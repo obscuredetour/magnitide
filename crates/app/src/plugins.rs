@@ -4,8 +4,11 @@
 //!
 //! GUI plugins work on a calibre-format shadow of the open Magnitide library
 //! (`magnitide_plugins::shadow`), rebuilt whenever the library has changed
-//! since. When a plugin is done, what it changed there is applied to the
-//! library through Magnitide's own edit path.
+//! since. What a plugin changes there is applied to the library through
+//! Magnitide's own edit path at sync points: when the plugin is done, and
+//! when it hands over to Magnitide mid-run (calibre's Edit Metadata and
+//! Remove Books are Magnitide's editor and delete). After a sync point,
+//! further changes are measured from the library as it then is.
 
 use std::collections::{BTreeSet, HashMap};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -13,17 +16,18 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use calibre_compat::write::WriteOptions;
-use magnitide_catalog::Catalog;
+use magnitide_catalog::diff::Changes;
+use magnitide_catalog::{BookId, Catalog};
 use magnitide_core::external::ApplyReport;
-use magnitide_plugins::shadow::Shadow;
+use magnitide_plugins::shadow::{Shadow, baseline};
 use magnitide_plugins::{Calibre, Installed, PluginMenus, Plugins};
 use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State};
 use ts_rs::TS;
 
+use crate::AppState;
 use crate::commands::{CmdResult, write_library};
-use crate::{AppState, Loaded};
 
 /// A GUI plugin finished; what it changed was applied. Matches `onPluginDone` in ui/src/api.ts.
 pub const PLUGIN_DONE_EVENT: &str = "plugin-done";
@@ -31,6 +35,20 @@ pub const PLUGIN_DONE_EVENT: &str = "plugin-done";
 pub const PLUGIN_MESSAGE_EVENT: &str = "plugin-message";
 /// A GUI plugin selected books. Matches `onPluginSelect`.
 pub const PLUGIN_SELECT_EVENT: &str = "plugin-select";
+/// A GUI plugin is waiting for Magnitide's editor or delete. Matches `onPluginAsk`.
+pub const PLUGIN_ASK_EVENT: &str = "plugin-ask";
+
+/// A plugin called calibre's Edit Metadata (`edit`) or Remove Books
+/// (`remove`) for these books; it waits until `plugin_answer`.
+#[derive(Clone, Serialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginAsk {
+    plugin: String,
+    token: u64,
+    kind: String,
+    ids: Vec<BookId>,
+}
 
 #[derive(Clone, Serialize, TS)]
 #[ts(export)]
@@ -58,11 +76,26 @@ pub struct PluginLibrary(Mutex<Option<Built>>);
 
 struct Built {
     root: PathBuf,
-    /// The library as it was written from (its catalog): a plugin's changes
-    /// are measured against it.
-    before: Arc<Loaded>,
-    fingerprint: u64,
     shadow: Shadow,
+    /// The library's catalog it was written from, for knowing when to rebuild.
+    fingerprint: u64,
+    /// What a plugin's changes are measured against: the catalog it was
+    /// written from, then the library as of the last sync point.
+    baseline: Catalog,
+    /// Books a plugin added that are in the library now: shadow id → library id.
+    ids: HashMap<BookId, BookId>,
+    /// What this run has applied so far (reported when the plugin is done).
+    report: ApplyReport,
+}
+
+impl Built {
+    fn to_library(&self, id: BookId) -> BookId {
+        self.ids.get(&id).copied().unwrap_or(id)
+    }
+
+    fn to_shadow(&self, id: BookId) -> BookId {
+        self.ids.iter().find(|&(_, &ours)| ours == id).map_or(id, |(&theirs, _)| theirs)
+    }
 }
 
 /// What Settings › Plugins shows.
@@ -107,39 +140,100 @@ fn on_event(app: &AppHandle, e: Value) {
             let _ = app.emit(PLUGIN_MESSAGE_EVENT, PluginMessage { plugin, message, error: kind == "gui-error" });
         }
         Some("gui-select") => {
-            let ids: Vec<i64> = e
-                .get("ids")
-                .and_then(Value::as_array)
-                .map(|a| a.iter().filter_map(Value::as_i64).collect())
-                .unwrap_or_default();
-            let _ = app.emit(PLUGIN_SELECT_EVENT, ids);
+            // Not on this thread (the host's reader): the lock it needs may be
+            // held by a call waiting for the host's reply.
+            let (app, ids) = (app.clone(), ids_of(&e));
+            tauri::async_runtime::spawn_blocking(move || {
+                let _ = app.emit(PLUGIN_SELECT_EVENT, to_library(&app, &ids));
+            });
+        }
+        Some("gui-ask") => {
+            let app = app.clone();
+            let token = e.get("token").and_then(Value::as_u64).unwrap_or_default();
+            let kind = text("kind").unwrap_or_default();
+            let ids = ids_of(&e);
+            tauri::async_runtime::spawn(async move {
+                // The library catches up first, so the books asked about (one
+                // the plugin just made, say) are in it.
+                match sync(&app).await {
+                    Ok(()) => {
+                        let ids = to_library(&app, &ids);
+                        let plugin = plugin.unwrap_or_default();
+                        let _ = app.emit(PLUGIN_ASK_EVENT, PluginAsk { plugin, token, kind, ids });
+                    }
+                    Err(err) => {
+                        // Don't leave the plugin waiting.
+                        let _ = app.state::<Plugins>().gui_resume(token);
+                        let _ = app.emit(PLUGIN_MESSAGE_EVENT, PluginMessage { plugin, message: err, error: true });
+                    }
+                }
+            });
         }
         _ => {}
     }
 }
 
-/// Apply what the plugin changed in the shadow to the library. None if nothing.
+fn ids_of(e: &Value) -> Vec<BookId> {
+    e.get("ids").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_i64).collect()).unwrap_or_default()
+}
+
+/// Shadow ids as the library's.
+fn to_library(app: &AppHandle, ids: &[BookId]) -> Vec<BookId> {
+    let state = app.state::<PluginLibrary>();
+    let built = state.0.lock().unwrap_or_else(|e| e.into_inner());
+    ids.iter().map(|&id| built.as_ref().map_or(id, |b| b.to_library(id))).collect()
+}
+
+/// The plugin is done: catch up, and report everything this run applied.
 async fn read_back(app: &AppHandle) -> CmdResult<Option<ApplyReport>> {
+    sync(app).await?;
+    let state = app.state::<PluginLibrary>();
+    let mut built = state.0.lock().unwrap_or_else(|e| e.into_inner());
+    // The library's catalog has reloaded if anything changed, so the shadow
+    // is rebuilt before the next run.
+    Ok(built.as_mut().map(|b| std::mem::take(&mut b.report)).filter(|r| !r.is_empty()))
+}
+
+/// A sync point: apply what the plugin changed since the last one, then
+/// measure further changes from the library as it is now.
+async fn sync(app: &AppHandle) -> CmdResult<()> {
     let handle = app.clone();
-    let changes = tauri::async_runtime::spawn_blocking(move || {
+    let pending = tauri::async_runtime::spawn_blocking(move || -> CmdResult<Option<(Changes, Catalog)>> {
         let lib = handle.state::<AppState>().current().ok_or("No library is open")?;
-        let built = handle.state::<PluginLibrary>();
-        let built = built.0.lock().unwrap_or_else(|e| e.into_inner());
-        match built.as_ref() {
-            // The library changed (another one was opened) meanwhile: nothing to apply to.
-            Some(b) if b.root == lib.root => b.shadow.changes(&b.before.catalog, &b.root).map(Some),
-            _ => Ok(None),
+        let state = handle.state::<PluginLibrary>();
+        let built = state.0.lock().unwrap_or_else(|e| e.into_inner());
+        // Another library was opened meanwhile: nothing to apply to.
+        let Some(b) = built.as_ref().filter(|b| b.root == lib.root) else { return Ok(None) };
+        let after = b.shadow.read()?;
+        let mut changes = b.shadow.diff(&b.baseline, &after, &b.root)?;
+        for book in &mut changes.books {
+            book.id = b.to_library(book.id);
         }
+        for id in &mut changes.removed {
+            *id = b.to_library(*id);
+        }
+        Ok(Some((changes, after)))
     })
     .await
     .map_err(|e| e.to_string())??;
-    let Some(changes) = changes.filter(|c| !c.is_empty()) else { return Ok(None) };
-    // The library's catalog reloads, so the shadow is rebuilt before the next run.
-    let report = write_library(&app.state::<AppState>(), move |lib| {
-        lib.apply_changes(&changes, |path| trash::delete(path).map_err(std::io::Error::other))
-    })
-    .await?;
-    Ok(Some(report))
+    let Some((changes, after)) = pending else { return Ok(()) };
+    let report = if changes.is_empty() {
+        ApplyReport::default()
+    } else {
+        write_library(&app.state::<AppState>(), move |lib| {
+            lib.apply_changes(&changes, |path| trash::delete(path).map_err(std::io::Error::other))
+        })
+        .await?
+    };
+    let lib = app.state::<AppState>().current().ok_or("No library is open")?;
+    let state = app.state::<PluginLibrary>();
+    let mut built = state.0.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(b) = built.as_mut().filter(|b| b.root == lib.root) {
+        b.ids.extend(report.added_from.iter().copied());
+        b.report.absorb(report);
+        b.baseline = baseline(&lib.catalog, &after, &b.ids);
+    }
+    Ok(())
 }
 
 /// Changes whenever a book's metadata does, or the set of books or fields.
@@ -196,7 +290,14 @@ fn prepare(app: &AppHandle, reuse: bool) -> CmdResult<PluginMenus> {
             .collect();
         let shadow = Shadow::new(dir);
         shadow.build(&lib.catalog, &lib.root, &WriteOptions { author_sorts })?;
-        *built = Some(Built { root: lib.root.clone(), before: lib.clone(), fingerprint, shadow });
+        *built = Some(Built {
+            root: lib.root.clone(),
+            shadow,
+            fingerprint,
+            baseline: lib.catalog.clone(),
+            ids: HashMap::new(),
+            report: ApplyReport::default(),
+        });
     }
     let library = built.as_ref().map(|b| b.shadow.library()).ok_or("no plugin library")?;
     plugins.gui_open(&library)
@@ -236,6 +337,58 @@ pub async fn run_plugin(
     tauri::async_runtime::spawn_blocking(move || {
         prepare(&app, false)?;
         app.state::<Plugins>().gui_trigger(&plugin, &path, &texts, &selection)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Magnitide's editor closed (`edit`) or its delete finished (`remove`) for
+/// the books a plugin asked about (`plugin-ask`): tell the plugin, which
+/// goes on with the books as they are now in the library.
+#[tauri::command]
+pub async fn plugin_answer(app: AppHandle, token: u64, kind: String, ids: Vec<BookId>) -> CmdResult<()> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let lib = app.state::<AppState>().current().ok_or("No library is open")?;
+        let state = app.state::<PluginLibrary>();
+        let plugins = app.state::<Plugins>();
+        let built = state.0.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(b) = built.as_ref().filter(|b| b.root == lib.root) else {
+            drop(built);
+            return plugins.gui_resume(token);
+        };
+        let answer = if kind == "edit" {
+            let books: serde_json::Map<String, Value> = ids
+                .iter()
+                .filter_map(|&id| lib.catalog.get(id))
+                .map(|book| {
+                    let mut v = serde_json::to_value(book).unwrap_or_default();
+                    if let Some(cover) = book.cover_path(&lib.root).filter(|p| p.is_file()) {
+                        v["coverPath"] = Value::from(cover.to_string_lossy().into_owned());
+                    }
+                    (b.to_shadow(book.id).to_string(), v)
+                })
+                .collect();
+            serde_json::json!({ "books": books })
+        } else {
+            let removed: Vec<BookId> =
+                ids.iter().filter(|&&id| lib.catalog.get(id).is_none()).map(|&id| b.to_shadow(id)).collect();
+            serde_json::json!({ "removed": removed })
+        };
+        // Not holding the lock while the host works: its events may need it.
+        drop(built);
+        let answered = plugins.gui_answer(token, answer);
+        // The shadow now matches what the user did: measure from here, before
+        // the plugin goes on (and changes it again).
+        let rebased = (|| -> CmdResult<()> {
+            let mut built = state.0.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(b) = built.as_mut().filter(|b| b.root == lib.root) {
+                let after = b.shadow.read()?;
+                b.baseline = baseline(&lib.catalog, &after, &b.ids);
+            }
+            Ok(())
+        })();
+        plugins.gui_resume(token)?;
+        answered.and(rebased)
     })
     .await
     .map_err(|e| e.to_string())?

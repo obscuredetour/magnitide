@@ -568,6 +568,166 @@ class Inert:
         return 0
 
 
+# --- calibre's own actions that plugins call, mapped to Magnitide's.
+
+_asks = {}  # token -> {'loop': QEventLoop, 'answer': ...}
+_ask_seq = [0]
+
+
+def ask_magnitide(kind, ids):
+    """Hand over to Magnitide and wait for it, as calibre's own dialogs make
+    a plugin wait: it applies what the plugin changed so far, shows its
+    editor (`edit`) or asks before deleting (`remove`), answers through
+    `gui_answer` (which changes the shadow to match), notes the shadow as it
+    then is, and lets the plugin go on with `gui_resume`. Qt keeps running
+    meanwhile (the plugin's windows stay responsive)."""
+    from qt.core import QEventLoop
+
+    _ask_seq[0] += 1
+    token = _ask_seq[0]
+    entry = _asks[token] = {'loop': QEventLoop(), 'answer': None}
+    event('gui-ask', plugin=_gui_state.get('plugin'), token=token, kind=kind, ids=list(ids))
+    _return_focus()  # Magnitide's editor or question is next
+    entry['loop'].exec()
+    return _asks.pop(token)['answer'] or {}
+
+
+def _apply_edits(books):
+    """Magnitide's editor saved these books (shadow id → book, as Magnitide's
+    catalog has them): set them in the shadow so the plugin sees them."""
+    from calibre.utils.date import UNDEFINED_DATE, parse_date
+
+    api = _gui.db.new_api
+    for key, b in books.items():
+        book_id = int(key)
+        if not api.has_id(book_id):
+            continue
+        fields = {
+            'title': b.get('title') or _('Unknown'),
+            'authors': b.get('authors') or [_('Unknown')],
+            'series': b.get('series') or None,
+            'tags': b.get('tags') or [],
+            'publisher': b.get('publisher') or None,
+            'pubdate': parse_date(b['pubdate']) if b.get('pubdate') else UNDEFINED_DATE,
+            'comments': b.get('comments') or None,
+            'languages': b.get('languages') or [],
+            'identifiers': b.get('identifiers') or {},
+            'rating': b.get('rating') or 0,
+        }
+        for field, value in fields.items():
+            api.set_field(field, {book_id: value})
+        if b.get('series'):
+            api.set_field('series_index', {book_id: b.get('series_index') or 1.0})
+        if b.get('sort'):
+            api.set_field('sort', {book_id: b['sort']})
+        cover = b.get('coverPath')
+        if cover:
+            _link_cover(api, book_id, cover)
+
+
+def _link_cover(api, book_id, cover):
+    """The book's cover is Magnitide's file: link it, as the shadow does,
+    rather than have calibre re-encode a copy."""
+    here = os.path.join(_gui.db.library_path, api.field_for('path', book_id), 'cover.jpg')
+    if os.path.islink(here) and os.path.realpath(here) == os.path.realpath(cover):
+        return
+    with open(cover, 'rb') as f:
+        api.set_cover({book_id: f.read()})
+    try:
+        os.remove(here)
+        os.symlink(cover, here)
+    except OSError:
+        traceback.print_exc()
+
+
+class EditMetadata:
+    """calibre's Edit Metadata action: its editor is Magnitide's."""
+
+    def __init__(self, gui):
+        self.gui = gui
+        self.name = 'Edit Metadata'
+
+    def edit_metadata(self, checked=False, bulk=None):
+        self.edit_metadata_for(None, self.gui.library_view.get_selected_ids(), bulk=bulk)
+
+    def edit_metadata_for(self, rows, book_ids, bulk=None):
+        if book_ids:
+            ask_magnitide('edit', book_ids)
+
+    def apply_metadata_changes(
+        self, id_map, title=None, msg='', callback=None, merge_tags=True, merge_comments=False, icon=None
+    ):
+        """As calibre does it (EditMetadataAction.apply_mi), without its
+        progress window: Metadata objects, or (OPF path, cover path) pairs."""
+        from calibre.ebooks.metadata.opf2 import OPF
+        from calibre.library.comments import merge_comments as merge
+
+        db = self.gui.current_db
+        applied = set()
+        for book_id, mi in id_map.items():
+            if not db.has_id(book_id):
+                continue
+            try:
+                if isinstance(mi, tuple):
+                    opf, cover = mi
+                    if cover:
+                        with open(cover, 'rb') as f:
+                            db.set_cover(book_id, f, notify=False, commit=False)
+                        applied.add(book_id)
+                    if not opf:
+                        continue
+                    with open(opf, 'rb') as f:
+                        mi = OPF(f, basedir=os.path.dirname(opf), populate_spine=False).to_book_metadata()
+                set_title, set_authors = not mi.is_null('title'), not mi.is_null('authors')
+                idents = db.get_identifiers(book_id, index_is_id=True)
+                if mi.identifiers:
+                    idents.update(mi.identifiers)
+                mi.identifiers = idents
+                if mi.is_null('series'):
+                    mi.series_index = None
+                if merge_tags:
+                    old = db.tags(book_id, index_is_id=True)
+                    if old:
+                        mi.tags = list(set([x.strip() for x in old.split(',')] + (mi.tags or [])))
+                if merge_comments:
+                    old = db.new_api.field_for('comments', book_id)
+                    if old and mi.comments and old != mi.comments:
+                        mi.comments = merge(old, mi.comments)
+                db.set_metadata(book_id, mi, commit=False, set_title=set_title, set_authors=set_authors, notify=False)
+                applied.add(book_id)
+            except Exception:
+                traceback.print_exc()
+        db.commit()
+        self.gui.changed()
+        if callback is not None:
+            callback(list(applied))
+
+    def __getattr__(self, name):
+        if name.startswith('__'):
+            raise AttributeError(name)
+        return Inert(f"gui.iactions['Edit Metadata'].{name}")
+
+
+class RemoveBooks:
+    """calibre's Remove Books action: Magnitide asks, and moves them to the Trash."""
+
+    def __init__(self, gui):
+        self.gui = gui
+        self.name = 'Remove Books'
+
+    def do_library_delete(self, to_delete_ids):
+        if to_delete_ids:
+            ask_magnitide('remove', to_delete_ids)
+
+    def delete_books(self, *args):
+        self.do_library_delete(self.gui.library_view.get_selected_ids())
+
+    def __getattr__(self, name):
+        if name.startswith('__'):
+            raise AttributeError(name)
+        return Inert(f"gui.iactions['Remove Books'].{name}")
+
+
 _gui = None
 _gui_state = {'running': 0, 'plugin': None, 'watching': False, 'changed': False}
 _loaded = {}  # zip path -> the plugin's InterfaceAction
@@ -691,8 +851,9 @@ def _build_gui():
             return Inert(f'gui.status_bar.{name}')
 
     class Actions(dict):
-        """`gui.iactions`: the hosted plugins by name; calibre's own actions
-        aren't here yet (stand-ins, logged when used)."""
+        """`gui.iactions`: the hosted plugins, and calibre's own actions that
+        Magnitide has (Edit Metadata, Remove Books), by name. Others are
+        inert stand-ins, logged when used."""
 
         def __missing__(self, name):
             return Inert(f'gui.iactions[{name!r}]')
@@ -706,7 +867,7 @@ def _build_gui():
             self.db = None
             self.library_path = None
             self.keyboard = Manager(self)
-            self.iactions = Actions()
+            self.iactions = Actions({'Edit Metadata': EditMetadata(self), 'Remove Books': RemoveBooks(self)})
             self.status_bar = StatusBar()
             self.job_manager = JobManager()
             self.library_view = LibraryView(self)
@@ -985,6 +1146,39 @@ def m_gui_trigger(params):
     )
 
 
+def m_gui_answer(params):
+    """Magnitide's answer to `ask_magnitide`: the books as the user saved
+    them (`books`, by shadow id) or the ones they deleted (`removed`). The
+    shadow is changed to match before this replies; the plugin waits on
+    until `gui_resume`, so nothing it does next is mistaken for this."""
+
+    def go():
+        entry = _asks.get(params.get('token'))
+        if entry is None:
+            return {'answered': False}
+        entry['answer'] = params
+        _apply_edits(params.get('books') or {})
+        removed = [i for i in params.get('removed') or [] if _gui.db.new_api.has_id(i)]
+        if removed:
+            _gui.db.new_api.remove_books(removed, permanent=True)
+        _gui.library_view.model().reload()
+        return {'answered': True}
+
+    return on_main(go)
+
+
+def m_gui_resume(params):
+    """Let a plugin waiting in `ask_magnitide` go on."""
+
+    def go():
+        entry = _asks.get(params.get('token'))
+        if entry is not None:
+            entry['loop'].quit()
+        return {'resumed': entry is not None}
+
+    return on_main(go)
+
+
 def m_gui_busy(params):
     if 'invoker' not in _qt:
         return {'busy': False}
@@ -1001,6 +1195,8 @@ METHODS = {
     'gui_actions': m_gui_actions,
     'gui_trigger': m_gui_trigger,
     'gui_busy': m_gui_busy,
+    'gui_answer': m_gui_answer,
+    'gui_resume': m_gui_resume,
 }
 
 

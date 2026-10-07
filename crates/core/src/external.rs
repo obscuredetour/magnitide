@@ -42,6 +42,33 @@ pub struct ApplyReport {
     /// "Title: reason" for each book whose changes couldn't be applied.
     pub failed: Vec<String>,
     pub warnings: Vec<String>,
+    /// Each new book's id there and its id here, in that order.
+    #[serde(skip)]
+    #[cfg_attr(feature = "ts", ts(skip))]
+    pub added_from: Vec<(BookId, BookId)>,
+}
+
+impl ApplyReport {
+    /// Add `other` (a later apply in the same run) to this report.
+    pub fn absorb(&mut self, other: ApplyReport) {
+        self.updated.extend(other.updated.into_iter().filter(|id| !self.updated.contains(id)).collect::<Vec<_>>());
+        self.added.extend(other.added);
+        self.removed.extend(other.removed);
+        self.fields_added += other.fields_added;
+        self.details.extend(other.details);
+        self.failed.extend(other.failed);
+        self.warnings.extend(other.warnings);
+        self.added_from.extend(other.added_from);
+    }
+
+    /// Nothing was changed, or found to need asking about.
+    pub fn is_empty(&self) -> bool {
+        self.updated.is_empty()
+            && self.added.is_empty()
+            && self.removed.is_empty()
+            && self.fields_added == 0
+            && self.failed.is_empty()
+    }
 }
 
 impl Library {
@@ -79,6 +106,7 @@ impl Library {
             match self.add_external_book(added, &fields) {
                 Ok(id) => {
                     report.added.push(id);
+                    report.added_from.push((added.book.id, id));
                     let formats: Vec<&str> = added.files.iter().map(|(f, _)| f.as_str()).collect();
                     let with = if formats.is_empty() { String::new() } else { format!(" ({})", formats.join(", ")) };
                     report.details.push(format!("Added “{}”{with}", added.book.title));
@@ -444,6 +472,7 @@ mod tests {
         let report = lib.apply_changes(&changes, |_| Ok(())).unwrap();
         assert_eq!(report.added.len(), 1, "{report:?}");
         assert_eq!(report.details.last().unwrap(), "Added “Dune Omnibus” (EPUB)");
+        assert_eq!(report.added_from, [(999, report.added[0])]);
         assert_eq!(report.removed, [id], "only books still here; and not deleted");
         assert!(lib.book(id).is_ok());
         let cat = lib.load_catalog().unwrap();

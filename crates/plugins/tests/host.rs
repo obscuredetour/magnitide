@@ -268,3 +268,92 @@ fn gui_plugin_end_to_end() {
     plugins.set_enabled(&installed.name, false).unwrap();
     assert!(plugins.gui_open(&shadow.library()).unwrap().menus.is_empty());
 }
+
+/// Wait for an event of `kind`, answering any `gui-ask` with `answer` (as
+/// Magnitide would after its editor closed or it deleted the books).
+fn wait_for(
+    plugins: &Plugins,
+    events: &mpsc::Receiver<Value>,
+    kind: &str,
+    answer: &dyn Fn(&Value) -> Value,
+) -> (Value, Vec<Value>) {
+    let mut asked = Vec::new();
+    loop {
+        let e = events.recv_timeout(Duration::from_secs(60)).expect("the plugin carries on");
+        if e["event"] == "gui-ask" {
+            asked.push(e.clone());
+            let token = e["token"].as_u64().unwrap();
+            plugins.gui_answer(token, answer(&e)).unwrap();
+            plugins.gui_resume(token).unwrap();
+        } else if e["event"] == kind {
+            return (e, asked);
+        }
+    }
+}
+
+#[test]
+fn calibres_edit_metadata_and_remove_books_are_magnitides() {
+    let Some(calibre) = calibre_debug() else {
+        eprintln!("skipped: calibre isn't installed here");
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let plugins = Plugins::new(dir.path().join("calibre-plugins"), move || Some(calibre.clone()));
+    let (tx, events) = mpsc::channel();
+    plugins.set_event_handler(Arc::new(move |e| {
+        let _ = tx.send(e);
+    }));
+    plugins.install(&fixture_zip(dir.path(), "test_action")).unwrap();
+    let root = dir.path().join("library");
+    let catalog = small_library(&root, &["Dune", "Hyperion", "Solaris"]);
+    let shadow = Shadow::new(dir.path().join("shadow"));
+    shadow.build(&catalog, &root, &Default::default()).unwrap();
+    plugins.gui_open(&shadow.library()).unwrap();
+    let trigger = |item: &str, selection: &[i64]| {
+        plugins.gui_trigger("Magnitide Test Action", &[u32::MAX], &[item.to_owned()], selection).unwrap()
+    };
+
+    // Edit Metadata: the plugin waits for the editor, then uses what was saved.
+    trigger("New book, then edit it", &[1]);
+    let edited = |e: &Value| {
+        let id = e["ids"][0].as_i64().unwrap();
+        serde_json::json!({ "books": { id.to_string(): {
+            "title": "The Collected Dune", "authors": ["Frank Herbert"], "tags": ["Omnibus"],
+            "series": "Dune", "series_index": 1.0, "languages": ["eng"], "identifiers": {}, "rating": 8
+        }}})
+    };
+    let (status, asked) = wait_for(&plugins, &events, "gui-status", &edited);
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0]["kind"], "edit");
+    let new_id = asked[0]["ids"][0].as_i64().unwrap();
+    assert!(new_id > 3, "the book it made, selected: {:?}", asked[0]["ids"]);
+    assert_eq!(status["message"], "Merged as “The Collected Dune”");
+    wait_for(&plugins, &events, "gui-idle", &edited);
+    let after = shadow.read().unwrap();
+    let merged = after.get(new_id).unwrap();
+    assert_eq!((merged.authors.as_slice(), merged.rating), (&["Frank Herbert".to_owned()][..], Some(8)));
+    assert_eq!(merged.formats[0].format, "TXT");
+
+    // Remove Books: Magnitide asks; the plugin sees only what was removed.
+    trigger("Remove selected", &[2, 3]);
+    let only_two = |_: &Value| serde_json::json!({ "removed": [2] });
+    let (status, asked) = wait_for(&plugins, &events, "gui-status", &only_two);
+    assert_eq!((asked[0]["kind"].as_str(), &asked[0]["ids"]), (Some("remove"), &serde_json::json!([2, 3])));
+    assert_eq!(status["message"], "Removed 1 of 2");
+    wait_for(&plugins, &events, "gui-idle", &only_two);
+    let after = shadow.read().unwrap();
+    assert!(after.get(2).is_none() && after.get(3).is_some());
+    let solaris = catalog.get(3).unwrap();
+    assert!(solaris.format_path(&root, &solaris.formats[0]).is_file(), "the library's files are Magnitide's to delete");
+    assert!(catalog.get(2).unwrap().format_path(&root, &catalog.get(2).unwrap().formats[0]).is_file());
+
+    // apply_metadata_changes: calibre's way, tags merged.
+    trigger("Apply metadata changes", &[1, 3]);
+    let (status, _) = wait_for(&plugins, &events, "gui-status", &|_| Value::Null);
+    assert_eq!(status["message"], "Applied to 2");
+    wait_for(&plugins, &events, "gui-idle", &|_| Value::Null);
+    let changes = shadow.changes(&catalog, &root).unwrap();
+    let dune = changes.books.iter().find(|b| b.id == 1).unwrap();
+    assert_eq!(dune.fields.publisher, Some(Some("Plugin Press".into())));
+    assert_eq!(dune.fields.tags.as_deref(), Some(&["Applied".to_owned()][..]));
+}

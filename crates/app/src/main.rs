@@ -174,7 +174,8 @@ fn main() {
             plugins::plugin_log,
             plugins::gui_plugin_names,
             plugins::plugin_menus,
-            plugins::run_plugin
+            plugins::run_plugin,
+            plugins::plugin_answer
         ])
         .run(tauri::generate_context!())
         .expect("error while running Magnitide");

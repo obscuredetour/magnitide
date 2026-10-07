@@ -129,6 +129,27 @@ impl Plugins {
     }
 }
 
+impl Plugins {
+    /// Answer a plugin waiting on Magnitide (a `gui-ask` event, for calibre's
+    /// Edit Metadata or Remove Books): `answer` holds the books as saved
+    /// (`{"books": {shadow id: book}}`, a book as Magnitide's catalog has it,
+    /// plus `coverPath`) or those deleted (`{"removed": [shadow ids]}`). The
+    /// host changes the shadow to match before this returns; the plugin
+    /// waits on until [`Plugins::gui_resume`].
+    pub fn gui_answer(&self, token: u64, mut answer: Value) -> Result<(), String> {
+        if !answer.is_object() {
+            answer = json!({});
+        }
+        answer["token"] = json!(token);
+        self.host()?.call("gui_answer", answer, CALL_TIMEOUT).map(|_| ())
+    }
+
+    /// Let a plugin waiting on Magnitide go on.
+    pub fn gui_resume(&self, token: u64) -> Result<(), String> {
+        self.host()?.call("gui_resume", json!({ "token": token }), CALL_TIMEOUT).map(|_| ())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
