@@ -1,4 +1,5 @@
-//! The plugin host process: `calibre-debug -e host.py`, talking JSON lines.
+//! The plugin host process: the plugin runtime's Python running
+//! `magnitide_host` (from the compat package), talking JSON lines.
 //!
 //! One process serves every request (plugins keep state between calls, such
 //! as the cover URLs a metadata source finds while identifying); requests
@@ -8,7 +9,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
@@ -17,16 +18,29 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-/// The host script, written next to the plugins at start-up.
-pub const SCRIPT: &str = include_str!("host.py");
+use crate::runtime::Runtime;
 
 /// Lines of the host's log kept (stderr: calibre's and plugins' output, tracebacks).
 const LOG_LINES: usize = 400;
+
+/// Starts the host package from the compat directory given as the first
+/// argument. The directory goes on `sys.path` this way, not through
+/// PYTHONPATH, because the interpreter runs with `-I` (isolated: the user's
+/// PYTHON* variables and site-packages are ignored).
+const BOOTSTRAP: &str = "import sys, runpy; sys.path.insert(0, sys.argv.pop(1)); \
+runpy.run_module('magnitide_host', run_name='__main__', alter_sys=True)";
 
 type Pending = Arc<Mutex<HashMap<u64, Sender<Result<Value, String>>>>>;
 
 /// Called (on the host's reader thread) with each event: `{"event": "gui-idle", …}`.
 pub type EventHandler = Arc<dyn Fn(Value) + Send + Sync>;
+
+/// How the crate talks to a host: the real process, or a stand-in in tests.
+pub trait Transport: Send + Sync {
+    fn call(&self, method: &str, params: Value, timeout: Duration) -> Result<Value, String>;
+    fn is_alive(&self) -> bool;
+    fn log(&self) -> Vec<String>;
+}
 
 pub struct Host {
     child: Mutex<Child>,
@@ -37,28 +51,27 @@ pub struct Host {
     log: Arc<Mutex<VecDeque<String>>>,
 }
 
-/// `calibre-debug` beside calibre's `ebook-convert`.
-pub fn calibre_debug_beside(ebook_convert: &Path) -> PathBuf {
-    let name = if cfg!(windows) { "calibre-debug.exe" } else { "calibre-debug" };
-    ebook_convert.with_file_name(name)
-}
-
 impl Host {
-    /// Start the host with `calibre_debug`, running `script`, with plugin
-    /// settings kept in `config_dir` (never calibre's own).
+    /// Start the host in `runtime`, with the compat package at `compat_dir`
+    /// and plugin settings kept in `config_dir` (never calibre's own).
     pub fn start(
-        calibre_debug: &Path,
-        script: &Path,
+        runtime: &Runtime,
+        compat_dir: &Path,
         config_dir: &Path,
         on_event: Option<EventHandler>,
     ) -> Result<Self, String> {
         std::fs::create_dir_all(config_dir).map_err(|e| e.to_string())?;
-        let mut cmd = Command::new(calibre_debug);
-        cmd.arg("-e")
-            .arg(script)
+        let cache_dir = config_dir.join("caches");
+        let mut cmd = Command::new(&runtime.python);
+        cmd.args(["-I", "-X", "utf8", "-u", "-c", BOOTSTRAP])
+            .arg(compat_dir)
             .env("CALIBRE_CONFIG_DIRECTORY", config_dir)
+            .env("CALIBRE_CACHE_DIRECTORY", &cache_dir)
             // So the host can give the focus back when a plugin's windows close.
             .env("MAGNITIDE_PID", std::process::id().to_string())
+            // A system Qt must not leak into the runtime's.
+            .env_remove("QT_PLUGIN_PATH")
+            .env_remove("QT_QPA_PLATFORMTHEME")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -68,8 +81,9 @@ impl Host {
             const CREATE_NO_WINDOW: u32 = 0x0800_0000;
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
-        let mut child =
-            cmd.spawn().map_err(|e| format!("couldn't start calibre ({}): {e}", calibre_debug.display()))?;
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| format!("couldn't start the plugin runtime ({}): {e}", runtime.python.display()))?;
         let stdin = child.stdin.take().ok_or("no stdin")?;
         let stdout = child.stdout.take().ok_or("no stdout")?;
         let stderr = child.stderr.take().ok_or("no stderr")?;
@@ -152,6 +166,20 @@ impl Host {
     /// The host's recent output, oldest first.
     pub fn log(&self) -> Vec<String> {
         self.log.lock().unwrap_or_else(|e| e.into_inner()).iter().cloned().collect()
+    }
+}
+
+impl Transport for Host {
+    fn call(&self, method: &str, params: Value, timeout: Duration) -> Result<Value, String> {
+        Host::call(self, method, params, timeout)
+    }
+
+    fn is_alive(&self) -> bool {
+        Host::is_alive(self)
+    }
+
+    fn log(&self) -> Vec<String> {
+        Host::log(self)
     }
 }
 

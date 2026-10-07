@@ -15,6 +15,7 @@ use serde::Serialize;
 
 use super::store::{Cover, add_formats, store_book};
 use crate::error::Result;
+use crate::hooks::{ImportHooks, ImportOutcome, MetadataPlugins, NoHooks};
 use crate::library::{BookId, Library, NewBook};
 use crate::metadata::{self, filename::book_stem};
 use crate::{html, names};
@@ -50,6 +51,9 @@ pub struct AddReport {
     /// Books that couldn't be added, with the reason. Nothing was left behind for them.
     pub failed: Vec<String>,
     pub warnings: Vec<String>,
+    /// Every file stored: the book it went to and its format (upper case).
+    #[serde(default)]
+    pub formats: Vec<(BookId, String)>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -60,9 +64,23 @@ pub struct AddProgress<'a> {
 }
 
 /// Add every book found in `paths` (files and folders) to `lib`.
-pub fn add_files(lib: &mut Library, paths: &[PathBuf], mut progress: impl FnMut(AddProgress<'_>)) -> Result<AddReport> {
+pub fn add_files(lib: &mut Library, paths: &[PathBuf], progress: impl FnMut(AddProgress<'_>)) -> Result<AddReport> {
+    add_files_with(lib, paths, &NoHooks, &NoHooks, progress)
+}
+
+/// [`add_files`] with plugins: `hooks` run on each file before its metadata
+/// is read (and may hand back another file to add instead), and `plugins`
+/// may read metadata of formats Magnitide can't.
+pub fn add_files_with(
+    lib: &mut Library,
+    paths: &[PathBuf],
+    hooks: &dyn ImportHooks,
+    plugins: &dyn MetadataPlugins,
+    mut progress: impl FnMut(AddProgress<'_>),
+) -> Result<AddReport> {
     let mut report = AddReport::default();
     let root = fs::canonicalize(&lib.root)?;
+    let extra: Vec<String> = hooks.file_types().into_iter().map(|e| e.to_lowercase()).collect();
 
     let mut found = Vec::new();
     for p in paths {
@@ -77,7 +95,7 @@ pub fn add_files(lib: &mut Library, paths: &[PathBuf], mut progress: impl FnMut(
             report.skipped.push(format!("{} is already in this library", path.display()));
             continue;
         }
-        let Some(format) = format_of(&path) else {
+        let Some(format) = format_of_with(&path, &extra) else {
             report.skipped.push(format!("{} isn't a book format Magnitide recognises", path.display()));
             continue;
         };
@@ -91,8 +109,28 @@ pub fn add_files(lib: &mut Library, paths: &[PathBuf], mut progress: impl FnMut(
 
     let total = groups.len();
     for (done, files) in groups.into_values().enumerate() {
+        // Plugins first (calibre's on_import), on each file; a plugin may
+        // hand back a rewritten file, possibly with another extension.
+        let mut temporary = Vec::new();
+        let files: Vec<(String, PathBuf)> = files
+            .into_iter()
+            .map(|(format, path)| match hooks.on_import(&path, &format) {
+                ImportOutcome::Unchanged => (format, path),
+                ImportOutcome::Replaced { path: new, temporary: tmp } => {
+                    if tmp {
+                        temporary.push(new.clone());
+                    }
+                    let format = format_of_with(&new, &extra).unwrap_or(format);
+                    (format, new)
+                }
+                ImportOutcome::Failed(why) => {
+                    report.warnings.push(format!("{}: {why}; added as it is", path.display()));
+                    (format, path)
+                }
+            })
+            .collect();
         let (format, path) = metadata_source(&files);
-        let meta = metadata::read(path, format);
+        let meta = metadata::read_with(path, format, plugins);
         let title = meta.title.clone().unwrap_or_else(|| book_stem(path));
         progress(AddProgress { done, total, title: &title });
 
@@ -113,9 +151,11 @@ pub fn add_files(lib: &mut Library, paths: &[PathBuf], mut progress: impl FnMut(
                     report.cloned += stored.cloned;
                     report.copied += stored.copied;
                     report.copied_bytes += stored.copied_bytes;
+                    report.formats.extend(missing.iter().map(|(f, _)| (existing, f.clone())));
                 }
                 Err(e) => report.failed.push(e.to_string()),
             }
+            remove_temporary(&temporary);
             continue;
         }
 
@@ -149,9 +189,11 @@ pub fn add_files(lib: &mut Library, paths: &[PathBuf], mut progress: impl FnMut(
                 report.copied += stored.copied;
                 report.copied_bytes += stored.copied_bytes;
                 report.warnings.extend(stored.warnings);
+                report.formats.extend(files.iter().map(|(f, _)| (stored.id, f.clone())));
             }
             Err(e) => report.failed.push(e.to_string()),
         }
+        remove_temporary(&temporary);
     }
     progress(AddProgress { done: total, total, title: "" });
     Ok(report)
@@ -185,14 +227,26 @@ fn collect(path: &Path, out: &mut Vec<PathBuf>, skipped: &mut Vec<String>) {
     }
 }
 
+/// Files a plugin made while adding a book, no longer needed.
+fn remove_temporary(paths: &[PathBuf]) {
+    for p in paths {
+        let _ = fs::remove_file(p);
+    }
+}
+
 /// Upper-case format for a book file, or None if it isn't one.
 pub fn format_of(path: &Path) -> Option<String> {
+    format_of_with(path, &[])
+}
+
+/// [`format_of`], also accepting `extra` lower-case extensions (ones plugins handle).
+pub fn format_of_with(path: &Path, extra: &[String]) -> Option<String> {
     let name = path.file_name()?.to_string_lossy().to_lowercase();
     if name.ends_with(".kepub.epub") {
         return Some("KEPUB".into());
     }
     let ext = name.rsplit_once('.')?.1;
-    BOOK_EXTENSIONS.contains(&ext).then(|| match ext {
+    (BOOK_EXTENSIONS.contains(&ext) || extra.iter().any(|e| e == ext)).then(|| match ext {
         "htm" => "HTML".to_owned(),
         other => other.to_ascii_uppercase(),
     })
@@ -353,6 +407,95 @@ mod tests {
         let r = add_files(&mut lib, &[file], |_| {}).unwrap();
         let b = lib.book(r.added[0]).unwrap();
         assert_eq!((b.title.as_str(), b.authors[0].as_str()), ("Broken Book", "Some Author"));
+    }
+
+    struct RecordingHooks {
+        calls: std::sync::Mutex<Vec<String>>,
+        replace_with: Option<PathBuf>,
+        fail: bool,
+    }
+
+    impl ImportHooks for RecordingHooks {
+        fn file_types(&self) -> Vec<String> {
+            vec!["xyz".into()]
+        }
+
+        fn on_import(&self, path: &Path, format: &str) -> ImportOutcome {
+            self.calls.lock().unwrap().push(format!("{format} {}", path.file_name().unwrap().to_string_lossy()));
+            if self.fail {
+                return ImportOutcome::Failed("boom".into());
+            }
+            match &self.replace_with {
+                Some(p) => ImportOutcome::Replaced { path: p.clone(), temporary: true },
+                None => ImportOutcome::Unchanged,
+            }
+        }
+    }
+
+    struct TxtReader;
+
+    impl crate::hooks::MetadataPlugins for TxtReader {
+        fn reads(&self, format: &str) -> Option<crate::hooks::Precedence> {
+            (format == "TXT" || format == "XYZ").then_some(crate::hooks::Precedence::Fallback)
+        }
+
+        fn read(&self, path: &Path, _format: &str) -> std::result::Result<crate::metadata::BookMetadata, String> {
+            let text = fs::read_to_string(path).map_err(|e| e.to_string())?;
+            Ok(crate::metadata::BookMetadata {
+                title: Some(text.lines().next().unwrap_or("").to_owned()),
+                authors: vec![crate::metadata::Author { name: "Reader Plugin".into(), sort: None }],
+                ..Default::default()
+            })
+        }
+    }
+
+    #[test]
+    fn hooks_rewrite_files_and_read_metadata() {
+        let (tmp, mut lib, drop) = setup();
+        // A plugin that accepts .xyz files and replaces what's added with a temporary file.
+        let rewritten = tmp.path().join("rewritten.xyz");
+        fs::write(
+            &rewritten,
+            "From the Plugin
+body",
+        )
+        .unwrap();
+        fs::write(
+            drop.join("original.xyz"),
+            "Original
+body",
+        )
+        .unwrap();
+        let hooks = RecordingHooks { calls: Default::default(), replace_with: Some(rewritten.clone()), fail: false };
+        let r = add_files_with(&mut lib, &[drop.join("original.xyz")], &hooks, &TxtReader, |_| {}).unwrap();
+        assert_eq!(r.added.len(), 1, "{r:?}");
+        assert_eq!(hooks.calls.lock().unwrap().as_slice(), ["XYZ original.xyz"]);
+        let b = lib.book(r.added[0]).unwrap();
+        assert_eq!(
+            (b.title.as_str(), b.authors[0].as_str()),
+            ("From the Plugin", "Reader Plugin"),
+            "read through the plugin"
+        );
+        assert!(!rewritten.exists(), "the temporary file is removed once stored");
+        assert_eq!(r.formats, vec![(b.id, "XYZ".to_owned())]);
+
+        // A failing hook: the file is added as it is, with a warning.
+        fs::write(
+            drop.join("plain.txt"),
+            "Plain Title
+body",
+        )
+        .unwrap();
+        let hooks = RecordingHooks { calls: Default::default(), replace_with: None, fail: true };
+        let r = add_files_with(&mut lib, &[drop.join("plain.txt")], &hooks, &TxtReader, |_| {}).unwrap();
+        assert_eq!(r.added.len(), 1);
+        assert!(r.warnings.iter().any(|w| w.contains("boom")), "{:?}", r.warnings);
+        assert_eq!(lib.book(r.added[0]).unwrap().title, "Plain Title");
+
+        // Without a reader plugin, a TXT's title comes from its name.
+        fs::write(drop.join("Named Book - Some One.txt"), "x").unwrap();
+        let r = add_files(&mut lib, &[drop.join("Named Book - Some One.txt")], |_| {}).unwrap();
+        assert_eq!(lib.book(r.added[0]).unwrap().title, "Named Book");
     }
 
     #[test]

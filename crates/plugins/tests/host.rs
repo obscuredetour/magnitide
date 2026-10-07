@@ -1,7 +1,8 @@
-//! The plugin host against a real calibre, with the test metadata source and
-//! the test GUI plugin in tests/fixtures. Skipped (with a note) where calibre
-//! isn't installed, as on CI; set MAGNITIDE_CALIBRE_DEBUG to point at a
-//! calibre-debug elsewhere.
+//! The plugin host in the plugin runtime, with the test metadata source and
+//! the test GUI plugin in tests/fixtures. Needs a runtime: the development
+//! build in target/plugin-runtime/current (scripts/plugin-runtime/dev.sh) or
+//! MAGNITIDE_PLUGIN_RUNTIME. Skipped with a note otherwise, unless
+//! MAGNITIDE_REQUIRE_PLUGIN_RUNTIME is set (CI), when that's a failure.
 
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -11,24 +12,34 @@ use std::time::Duration;
 
 use magnitide_catalog::diff::{CoverChange, FileChange};
 use magnitide_catalog::{Book, Catalog, Format};
+use magnitide_core::hooks::{ImportHooks, ImportOutcome, MetadataPlugins, Precedence};
+use magnitide_core::metadata::{Author, BookMetadata};
 use magnitide_plugins::shadow::Shadow;
 use magnitide_plugins::sources::is_plugin_cover;
-use magnitide_plugins::{PluginKind, Plugins};
+use magnitide_plugins::{Hook, PluginKind, Plugins};
 use magnitide_sources::Lookup;
-use serde_json::Value;
+use serde_json::{Value, json};
 
-fn calibre_debug() -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("MAGNITIDE_CALIBRE_DEBUG") {
-        return Some(p.into());
+/// A `Plugins` in `dir` using the runtime found for development, or None
+/// (and a note) when there isn't one.
+fn plugins_in(dir: &Path) -> Option<Plugins> {
+    let plugins = Plugins::new(dir.to_path_buf(), dir.join("runtime"));
+    if plugins.runtime().is_none() {
+        assert!(
+            std::env::var_os("MAGNITIDE_REQUIRE_PLUGIN_RUNTIME").is_none(),
+            "no plugin runtime found, and MAGNITIDE_REQUIRE_PLUGIN_RUNTIME is set"
+        );
+        eprintln!("skipped: no plugin runtime here (run scripts/plugin-runtime/dev.sh)");
+        return None;
     }
-    let candidates: &[&str] = if cfg!(target_os = "macos") {
-        &["/Applications/calibre.app/Contents/MacOS/calibre-debug"]
-    } else if cfg!(windows) {
-        &[r"C:\Program Files\Calibre2\calibre-debug.exe"]
-    } else {
-        &["/opt/calibre/calibre-debug", "/usr/bin/calibre-debug"]
-    };
-    candidates.iter().map(PathBuf::from).find(|p| p.is_file())
+    // The compat package from the source tree, so Python edits are tested directly.
+    if std::env::var_os("MAGNITIDE_COMPAT_DIR").is_none() {
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("python");
+        unsafe { std::env::set_var("MAGNITIDE_COMPAT_DIR", src) };
+    }
+    // The host's `test.exec`, for driving dialogs as a user would.
+    unsafe { std::env::set_var("MAGNITIDE_TEST_HOOKS", "1") };
+    Some(plugins)
 }
 
 /// A fixture plugin as calibre expects it: a zip of the folder's files.
@@ -38,6 +49,9 @@ fn fixture_zip(dir: &Path, fixture: &str) -> PathBuf {
     let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
     for entry in std::fs::read_dir(&src).unwrap() {
         let entry = entry.unwrap();
+        if !entry.path().is_file() {
+            continue; // a stray __pycache__
+        }
         zip.start_file(entry.file_name().to_string_lossy(), zip::write::SimpleFileOptions::default()).unwrap();
         zip.write_all(&std::fs::read(entry.path()).unwrap()).unwrap();
     }
@@ -51,14 +65,11 @@ fn test_plugin_zip(dir: &Path) -> PathBuf {
 
 #[test]
 fn metadata_source_end_to_end() {
-    let Some(calibre) = calibre_debug() else {
-        eprintln!("skipped: calibre isn't installed here");
-        return;
-    };
     let dir = tempfile::tempdir().unwrap();
-    let plugins = Plugins::new(dir.path().join("calibre-plugins"), move || Some(calibre.clone()));
-    let info = plugins.calibre().expect("calibre found");
-    assert!(info.version.as_ref().is_some_and(|v| v.chars().next().is_some_and(|c| c.is_ascii_digit())), "{info:?}");
+    let Some(plugins) = plugins_in(&dir.path().join("calibre-plugins")) else { return };
+    let status = plugins.runtime_status();
+    assert!(status.installed, "{status:?}");
+    assert_eq!(status.compat, "9.15.0");
 
     // Installing: inspected by calibre's own loader, kept under a tidy name, on.
     let installed = plugins.install(&test_plugin_zip(dir.path())).unwrap();
@@ -117,12 +128,8 @@ fn metadata_source_end_to_end() {
 
 #[test]
 fn not_a_plugin() {
-    let Some(calibre) = calibre_debug() else {
-        eprintln!("skipped: calibre isn't installed here");
-        return;
-    };
     let dir = tempfile::tempdir().unwrap();
-    let plugins = Plugins::new(dir.path().join("p"), move || Some(calibre.clone()));
+    let Some(plugins) = plugins_in(&dir.path().join("p")) else { return };
     let junk = dir.path().join("junk.zip");
     std::fs::write(&junk, b"not a zip").unwrap();
     let err = plugins.install(&junk).unwrap_err();
@@ -134,6 +141,11 @@ fn not_a_plugin() {
 
 /// A library of `titles`, each with an EPUB, as Magnitide's catalog would have it.
 fn small_library(root: &Path, titles: &[&str]) -> Catalog {
+    small_library_of(root, titles, "EPUB")
+}
+
+/// A library of `titles`, each with one file of `format`.
+fn small_library_of(root: &Path, titles: &[&str], format: &str) -> Catalog {
     let books = (1..)
         .zip(titles)
         .map(|(id, title)| {
@@ -162,11 +174,11 @@ fn small_library(root: &Path, titles: &[&str]) -> Catalog {
                 path: format!("Author/{title} ({id})"),
                 uuid: None,
                 has_cover: false,
-                formats: vec![Format { format: "EPUB".into(), size: 4, name: format!("{title} - Author") }],
+                formats: vec![Format { format: format.into(), size: 4, name: format!("{title} - Author") }],
                 custom: BTreeMap::new(),
             };
             std::fs::create_dir_all(book.dir(root)).unwrap();
-            std::fs::write(book.format_path(root, &book.formats[0]), "epub").unwrap();
+            std::fs::write(book.format_path(root, &book.formats[0]), format.to_lowercase()).unwrap();
             book
         })
         .collect();
@@ -177,7 +189,7 @@ fn small_library(root: &Path, titles: &[&str]) -> Catalog {
 /// until the plugin is done.
 fn run(plugins: &Plugins, events: &mpsc::Receiver<Value>, item: &str, selection: &[i64]) -> Value {
     // No valid path: the host finds the item by its text.
-    plugins.gui_trigger("Magnitide Test Action", &[u32::MAX], &[item.to_owned()], selection).unwrap();
+    plugins.gui_trigger("Magnitide Test Action", &[u32::MAX], &[item.to_owned()], selection, "").unwrap();
     loop {
         let e = events.recv_timeout(Duration::from_secs(60)).expect("the plugin finishes");
         if e["event"] == "gui-idle" {
@@ -188,12 +200,8 @@ fn run(plugins: &Plugins, events: &mpsc::Receiver<Value>, item: &str, selection:
 
 #[test]
 fn gui_plugin_end_to_end() {
-    let Some(calibre) = calibre_debug() else {
-        eprintln!("skipped: calibre isn't installed here");
-        return;
-    };
     let dir = tempfile::tempdir().unwrap();
-    let plugins = Plugins::new(dir.path().join("calibre-plugins"), move || Some(calibre.clone()));
+    let Some(plugins) = plugins_in(&dir.path().join("calibre-plugins")) else { return };
     let (tx, events) = mpsc::channel();
     plugins.set_event_handler(Arc::new(move |e| {
         let _ = tx.send(e);
@@ -218,7 +226,7 @@ fn gui_plugin_end_to_end() {
 
     // Metadata through both of calibre's APIs; done only once the plugin is.
     let mark = menu.items.iter().find(|i| i.text == "Mark selected").unwrap();
-    plugins.gui_trigger("Magnitide Test Action", &mark.path, std::slice::from_ref(&mark.text), &[1]).unwrap();
+    plugins.gui_trigger("Magnitide Test Action", &mark.path, std::slice::from_ref(&mark.text), &[1], "").unwrap();
     let done = loop {
         let e = events.recv_timeout(Duration::from_secs(60)).unwrap();
         if e["event"] == "gui-idle" {
@@ -231,7 +239,7 @@ fn gui_plugin_end_to_end() {
     run(&plugins, &events, "Rewrite EPUB", &[2]);
     run(&plugins, &events, "Set cover", &[2]);
     run(&plugins, &events, "Add a book", &[]);
-    plugins.gui_trigger("Magnitide Test Action", &[u32::MAX], &["Say hello".into()], &[1, 2]).unwrap();
+    plugins.gui_trigger("Magnitide Test Action", &[u32::MAX], &["Say hello".into()], &[1, 2], "").unwrap();
     let status = loop {
         let e = events.recv_timeout(Duration::from_secs(60)).unwrap();
         if e["event"] == "gui-status" {
@@ -293,12 +301,8 @@ fn wait_for(
 
 #[test]
 fn calibres_edit_metadata_and_remove_books_are_magnitides() {
-    let Some(calibre) = calibre_debug() else {
-        eprintln!("skipped: calibre isn't installed here");
-        return;
-    };
     let dir = tempfile::tempdir().unwrap();
-    let plugins = Plugins::new(dir.path().join("calibre-plugins"), move || Some(calibre.clone()));
+    let Some(plugins) = plugins_in(&dir.path().join("calibre-plugins")) else { return };
     let (tx, events) = mpsc::channel();
     plugins.set_event_handler(Arc::new(move |e| {
         let _ = tx.send(e);
@@ -310,7 +314,7 @@ fn calibres_edit_metadata_and_remove_books_are_magnitides() {
     shadow.build(&catalog, &root, &Default::default()).unwrap();
     plugins.gui_open(&shadow.library()).unwrap();
     let trigger = |item: &str, selection: &[i64]| {
-        plugins.gui_trigger("Magnitide Test Action", &[u32::MAX], &[item.to_owned()], selection).unwrap()
+        plugins.gui_trigger("Magnitide Test Action", &[u32::MAX], &[item.to_owned()], selection, "").unwrap()
     };
 
     // Edit Metadata: the plugin waits for the editor, then uses what was saved.
@@ -380,4 +384,289 @@ fn calibres_edit_metadata_and_remove_books_are_magnitides() {
         }
     }
     assert!(seen.contains(&"gui-status".to_owned()) && !seen.contains(&"gui-convert".to_owned()), "{seen:?}");
+}
+
+/// Wait for an event of `kind` (skipping others); the host's log is shown
+/// if none comes in 60 s.
+fn next_event(plugins: &Plugins, events: &mpsc::Receiver<Value>, kind: &str) -> Value {
+    loop {
+        let e = events.recv_timeout(Duration::from_secs(60)).unwrap_or_else(|_| {
+            // Why the host thinks a plugin is still working.
+            let why = plugins.host().and_then(|h| {
+                h.call(
+                    "test.exec",
+                    json!({ "code": "from qt.core import QApplication\nfrom magnitide_host.gui import main_window, session\ngui = main_window()\nresult = {'running': session.state['running'], 'jobs': [(j.description, j.is_finished) for j in gui.job_manager.jobs], 'widgets': [(w.metaObject().className(), w.windowTitle()) for w in QApplication.topLevelWidgets() if w is not gui and w.isVisible()]}\n" }),
+                    Duration::from_secs(10),
+                )
+            });
+            panic!("no {kind} event; busy: {why:?}; the host said:\n{}", plugins.log().join("\n"))
+        });
+        if e["event"] == kind {
+            return e;
+        }
+    }
+}
+
+#[test]
+fn file_type_plugins_rewrite_added_files_and_run_afterwards() {
+    let dir = tempfile::tempdir().unwrap();
+    let Some(plugins) = plugins_in(&dir.path().join("calibre-plugins")) else { return };
+    let installed = plugins.install(&fixture_zip(dir.path(), "test_filetype")).unwrap();
+    assert_eq!((installed.kind, installed.enabled, installed.customizable), (PluginKind::FileType, true, true));
+    let hooks = installed.hooks.as_ref().unwrap();
+    assert_eq!(hooks.file_types, ["txt"]);
+    assert!(hooks.on_import && hooks.on_postimport && hooks.on_postadd && hooks.on_postconvert && hooks.on_postdelete);
+    assert!(!hooks.on_preprocess && hooks.priority == 2);
+    assert_eq!(ImportHooks::file_types(&plugins), ["txt"]);
+    assert!(plugins.wants_post(Hook::Postadd, "TXT") && !plugins.wants_post(Hook::Postadd, "EPUB"));
+
+    // on_import: the plugin's rewritten copy is added instead, and deleted after.
+    let txt = dir.path().join("story.txt");
+    std::fs::write(&txt, "Once upon a time").unwrap();
+    assert_eq!(plugins.on_import(&txt, "EPUB"), ImportOutcome::Unchanged, "not its format");
+    let ImportOutcome::Replaced { path, temporary } = plugins.on_import(&txt, "TXT") else {
+        panic!("not replaced");
+    };
+    assert!(temporary && path != txt);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "Once upon a time\n[hooked]");
+    assert_eq!(std::fs::read_to_string(&txt).unwrap(), "Once upon a time", "the original is untouched");
+    // A crashing plugin leaves the file as it is; the crash is in the log.
+    let crash = dir.path().join("crash.txt");
+    std::fs::write(&crash, "x").unwrap();
+    assert_eq!(plugins.on_import(&crash, "TXT"), ImportOutcome::Unchanged);
+    assert!(plugins.log().iter().any(|l| l.contains("crashed on purpose")));
+
+    // Post hooks, on the shadow library, without a plugin window.
+    let root = dir.path().join("library");
+    let catalog = small_library_of(&root, &["Dune", "Hyperion"], "TXT");
+    let shadow = Shadow::new(dir.path().join("shadow"));
+    shadow.build(&catalog, &root, &Default::default()).unwrap();
+    let ran = plugins.run_post(Hook::Postimport, &shadow.library(), 1, &["TXT".into()]).unwrap();
+    assert_eq!(ran, ["Magnitide Test File Type"]);
+    plugins.run_post(Hook::Postadd, &shadow.library(), 1, &["TXT".into()]).unwrap();
+    plugins.run_post(Hook::Postdelete, &shadow.library(), 2, &["EPUB".into()]).unwrap();
+    assert!(plugins.run_post(Hook::Postconvert, &shadow.library(), 2, &["PDF".into()]).unwrap().is_empty());
+    let changes = shadow.changes(&catalog, &root).unwrap();
+    let one = changes.books.iter().find(|b| b.id == 1).unwrap();
+    assert_eq!(one.fields.tags.as_deref(), Some(&["Hooked".to_owned()][..]));
+    assert_eq!(one.fields.publisher, Some(Some("Postadd TXT".to_owned())));
+    assert!(changes.books.iter().all(|b| b.id != 2), "the hook asked for only runs for its formats");
+    assert!(plugins.errors().is_empty(), "{:?}", plugins.errors());
+}
+
+#[test]
+fn metadata_reader_and_writer_plugins() {
+    let dir = tempfile::tempdir().unwrap();
+    let Some(plugins) = plugins_in(&dir.path().join("calibre-plugins")) else { return };
+    assert_eq!(plugins.reads("TXT"), None);
+    let reader = plugins.install(&fixture_zip(dir.path(), "test_metadata_reader")).unwrap();
+    let writer = plugins.install(&fixture_zip(dir.path(), "test_metadata_writer")).unwrap();
+    assert_eq!((reader.kind, writer.kind), (PluginKind::MetadataReader, PluginKind::MetadataWriter));
+    assert_eq!(plugins.reads("TXT"), Some(Precedence::Override), "priority 2 beats a built-in reader");
+    assert_eq!(plugins.reads("EPUB"), None);
+    assert!(plugins.writes("TXT") && !plugins.writes("EPUB"));
+
+    let txt = dir.path().join("book.txt");
+    std::fs::write(&txt, "Title: The Left Hand of Darkness\nAuthor: Ursula K. Le Guin\nISBN: 9780441478125\nTags: SF, Hainish\n\nWinter.").unwrap();
+    let meta = plugins.read(&txt, "TXT").unwrap();
+    assert_eq!(meta.title.as_deref(), Some("The Left Hand of Darkness"));
+    assert_eq!(meta.authors.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["Ursula K. Le Guin"]);
+    assert_eq!(meta.identifiers.get("isbn").map(String::as_str), Some("9780441478125"));
+    assert_eq!(meta.tags, ["SF", "Hainish"]);
+
+    let wanted = BookMetadata {
+        title: Some("The Dispossessed".into()),
+        authors: vec![Author { name: "Ursula K. Le Guin".into(), sort: None }],
+        tags: vec!["Anarres".into()],
+        ..Default::default()
+    };
+    plugins.write(&txt, "TXT", &wanted).unwrap();
+    let after = std::fs::read_to_string(&txt).unwrap();
+    assert!(
+        after.starts_with("Title: The Dispossessed\nAuthor: Ursula K. Le Guin\nTags: Anarres\n\nWinter."),
+        "{after}"
+    );
+    assert_eq!(plugins.read(&txt, "TXT").unwrap().title.as_deref(), Some("The Dispossessed"));
+
+    // A reader that crashes is an error with its name, not a hang or a dead host.
+    std::fs::write(&txt, "Crash: now\n").unwrap();
+    let err = plugins.read(&txt, "TXT").unwrap_err();
+    assert!(err.contains("Magnitide Test Reader") && err.contains("crashed on purpose"), "{err}");
+    assert_eq!(plugins.errors().get("Magnitide Test Reader"), Some(&err));
+    assert!(plugins.host().unwrap().is_alive());
+}
+
+/// Have the host accept the next modal dialog as a user would, typing
+/// `text` into its line edits first.
+fn accept_next_dialog(plugins: &Plugins, text: &str) {
+    let code = format!(
+        r#"
+from qt.core import QApplication, QLineEdit, QTimer
+def tick():
+    w = QApplication.activeModalWidget()
+    if w is None:
+        QTimer.singleShot(100, tick)
+        return
+    for edit in w.findChildren(QLineEdit):
+        edit.setText({text:?})
+    w.accept()
+QTimer.singleShot(100, tick)
+"#
+    );
+    plugins.host().unwrap().call("test.exec", json!({ "code": code }), Duration::from_secs(10)).unwrap();
+}
+
+#[test]
+fn plugins_own_settings_dialogs() {
+    let dir = tempfile::tempdir().unwrap();
+    let Some(plugins) = plugins_in(&dir.path().join("calibre-plugins")) else { return };
+    plugins.install(&fixture_zip(dir.path(), "test_filetype")).unwrap();
+    let prefs = plugins.install(&fixture_zip(dir.path(), "test_preferences")).unwrap();
+    assert_eq!((prefs.kind, prefs.enabled, prefs.customizable), (PluginKind::Preferences, true, true));
+
+    // A plugin's config_widget, in calibre's dialog; save_settings ran.
+    accept_next_dialog(&plugins, "configured by test");
+    let done = plugins.configure("Magnitide Test File Type").unwrap();
+    assert!(done.changed && !done.restart);
+    let txt = dir.path().join("story.txt");
+    std::fs::write(&txt, "Once").unwrap();
+    let ImportOutcome::Replaced { path, .. } = plugins.on_import(&txt, "TXT") else { panic!("not replaced") };
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "Once\n[configured by test]", "its new settings apply");
+    let saved = dir.path().join("calibre-plugins/config/plugins/magnitide_test_filetype.json");
+    assert!(std::fs::read_to_string(saved).unwrap().contains("configured by test"));
+
+    // A preferences page: its widget's commit asked for a restart, so the host restarts.
+    accept_next_dialog(&plugins, "good evening");
+    let done = plugins.configure("Magnitide Test Preferences").unwrap();
+    assert!(done.changed && done.restart);
+    let saved = dir.path().join("calibre-plugins/config/plugins/magnitide_test_preferences.json");
+    assert!(std::fs::read_to_string(saved).unwrap().contains("good evening"));
+
+    // Cancelled: nothing saved.
+    plugins
+        .host()
+        .unwrap()
+        .call(
+            "test.exec",
+            json!({ "code": "from qt.core import QApplication, QTimer\ndef tick():\n    w = QApplication.activeModalWidget()\n    if w is None:\n        QTimer.singleShot(100, tick)\n        return\n    w.reject()\nQTimer.singleShot(100, tick)\n" }),
+            Duration::from_secs(10),
+        )
+        .unwrap();
+    let done = plugins.configure("Magnitide Test File Type").unwrap();
+    assert!(!done.changed);
+    assert!(plugins.configure("No Such Plugin").is_err());
+}
+
+#[test]
+fn library_closed_plugins_run_when_a_host_is_up() {
+    let dir = tempfile::tempdir().unwrap();
+    let Some(plugins) = plugins_in(&dir.path().join("calibre-plugins")) else { return };
+    let installed = plugins.install(&fixture_zip(dir.path(), "test_library_closed")).unwrap();
+    assert_eq!((installed.kind, installed.enabled), (PluginKind::LibraryClosed, true));
+    let root = dir.path().join("library");
+    let catalog = small_library(&root, &["Dune", "Hyperion"]);
+    let shadow = Shadow::new(dir.path().join("shadow"));
+    shadow.build(&catalog, &root, &Default::default()).unwrap();
+    let note = shadow.library().join("closed-by-plugin.txt");
+
+    // No host running (a fresh start, with the plugin installed): nothing is started for it.
+    let fresh = Plugins::new(dir.path().join("calibre-plugins"), dir.path().join("calibre-plugins/runtime"));
+    assert_eq!(fresh.list().len(), 1);
+    assert!(fresh.library_closed(&shadow.library()).unwrap().is_empty());
+    assert!(!note.exists());
+    // Installing started one; it runs the plugin.
+    assert_eq!(plugins.library_closed(&shadow.library()).unwrap(), ["Magnitide Test Library Closed"]);
+    assert_eq!(std::fs::read_to_string(&note).unwrap(), "2 books");
+    assert!(shadow.changes(&catalog, &root).unwrap().is_empty());
+}
+
+#[test]
+fn unsupported_kinds_are_kept_off_with_a_reason() {
+    let dir = tempfile::tempdir().unwrap();
+    let Some(plugins) = plugins_in(&dir.path().join("calibre-plugins")) else { return };
+    let installed = plugins.install(&fixture_zip(dir.path(), "test_unsupported")).unwrap();
+    assert_eq!((installed.kind, installed.enabled), (PluginKind::Catalog, false));
+    assert!(!installed.kind.supported());
+    assert!(installed.kind.why_unsupported().unwrap().contains("catalog"));
+    assert!(installed.hooks.is_none());
+    // The static scan found the part of calibre it uses that Magnitide doesn't have.
+    assert!(installed.coverage.iter().any(|c| c.contains("calibre.ebooks.conversion")), "{:?}", installed.coverage);
+    assert!(plugins.install(&fixture_zip(dir.path(), "test_filetype")).unwrap().coverage.is_empty());
+}
+
+#[test]
+fn jobs_search_view_download_and_convert_from_a_gui_plugin() {
+    let dir = tempfile::tempdir().unwrap();
+    let Some(plugins) = plugins_in(&dir.path().join("calibre-plugins")) else { return };
+    let (tx, events) = mpsc::channel();
+    plugins.set_event_handler(Arc::new(move |e| {
+        let _ = tx.send(e);
+    }));
+    plugins.install(&fixture_zip(dir.path(), "test_action")).unwrap();
+    let root = dir.path().join("library");
+    let catalog = small_library(&root, &["Dune", "Hyperion"]);
+    let shadow = Shadow::new(dir.path().join("shadow"));
+    shadow.build(&catalog, &root, &Default::default()).unwrap();
+    plugins.gui_open(&shadow.library()).unwrap();
+    let trigger = |item: &str, selection: &[i64], search: &str| {
+        plugins.gui_trigger("Magnitide Test Action", &[u32::MAX], &[item.to_owned()], selection, search).unwrap()
+    };
+
+    // A job through the job manager: reported as it goes; idle only once it's done.
+    trigger("Run a job", &[1, 2], "");
+    let started = next_event(&plugins, &events, "job-start");
+    assert_eq!(started["description"], "Test job on 2 books");
+    assert_eq!(started["plugin"], "Magnitide Test Action");
+    let progress = next_event(&plugins, &events, "job-progress");
+    assert!(progress["percent"].as_u64().unwrap() > 0, "{progress}");
+    let finished = next_event(&plugins, &events, "job-done");
+    assert_eq!(finished["failed"], false);
+    assert!(finished["details"].as_str().unwrap().contains("worked on 2"), "{finished}");
+    next_event(&plugins, &events, "gui-idle");
+    let changes = shadow.changes(&catalog, &root).unwrap();
+    assert_eq!(changes.books.len(), 2);
+    assert_eq!(changes.books[0].fields.tags.as_deref(), Some(&["Jobbed".to_owned()][..]));
+
+    // calibre's search box: what Magnitide's search says, and changes go to Magnitide.
+    trigger("Say the search", &[], "tag:Marked");
+    assert_eq!(next_event(&plugins, &events, "gui-status")["message"], "Search: tag:Marked");
+    next_event(&plugins, &events, "gui-idle");
+    trigger("Search for Dune", &[], "");
+    assert_eq!(next_event(&plugins, &events, "gui-search")["text"], "Dune");
+    next_event(&plugins, &events, "gui-idle");
+
+    // View: Magnitide opens the book.
+    trigger("View book", &[2], "");
+    let open = next_event(&plugins, &events, "gui-open-book");
+    assert_eq!((open["id"].as_i64(), open["format"].as_str()), (Some(2), None));
+    next_event(&plugins, &events, "gui-idle");
+
+    // Metadata download: Magnitide's Find Metadata; the plugin sees what was saved.
+    trigger("Download metadata", &[1], "");
+    let downloaded = |e: &Value| {
+        let id = e["ids"][0].as_i64().unwrap();
+        json!({ "books": { id.to_string(): { "title": "Dune Messiah", "authors": ["Frank Herbert"], "tags": [], "languages": [], "identifiers": {} }}})
+    };
+    let (status, asked) = wait_for(&plugins, &events, "gui-status", &downloaded);
+    assert_eq!(asked[0]["kind"], "download");
+    assert_eq!(status["message"], "Downloaded: Dune Messiah");
+    wait_for(&plugins, &events, "gui-idle", &downloaded);
+
+    // The conversion dialog: Magnitide converts; the new format joins the shadow as its file.
+    let azw3 = dir.path().join("converted.azw3");
+    std::fs::write(&azw3, "azw3").unwrap();
+    trigger("Convert selected", &[2], "");
+    let converted = |e: &Value| {
+        let id = e["ids"][0].as_i64().unwrap();
+        json!({ "formats": { id.to_string(): [{ "format": "EPUB", "path": "/nonexistent" }, { "format": "AZW3", "path": azw3 }] }})
+    };
+    let (status, asked) = wait_for(&plugins, &events, "gui-status", &converted);
+    assert_eq!(asked[0]["kind"], "convert");
+    assert_eq!(status["message"], "Formats: AZW3,EPUB");
+    wait_for(&plugins, &events, "gui-idle", &converted);
+    let after = shadow.read().unwrap();
+    let mut formats: Vec<&str> = after.get(2).unwrap().formats.iter().map(|f| f.format.as_str()).collect();
+    formats.sort_unstable();
+    assert_eq!(formats, ["AZW3", "EPUB"]);
+    assert!(!plugins.gui_busy());
 }

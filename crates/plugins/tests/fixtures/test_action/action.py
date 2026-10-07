@@ -1,9 +1,9 @@
 import io
-
-from qt.core import QBuffer, QByteArray, QColor, QDialog, QImage, QIODevice, QLabel, QMenu, QTimer, QVBoxLayout
+import time
 
 from calibre.ebooks.metadata.book.base import Metadata
 from calibre.gui2.actions import InterfaceAction
+from qt.core import QBuffer, QByteArray, QColor, QDialog, QImage, QIODevice, QLabel, QMenu, QTimer, QVBoxLayout
 
 
 def cover_png():
@@ -55,6 +55,13 @@ class TestAction(InterfaceAction):
         add('remove', 'Remove selected', self.remove_selected)
         add('apply', 'Apply metadata changes', self.apply_changes)
         add('convert', 'Auto-convert selected', self.auto_convert)
+        m.addSeparator()
+        add('job', 'Run a job', self.run_job)
+        add('search', 'Search for Dune', self.search_dune)
+        add('say_search', 'Say the search', self.say_search)
+        add('view', 'View book', self.view_book)
+        add('download', 'Download metadata', self.download_metadata)
+        add('convert_dialog', 'Convert selected', self.convert_selected)
         sub = m.addMenu('More')
         off = sub.addAction('Unavailable')
         off.setEnabled(False)
@@ -157,3 +164,50 @@ class TestAction(InterfaceAction):
 
         self.gui.iactions['Convert Books'].auto_convert_auto_add(self.selected())
         self.gui.status_bar.show_message(f'Converting to {prefs["output_format"].upper()}', 3000)
+
+    def run_job(self):
+        """As Count Pages does: work on a thread through the job manager,
+        reporting progress; the result is applied when it's done."""
+        from calibre.gui2 import Dispatcher
+        from calibre.gui2.threaded_jobs import ThreadedJob
+
+        ids = self.selected()
+
+        def work(ids, notifications=None, abort=None, log=None):
+            for i, _ in enumerate(ids):
+                notifications.put(((i + 1) / len(ids), f'book {i + 1} of {len(ids)}'))
+                log(f'worked on {i + 1}')
+                time.sleep(0.3)
+            return list(ids)
+
+        def done(job):
+            db = self.gui.current_db.new_api
+            db.set_field('tags', {i: ['Jobbed'] for i in job.result})
+            self.gui.library_view.model().refresh_ids(job.result)
+
+        job = ThreadedJob('magnitide_test', f'Test job on {len(ids)} books', work, (ids,), {}, Dispatcher(done))
+        self.gui.job_manager.run_threaded_job(job)
+        self.gui.status_bar.show_message('Job started', 3000)
+
+    def search_dune(self):
+        self.gui.search.set_search_string('Dune')
+
+    def say_search(self):
+        self.gui.status_bar.show_message(f'Search: {self.gui.search.current_text}', 3000)
+
+    def view_book(self):
+        self.gui.iactions['View'].view_book()
+
+    def download_metadata(self):
+        """As FanFicFare's "update metadata" does: calibre's download, then use what came back."""
+        ids = self.selected()
+        self.gui.iactions['Edit Metadata'].download_metadata(ids=ids)
+        db = self.gui.current_db.new_api
+        self.gui.status_bar.show_message('Downloaded: ' + ', '.join(db.field_for('title', i) for i in ids), 3000)
+
+    def convert_selected(self):
+        """calibre's conversion dialog, then the formats the books have."""
+        ids = self.selected()
+        self.gui.iactions['Convert Books'].convert_ebook(book_ids=ids)
+        db = self.gui.current_db.new_api
+        self.gui.status_bar.show_message('Formats: ' + '; '.join(','.join(sorted(db.formats(i))) for i in ids), 3000)

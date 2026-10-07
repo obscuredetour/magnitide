@@ -1,0 +1,28 @@
+{
+  "comment": "CPython from python-build-standalone (astral-sh): the release tag, the version, and each target's install_only_stripped tarball with its sha256 from the release's SHA256SUMS.",
+  "tag": "20261003",
+  "version": "3.14.8",
+  "base": "https://github.com/astral-sh/python-build-standalone/releases/download/",
+  "targets": {
+    "aarch64-apple-darwin": {
+      "file": "cpython-3.14.8+20261003-aarch64-apple-darwin-install_only_stripped.tar.gz",
+      "sha256": "ed14e9042f36c0aa18383f5d9729bcbf17847e842666a793b5a5a5d8505c0ca1"
+    },
+    "x86_64-apple-darwin": {
+      "file": "cpython-3.14.8+20261003-x86_64-apple-darwin-install_only_stripped.tar.gz",
+      "sha256": "08310045a2611bad730d7c1a01e847a1ea729d9dcfe29110ca67cbdf3998bb54"
+    },
+    "x86_64-pc-windows-msvc": {
+      "file": "cpython-3.14.8+20261003-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+      "sha256": "10e5705e44938ee78de35c62b30fdfe2945b53438343d04c0f53548cdd8e91b6"
+    },
+    "x86_64-unknown-linux-gnu": {
+      "file": "cpython-3.14.8+20261003-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",
+      "sha256": "d9ec7a6935ade8b671a57ebaf111083d7314eab8dae5071d167054dadd2b97d6"
+    },
+    "aarch64-unknown-linux-gnu": {
+      "file": "cpython-3.14.8+20261003-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz",
+      "sha256": "ece2bf3d4b47c80c2403c5f32fa51a9458abaee93c10def8acafb5f45163e77d"
+    }
+  }
+}

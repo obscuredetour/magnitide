@@ -41,7 +41,27 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
+      # The plugin host tests need the published plugin runtime (CPython +
+      # PyQt6), which the first release of it makes available: until
+      # sha256sums.txt exists they're skipped. With it, Qt runs under xvfb.
+      - name: Cache the plugin runtime download
+        if: hashFiles('scripts/plugin-runtime/sha256sums.txt') != ''
+        uses: actions/cache@v4
+        with:
+          path: target/plugin-runtime/downloads
+          key: plugin-runtime-${{ hashFiles('scripts/plugin-runtime/sha256sums.txt') }}
+      - name: Plugin runtime
+        id: runtime
+        if: hashFiles('scripts/plugin-runtime/sha256sums.txt') != ''
+        run: |
+          sudo apt-get install -y --no-install-recommends zstd xvfb libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-sync1 libxcb-xfixes0 \
+            libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0 libegl1 libgl1 libfontconfig1 libdbus-1-3 libglib2.0-0
+          scripts/plugin-runtime/fetch.sh
+          echo "MAGNITIDE_PLUGIN_RUNTIME=$PWD/target/plugin-runtime/current" >> "$GITHUB_ENV"
+          echo "MAGNITIDE_COMPAT_DIR=$PWD/crates/plugins/python" >> "$GITHUB_ENV"
+          echo "MAGNITIDE_REQUIRE_PLUGIN_RUNTIME=1" >> "$GITHUB_ENV"
+      - run: xvfb-run -a cargo test --workspace
       # The tests regenerate the UI's TypeScript bindings (ts-rs); they must be committed.
       - name: TypeScript bindings are up to date
         run: git diff --exit-code -- crates/app/ui/src/bindings
@@ -67,3 +87,26 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm exec vite build
+
+  python:
+    name: Python (plugin compat package)
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@v6
+      - name: Dependencies (the runtime's wheels, and the test tools)
+        run: |
+          uv venv --python 3.14 .venv
+          uv pip install --python .venv --requirement scripts/plugin-runtime/requirements.txt --require-hashes
+          uv pip install --python .venv --requirement crates/plugins/python-tests/requirements-dev.txt
+      - run: .venv/bin/ruff check crates/plugins/python crates/plugins/python-tests crates/plugins/tests/fixtures scripts
+      - run: .venv/bin/ruff format --check crates/plugins/python crates/plugins/python-tests
+      - name: Tests
+        run: |
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0 libfontconfig1 libdbus-1-3
+          QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest crates/plugins/python-tests -q

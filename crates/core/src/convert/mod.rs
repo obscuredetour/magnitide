@@ -179,6 +179,9 @@ impl Drop for TempDir {
 pub struct ConvertReport {
     /// Books that got the new format.
     pub converted: usize,
+    /// Which ones, in order (for plugins that run after a conversion).
+    #[serde(default)]
+    pub converted_ids: Vec<BookId>,
     /// Books that already had it.
     pub already: usize,
     /// Books that couldn't be converted, with the reason.
@@ -199,7 +202,10 @@ impl Library {
             let book = self.book(*id)?;
             progress(done, ids.len(), &book.title);
             match self.convert_book(*id, to, converter) {
-                Ok(true) => report.converted += 1,
+                Ok(true) => {
+                    report.converted += 1;
+                    report.converted_ids.push(*id);
+                }
                 Ok(false) => report.already += 1,
                 Err(e) => report.failed.push(format!("“{}”: {e}", book.title)),
             }

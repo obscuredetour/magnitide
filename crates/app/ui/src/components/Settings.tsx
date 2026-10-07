@@ -10,8 +10,9 @@ import {
   type FieldKind,
   fileManagerName,
   type InstalledPlugin,
+  onPluginRuntimeProgress,
   type PluginKind,
-  type PluginsStatus,
+  type RuntimeStatus,
   type ServerStatus,
   type SourceId,
   type SourceStatus,
@@ -32,6 +33,7 @@ import { addonReport, addThemeFile, loadThemeAddons, setTheme, themeAttrs, theme
 import { AccentPicker } from './AccentPicker';
 import { toast } from '../toast';
 import { refreshGuiPlugins } from '../plugins';
+import { startJob } from '../jobs';
 import { confirm } from '../confirm';
 import {
   columnOrder,
@@ -1300,14 +1302,60 @@ const PLUGIN_KINDS: Record<PluginKind, string> = {
   conversionInput: 'Conversion input',
   conversionOutput: 'Conversion output',
   catalog: 'Catalog',
+  preferences: 'Settings page',
+  libraryClosed: 'Runs when the library closes',
+  device: 'Device driver',
+  store: 'Store',
+  viewer: 'Viewer',
+  editBookTool: 'Book editor tool',
   other: 'Other',
 };
 
 /** What a plugin's conversions can produce (natively, or with calibre, which plugins need anyway). */
 const PLUGIN_OUTPUT_FORMATS = ['EPUB', 'KEPUB', 'AZW3', 'MOBI', 'PDF', 'DOCX', 'TXT'];
 
-/** The kinds Magnitide runs; the rest are kept for when it can. */
-const SUPPORTED_PLUGIN_KINDS: PluginKind[] = ['metadataSource', 'interfaceAction'];
+/** The kinds Magnitide runs; the rest are kept, with why (matches `PluginKind::why_unsupported`). */
+const SUPPORTED_PLUGIN_KINDS: PluginKind[] = [
+  'metadataSource',
+  'interfaceAction',
+  'fileType',
+  'metadataReader',
+  'metadataWriter',
+  'preferences',
+  'libraryClosed',
+];
+const UNSUPPORTED_WHY: Partial<Record<PluginKind, string>> = {
+  conversionInput: "needs calibre's conversion pipeline, which Magnitide doesn't run",
+  conversionOutput: "needs calibre's conversion pipeline, which Magnitide doesn't run",
+  catalog: 'Magnitide has no catalog generator yet',
+  device: 'Magnitide has its own device support',
+  store: 'Magnitide has no book store',
+  viewer: 'Magnitide has no viewer',
+  editBookTool: 'Magnitide has no book editor',
+  other: "Magnitide doesn't know this kind of plugin",
+};
+
+/** "Runs when adding: epub, pdf" and the like, from what a plugin handles. */
+function pluginHooksLine(p: InstalledPlugin): string[] {
+  const h = p.hooks;
+  if (!h) return [];
+  const types = h.fileTypes.includes('*') ? 'every format' : h.fileTypes.join(', ');
+  const lines: string[] = [];
+  if (p.kind === 'metadataReader') lines.push(`Reads metadata from: ${types}`);
+  else if (p.kind === 'metadataWriter') lines.push(`Writes metadata into: ${types}`);
+  else {
+    const when = [
+      h.onImport && 'adding',
+      h.onPostimport && 'after adding',
+      h.onPostadd && 'after a book is added',
+      h.onPostconvert && 'after converting',
+      h.onPostdelete && 'after removing a format',
+    ].filter(Boolean);
+    if (when.length) lines.push(`Runs when ${when.join(', ')}: ${types}`);
+    if (h.onPreprocess || h.onPostprocess) lines.push("Also has conversion hooks Magnitide doesn't run");
+  }
+  return lines;
+}
 
 function PluginSettings() {
   const [status, { mutate, refetch }] = createResource(() => api.pluginsStatus().catch(() => undefined));
@@ -1331,7 +1379,9 @@ function PluginSettings() {
           ? `Added ${p.name}: it's now asked in Find Metadata`
           : p.kind === 'interfaceAction'
             ? `Added ${p.name}: its menu is in the book menu, under Plugins`
-            : `Added ${p.name}. Magnitide can't run this kind of plugin yet; it's kept for when it can.`,
+            : SUPPORTED_PLUGIN_KINDS.includes(p.kind)
+              ? `Added ${p.name}`
+              : `Added ${p.name}. Magnitide can't run this kind of plugin: ${UNSUPPORTED_WHY[p.kind] ?? 'not supported'}.`,
       );
     } catch (err) {
       toast(errorMessage(err), { error: true });
@@ -1359,22 +1409,40 @@ function PluginSettings() {
     if (ok) void run(() => api.removePlugin(p.name));
   };
 
+  const [configuring, setConfiguring] = createSignal<string | null>(null);
+  const configure = async (p: InstalledPlugin) => {
+    setConfiguring(p.name);
+    try {
+      const r = await api.configurePlugin(p.name);
+      if (r.changed)
+        toast(r.restart ? `${p.name}'s settings saved; they apply the next time it runs` : 'Settings saved');
+    } catch (err) {
+      toast(errorMessage(err), { error: true });
+    } finally {
+      setConfiguring(null);
+    }
+  };
+
   return (
     <>
       <Heading>Plugins</Heading>
       <p class="mb-4 text-xs text-muted">
-        Magnitide runs calibre plugins in your installed calibre, so they work as they do there, with their own settings
-        kept apart from calibre's. Metadata sources are asked in Find Metadata. Library tools (calibre's toolbar
-        plugins) are in the book menu, under Plugins: they work on the selected books, their windows open as in calibre,
-        and what they change comes back into the library when they're done. Other kinds of plugin can be added and will
-        start working as Magnitide supports them. Plugins are programs that run on your computer: only add ones you
-        trust.
+        Magnitide runs calibre plugins in its own plugin runtime: a copy of Python, Qt and the parts of calibre that
+        plugins use, downloaded once. calibre itself needn't be installed. Plugins work as they do in calibre, with
+        their own settings kept apart from calibre's. Metadata sources are asked in Find Metadata. Library tools
+        (calibre's toolbar plugins) are in the book menu, under Plugins: they work on the selected books, their windows
+        open as in calibre, and what they change comes back into the library when they're done. Other kinds of plugin
+        can be added and will start working as Magnitide supports them. Plugins are programs that run on your computer:
+        only add ones you trust.
       </p>
-      <Show when={status()} fallback={<p class="text-xs text-muted">Checking for calibre…</p>}>
+      <Show when={status()} fallback={<p class="text-xs text-muted">Checking the plugin runtime…</p>}>
         {(s) => (
           <>
-            <Row label="calibre" description={<PluginCalibre status={s()} />}>
-              <button class={button} disabled={!s().calibre || busy()} onClick={() => void add()}>
+            <Row
+              label="Plugin runtime"
+              description={<PluginRuntime status={s().runtime} onChange={(runtime) => mutate({ ...s(), runtime })} />}
+            >
+              <button class={button} disabled={!s().runtime.installed || busy()} onClick={() => void add()}>
                 {busy() ? 'Adding…' : 'Add Plugin…'}
               </button>
             </Row>
@@ -1416,9 +1484,21 @@ function PluginSettings() {
                         <span class="mt-0.5 block">
                           {PLUGIN_KINDS[p.kind]} · by {p.author}
                           <Show when={!SUPPORTED_PLUGIN_KINDS.includes(p.kind)}>
-                            <span class="text-warning"> · Not supported yet</span>
+                            <span class="text-warning">
+                              {' '}
+                              · Not supported: {UNSUPPORTED_WHY[p.kind] ?? "Magnitide can't run it"}
+                            </span>
                           </Show>
                         </span>
+                        <For each={pluginHooksLine(p)}>{(line) => <span class="mt-0.5 block">{line}</span>}</For>
+                        <Show when={p.coverage.length}>
+                          <span class="mt-0.5 block text-warning">
+                            Uses calibre features Magnitide doesn't provide: {p.coverage.join(', ')}
+                          </span>
+                        </Show>
+                        <Show when={s().errors[p.name]}>
+                          {(error) => <span class="mt-0.5 block text-danger select-text">Last error: {error()}</span>}
+                        </Show>
                       </>
                     }
                   >
@@ -1430,6 +1510,15 @@ function PluginSettings() {
                       disabled={!SUPPORTED_PLUGIN_KINDS.includes(p.kind)}
                       onChange={(e) => void run(() => api.setPluginEnabled(p.name, e.currentTarget.checked))}
                     />
+                    <Show when={p.customizable && SUPPORTED_PLUGIN_KINDS.includes(p.kind)}>
+                      <button
+                        class={button}
+                        disabled={!s().runtime.installed || configuring() !== null}
+                        onClick={() => void configure(p)}
+                      >
+                        {configuring() === p.name ? 'Configuring…' : 'Configure…'}
+                      </button>
+                    </Show>
                     <button class={button} onClick={() => void remove(p)}>
                       Remove
                     </button>
@@ -1437,7 +1526,7 @@ function PluginSettings() {
                 )}
               </For>
             </Show>
-            <Show when={s().calibre && s().plugins.length}>
+            <Show when={s().runtime.installed && s().plugins.length}>
               <div class="mt-4">
                 <button
                   class="cursor-pointer text-xs text-link hover:underline"
@@ -1465,21 +1554,126 @@ function PluginSettings() {
   );
 }
 
-function PluginCalibre(props: { status: PluginsStatus }) {
+function PluginRuntime(props: { status: RuntimeStatus; onChange(r: RuntimeStatus): void }) {
+  const [working, setWorking] = createSignal<'install' | 'remove' | 'check' | null>(null);
+  const mb = (bytes: number | null | undefined) => (bytes == null ? '' : `${Math.max(1, Math.round(bytes / 1e6))} MB`);
+
+  const install = async () => {
+    setWorking('install');
+    const job = startJob('Plugin runtime', 'Downloading the plugin runtime…');
+    const unlisten = await onPluginRuntimeProgress((p) => {
+      if (p.phase === 'downloading') {
+        job.progress(
+          p.total
+            ? `Downloading the plugin runtime: ${mb(p.done)} of ${mb(p.total)}`
+            : 'Downloading the plugin runtime…',
+        );
+      } else if (p.phase === 'verifying') job.progress('Checking the download…');
+      else if (p.phase === 'extracting') job.progress('Unpacking the plugin runtime…');
+      else if (p.phase === 'compiling') job.progress('Preparing the plugin runtime…');
+    });
+    try {
+      const r = await api.installPluginRuntime();
+      props.onChange(r);
+      job.finish(r.problem ? `Installed, but it can't start here: ${r.problem}` : 'Plugin runtime installed', {
+        error: !!r.problem,
+      });
+      void refreshGuiPlugins();
+    } catch (err) {
+      job.finish(errorMessage(err), { error: true });
+    } finally {
+      unlisten();
+      setWorking(null);
+    }
+  };
+
+  const remove = async () => {
+    const ok = await confirm({
+      title: 'Remove the plugin runtime?',
+      message: () =>
+        `Plugins and their settings are kept; the runtime (${mb(props.status.size)}) can be installed again.`,
+      confirm: 'Remove',
+      danger: true,
+    });
+    if (!ok) return;
+    setWorking('remove');
+    try {
+      props.onChange(await api.removePluginRuntime());
+      void refreshGuiPlugins();
+    } catch (err) {
+      toast(errorMessage(err), { error: true });
+    } finally {
+      setWorking(null);
+    }
+  };
+
+  const check = async () => {
+    setWorking('check');
+    try {
+      props.onChange(await api.pluginRuntimeStatus());
+    } catch (err) {
+      toast(errorMessage(err), { error: true });
+    } finally {
+      setWorking(null);
+    }
+  };
+
   return (
-    <Show
-      when={props.status.calibre}
-      fallback={
-        <span class="text-danger">
-          Not installed. calibre plugins run in calibre, so install it (free, from calibre-ebook.com) to use them.
+    <Switch>
+      <Match when={props.status.installed}>
+        <span>
+          Python {props.status.python ?? '?'}, Qt {props.status.qt ?? '?'}, calibre {props.status.compat} compatibility
+          {props.status.size != null ? `, ${mb(props.status.size)}` : ''} at{' '}
+          <span class="break-all">{props.status.path}</span>.{' '}
+          <Show when={props.status.problem}>
+            {(problem) => (
+              <span class="text-danger">
+                It can't start here: {problem()}{' '}
+                <button
+                  class="cursor-pointer text-link hover:underline"
+                  disabled={!!working()}
+                  onClick={() => void check()}
+                >
+                  Check again
+                </button>
+                .{' '}
+              </span>
+            )}
+          </Show>
+          <button class="cursor-pointer text-link hover:underline" disabled={!!working()} onClick={() => void remove()}>
+            {working() === 'remove' ? 'Removing…' : 'Remove'}
+          </button>
         </span>
-      }
-    >
-      {(c) => (
-        <>
-          {c().version ? `calibre ${c().version}` : 'calibre'} at <span class="break-all">{c().path}</span>
-        </>
-      )}
-    </Show>
+      </Match>
+      <Match when={props.status.installing || working() === 'install'}>
+        <span>
+          Installing… the progress is in the status bar.{' '}
+          <button
+            class="cursor-pointer text-link hover:underline"
+            onClick={() => void api.cancelPluginRuntimeInstall()}
+          >
+            Cancel
+          </button>
+        </span>
+      </Match>
+      <Match when={!props.status.available}>
+        <span class="text-warning">
+          There's no plugin runtime for this computer yet, so calibre plugins can't run here.
+        </span>
+      </Match>
+      <Match when={true}>
+        <span>
+          Not installed. calibre plugins need it; it's a one-time download
+          {props.status.downloadSize != null ? ` of ${mb(props.status.downloadSize)}` : ''}.{' '}
+          <button
+            class="cursor-pointer text-link hover:underline"
+            disabled={!!working()}
+            onClick={() => void install()}
+          >
+            Install
+          </button>
+        </span>
+      </Match>
+    </Switch>
   );
 }

@@ -120,13 +120,21 @@ impl Plugins {
     }
 
     /// Run a plugin's menu item (`path` and its `texts`, from [`MenuItem`];
-    /// empty for the toolbar button itself) on the books `selection`. Returns
+    /// empty for the toolbar button itself) on the books `selection`, with
+    /// the library's current search (plugins read `gui.search`). Returns
     /// once it has started; a `gui-idle` event follows when it's done.
-    pub fn gui_trigger(&self, plugin: &str, path: &[u32], texts: &[String], selection: &[i64]) -> Result<(), String> {
+    pub fn gui_trigger(
+        &self,
+        plugin: &str,
+        path: &[u32],
+        texts: &[String],
+        selection: &[i64],
+        search: &str,
+    ) -> Result<(), String> {
         self.host()?
             .call(
                 "gui_trigger",
-                json!({ "plugin": plugin, "path": path, "texts": texts, "selection": selection }),
+                json!({ "plugin": plugin, "path": path, "texts": texts, "selection": selection, "search": search }),
                 CALL_TIMEOUT,
             )
             .map(|_| ())
@@ -198,12 +206,12 @@ mod tests {
     #[test]
     fn output_format_setting() {
         let dir = tempfile::tempdir().unwrap();
-        let plugins = Plugins::new(dir.path().into(), || None);
+        let plugins = Plugins::new(dir.path().into(), dir.path().join("rt"));
         assert_eq!(plugins.output_format(), "EPUB");
         plugins.set_output_format("azw3").unwrap();
         assert_eq!(plugins.output_format(), "AZW3");
         assert!(plugins.set_output_format("../x").is_err());
-        assert_eq!(Plugins::new(dir.path().into(), || None).output_format(), "AZW3", "kept");
+        assert_eq!(Plugins::new(dir.path().into(), dir.path().join("rt")).output_format(), "AZW3", "kept");
     }
 
     #[test]

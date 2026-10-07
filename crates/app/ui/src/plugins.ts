@@ -1,7 +1,7 @@
 // GUI calibre plugins: their menus (the book menu's Plugins submenu) and
-// running them. A plugin runs in calibre's own code on a copy of the library;
-// when it's done, what it changed is applied here and reported as a job
-// (see crates/app/src/plugins.rs).
+// running them. A plugin runs in Magnitide's plugin runtime on a copy of the
+// library; when it's done, what it changed is applied here and reported as a
+// job (see crates/app/src/plugins.rs).
 
 import { createSignal } from 'solid-js';
 
@@ -10,9 +10,13 @@ import {
   type ApplyReport,
   coverChanged,
   errorMessage,
+  isRuntimeMissing,
   onPluginAsk,
   onPluginDone,
+  onPluginJob,
   onPluginMessage,
+  onPluginOpenBook,
+  onPluginSearch,
   onPluginSelect,
   type PluginMenu,
   type PluginMenuItem,
@@ -20,13 +24,15 @@ import {
 } from './api';
 import { type JobHandle, recordJob, startJob } from './jobs';
 import { editBooks, openEditor, untilEditorsClosed } from './editor';
-import { refresh, selectBooks, setEditRevision } from './library';
+import { openBook, refresh, search, selectBooks, setEditRevision } from './library';
+import { findMetadataFor, untilLookupDone } from './lookup';
 import { toast } from './toast';
 import { convertBooks, deleteBooks } from './transfer';
+import { confirm } from './confirm';
 
-/** The GUI plugins that are on, by name; known without starting calibre. */
+/** The GUI plugins that are on, by name; known without starting the runtime. */
 const [guiPlugins, setGuiPlugins] = createSignal<string[]>([]);
-/** Their menus, once loaded; null until then (loading starts calibre). */
+/** Their menus, once loaded; null until then (loading starts the plugin runtime). */
 const [pluginMenus, setPluginMenus] = createSignal<PluginMenus | null>(null);
 export { guiPlugins, pluginMenus };
 
@@ -42,7 +48,7 @@ export async function refreshGuiPlugins(): Promise<void> {
   setPluginMenus(null);
 }
 
-/** Load the plugins' menus, starting calibre the first time. */
+/** Load the plugins' menus, starting the plugin runtime the first time. */
 export function loadPluginMenus(): Promise<void> {
   if (!loading) {
     loading = api
@@ -66,17 +72,31 @@ const running = new Map<string, { job: JobHandle; messages: string[]; errors: st
 
 /**
  * Run a plugin's menu item (`item` at `texts`, its path of names), or with no
- * item its toolbar button, on these books.
+ * item its toolbar button, on these books, with the current search (plugins
+ * read calibre's search box).
  */
-export async function runPlugin(menu: PluginMenu, item: PluginMenuItem | null, texts: string[], ids: number[]) {
+export async function runPlugin(
+  menu: PluginMenu,
+  item: PluginMenuItem | null,
+  texts: string[],
+  ids: number[],
+  query = '',
+) {
   const job = startJob(menu.plugin, `${item ? texts.join(' › ') : menu.text}…`);
   running.get(menu.plugin)?.job.finish('Still running when it was started again');
   running.set(menu.plugin, { job, messages: [], errors: [] });
   try {
-    await api.runPlugin(menu.plugin, item ? item.path : [], texts, ids);
+    await api.runPlugin(menu.plugin, item ? item.path : [], texts, ids, query);
   } catch (err) {
     running.delete(menu.plugin);
-    job.finish(errorMessage(err), { error: true });
+    job.finish(
+      isRuntimeMissing(err)
+        ? 'calibre plugins need the plugin runtime: install it in Settings › Plugins'
+        : errorMessage(err),
+      {
+        error: true,
+      },
+    );
   }
 }
 
@@ -147,8 +167,30 @@ export function initPlugins(): void {
     }
   });
   void onPluginSelect((ids) => selectBooks(ids));
-  // calibre's Edit Metadata and Remove Books are Magnitide's: what the plugin
-  // did so far is in the library already; the plugin waits for the answer.
+  void onPluginSearch((text) => search(text));
+  void onPluginOpenBook((b) => void openBook(b.id, b.format));
+  // Jobs a plugin runs in the plugin runtime (calibre's job manager) show in the job bar.
+  const hostJobs = new Map<number, JobHandle>();
+  void onPluginJob((j) => {
+    const title = j.plugin ?? 'Plugin';
+    if (j.phase === 'start') {
+      hostJobs.get(j.job)?.finish('Started again');
+      hostJobs.set(j.job, startJob(title, `${j.description || 'Working'}…`));
+    } else if (j.phase === 'progress') {
+      const text = [j.description, j.message].filter(Boolean).join(': ');
+      hostJobs.get(j.job)?.progress(j.percent != null && j.percent > 0 ? `${text} (${j.percent}%)` : `${text}…`);
+    } else {
+      const job = hostJobs.get(j.job);
+      hostJobs.delete(j.job);
+      const details = j.details ? j.details.split('\n').filter(Boolean).slice(-40) : [];
+      const text = j.failed ? `${j.description || 'The job'} failed` : `${j.description || 'The job'} finished`;
+      if (job) job.finish(text, { error: j.failed, details });
+      else if (j.failed) recordJob(title, text, { error: true, details });
+    }
+  });
+  // calibre's Edit Metadata, Remove Books, metadata download and Convert
+  // Books are Magnitide's: what the plugin did so far is in the library
+  // already; the plugin waits for the answer.
   void onPluginAsk(async (a) => {
     const run = running.get(a.plugin);
     try {
@@ -160,6 +202,14 @@ export function initPlugins(): void {
         if (a.ids.length === 1) await openEditor(a.ids[0]!);
         else editBooks(a.ids);
         await untilEditorsClosed();
+      } else if (a.kind === 'download') {
+        run?.job.progress('Waiting for Find Metadata…');
+        findMetadataFor(a.ids);
+        await untilLookupDone();
+      } else if (a.kind === 'convert') {
+        run?.job.progress('Waiting for the conversion…');
+        const to = await pickConversion(a.plugin, a.ids);
+        if (to) await convertBooks(a.ids, to);
       } else {
         run?.job.progress('Waiting to delete…');
         await deleteBooks(a.ids);
@@ -169,4 +219,33 @@ export function initPlugins(): void {
       await api.pluginAnswer(a.token, a.kind, a.ids).catch((err) => toast(errorMessage(err), { error: true }));
     }
   });
+}
+
+/** calibre's conversion dialog, reduced to its one choice: the format. Null when cancelled. */
+async function pickConversion(plugin: string, ids: number[]): Promise<string | null> {
+  const targets = await api.convertTargets(ids).catch(() => [] as string[]);
+  if (!targets.length) {
+    toast(`${plugin} asked to convert ${plural(ids.length, 'book')}, but there's nothing to convert them to.`, {
+      error: true,
+    });
+    return null;
+  }
+  let chosen = targets[0]!;
+  const ok = await confirm({
+    title: `${plugin} wants to convert ${plural(ids.length, 'book')}`,
+    message: () => {
+      const select = document.createElement('select');
+      select.className = 'h-7 rounded-control border border-line bg-field pl-2 pr-6 text-xs text-fg';
+      select.setAttribute('aria-label', 'Convert to');
+      select.autofocus = true;
+      for (const t of targets) select.append(new Option(t, t));
+      select.onchange = () => (chosen = select.value);
+      const label = document.createElement('label');
+      label.className = 'flex items-center gap-2';
+      label.append('Convert to', select);
+      return label;
+    },
+    confirm: 'Convert',
+  });
+  return ok ? chosen : null;
 }

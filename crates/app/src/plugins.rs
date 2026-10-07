@@ -1,6 +1,9 @@
 //! calibre plugins: installing, turning on and off, and the host's log
-//! (Settings › Plugins), and running GUI plugins on the open library. The
-//! plugins run in the user's own calibre; see the magnitide-plugins crate.
+//! (Settings › Plugins), running GUI plugins on the open library, and the
+//! other kinds as Magnitide's hooks: file-type plugins when books are added
+//! (and after, on the shadow), metadata readers and writers, a plugin's
+//! own settings, and library-closed plugins. The plugins run in Magnitide's
+//! plugin runtime; see the magnitide-plugins crate.
 //!
 //! GUI plugins work on a calibre-format shadow of the open Magnitide library
 //! (`magnitide_plugins::shadow`), rebuilt whenever the library has changed
@@ -10,17 +13,19 @@
 //! Remove Books are Magnitide's editor and delete). After a sync point,
 //! further changes are measured from the library as it then is.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use calibre_compat::write::WriteOptions;
 use magnitide_catalog::diff::Changes;
 use magnitide_catalog::{BookId, Catalog};
 use magnitide_core::external::ApplyReport;
+use magnitide_core::hooks::{ImportHooks, ImportOutcome, MetadataPlugins, Precedence};
+use magnitide_core::metadata::BookMetadata;
 use magnitide_plugins::shadow::{Shadow, baseline};
-use magnitide_plugins::{Calibre, Installed, PluginMenus, Plugins};
+use magnitide_plugins::{Configured, Hook, Installed, PluginMenus, Plugins, Progress, RuntimeStatus};
 use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -35,11 +40,19 @@ pub const PLUGIN_DONE_EVENT: &str = "plugin-done";
 pub const PLUGIN_MESSAGE_EVENT: &str = "plugin-message";
 /// A GUI plugin selected books. Matches `onPluginSelect`.
 pub const PLUGIN_SELECT_EVENT: &str = "plugin-select";
-/// A GUI plugin is waiting for Magnitide's editor or delete. Matches `onPluginAsk`.
+/// A GUI plugin is waiting for Magnitide's editor, delete, Find Metadata or
+/// conversion. Matches `onPluginAsk`.
 pub const PLUGIN_ASK_EVENT: &str = "plugin-ask";
+/// A GUI plugin searched the library. Matches `onPluginSearch`.
+pub const PLUGIN_SEARCH_EVENT: &str = "plugin-search";
+/// A GUI plugin opened a book (calibre's View). Matches `onPluginOpenBook`.
+pub const PLUGIN_OPEN_BOOK_EVENT: &str = "plugin-open-book";
+/// A job a GUI plugin started in the host: started, progressed or done. Matches `onPluginJob`.
+pub const PLUGIN_JOB_EVENT: &str = "plugin-job";
 
-/// A plugin called calibre's Edit Metadata (`edit`) or Remove Books
-/// (`remove`) for these books; it waits until `plugin_answer`.
+/// A plugin called calibre's Edit Metadata (`edit`), Remove Books
+/// (`remove`), metadata download (`download`) or Convert Books (`convert`)
+/// for these books; it waits until `plugin_answer`.
 #[derive(Clone, Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -48,6 +61,34 @@ pub struct PluginAsk {
     token: u64,
     kind: String,
     ids: Vec<BookId>,
+}
+
+/// A plugin asked to open a book (`format` when it named one).
+#[derive(Clone, Serialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginOpenBook {
+    plugin: Option<String>,
+    id: BookId,
+    format: Option<String>,
+}
+
+/// A job in the host's job manager (calibre's `gui.job_manager`), as it goes.
+#[derive(Clone, Serialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginJob {
+    plugin: Option<String>,
+    /// The host's id for the job.
+    job: u64,
+    description: String,
+    /// "start", "progress" or "done".
+    phase: String,
+    percent: Option<u32>,
+    message: Option<String>,
+    failed: bool,
+    /// The job's log, when done.
+    details: Option<String>,
 }
 
 #[derive(Clone, Serialize, TS)]
@@ -116,23 +157,123 @@ impl Built {
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginsStatus {
-    /// None: calibre isn't installed, so plugins can't run.
-    calibre: Option<Calibre>,
+    /// The plugin runtime (plugins can't run until it's installed).
+    runtime: RuntimeStatus,
     plugins: Vec<Installed>,
     /// What books are converted to when a plugin asks (calibre's output format).
     output_format: String,
+    /// Each plugin's latest error, by name.
+    errors: BTreeMap<String, String>,
 }
 
-/// Plugins live in `<app config>/calibre-plugins`; calibre is found where
-/// Magnitide finds it for converting.
+/// The plugin runtime as core's extension points: file-type plugins on
+/// books being added, and metadata readers and writers.
+pub struct AppHooks(pub AppHandle);
+
+impl ImportHooks for AppHooks {
+    fn file_types(&self) -> Vec<String> {
+        ImportHooks::file_types(&*self.0.state::<Plugins>())
+    }
+
+    fn on_import(&self, path: &Path, format: &str) -> ImportOutcome {
+        ImportHooks::on_import(&*self.0.state::<Plugins>(), path, format)
+    }
+}
+
+impl MetadataPlugins for AppHooks {
+    fn reads(&self, format: &str) -> Option<Precedence> {
+        MetadataPlugins::reads(&*self.0.state::<Plugins>(), format)
+    }
+
+    fn read(&self, path: &Path, format: &str) -> Result<BookMetadata, String> {
+        MetadataPlugins::read(&*self.0.state::<Plugins>(), path, format)
+    }
+
+    fn writes(&self, format: &str) -> bool {
+        MetadataPlugins::writes(&*self.0.state::<Plugins>(), format)
+    }
+
+    fn write(&self, path: &Path, format: &str, meta: &BookMetadata) -> Result<(), String> {
+        MetadataPlugins::write(&*self.0.state::<Plugins>(), path, format, meta)
+    }
+}
+
+/// Run file-type plugins' post hooks (`postimport` and `postadd` after
+/// adding, `postconvert`, `postdelete`) for these books and their formats
+/// concerned, on the shadow library, and apply what they changed. Nothing
+/// happens (and no host starts) unless an enabled plugin wants the hook.
+pub async fn post_hooks(app: &AppHandle, hook: Hook, items: Vec<(BookId, Vec<String>)>) {
+    let items: Vec<(BookId, Vec<String>)> = {
+        let plugins = app.state::<Plugins>();
+        items.into_iter().filter(|(_, formats)| formats.iter().any(|f| plugins.wants_post(hook, f))).collect()
+    };
+    if items.is_empty() {
+        return;
+    }
+    let handle = app.clone();
+    let ran = tauri::async_runtime::spawn_blocking(move || -> CmdResult<Vec<String>> {
+        let library = ensure_shadow(&handle, false)?;
+        let plugins = handle.state::<Plugins>();
+        let mut ran: Vec<String> = Vec::new();
+        let mut errors = Vec::new();
+        for (id, formats) in &items {
+            match plugins.run_post(hook, &library, *id, formats) {
+                Ok(names) => ran.extend(names.into_iter().filter(|n| !ran.contains(n)).collect::<Vec<_>>()),
+                Err(e) => errors.push(e),
+            }
+        }
+        match errors.first() {
+            Some(e) if ran.is_empty() => Err(e.clone()),
+            _ => Ok(ran),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())
+    .and_then(|r| r);
+    match ran {
+        Ok(ran) if ran.is_empty() => {}
+        Ok(ran) => {
+            let (report, error) = match read_back(app).await {
+                Ok(report) => (report, None),
+                Err(e) => (None, Some(e)),
+            };
+            if report.is_some() || error.is_some() {
+                let plugin = ran.join(", ");
+                let _ = app.emit(PLUGIN_DONE_EVENT, PluginDone { plugin, report, error, convert: Vec::new() });
+            }
+        }
+        Err(message) => {
+            let _ = app.emit(PLUGIN_MESSAGE_EVENT, PluginMessage { plugin: None, message, error: true });
+        }
+    }
+}
+
+/// The open library is closing (another is opened, or the app quits):
+/// library-closed plugins run, if a host is up, and the shadow is closed.
+pub fn library_closing(app: &AppHandle) {
+    let plugins = app.state::<Plugins>();
+    let library = {
+        let state = app.state::<PluginLibrary>();
+        let built = state.0.lock().unwrap_or_else(|e| e.into_inner());
+        built.as_ref().map(|b| b.shadow.library())
+    };
+    let Some(library) = library else { return };
+    if let Err(e) = plugins.library_closed(&library) {
+        let _ = app.emit(PLUGIN_MESSAGE_EVENT, PluginMessage { plugin: None, message: e, error: true });
+    }
+    let _ = plugins.gui_close();
+}
+
+/// Plugins live in `<app config>/calibre-plugins`; the runtime in
+/// `<app local data>/plugin-runtime` (it's large, and not configuration).
 pub fn create(app: &AppHandle) -> Plugins {
     let dir = app.path().app_config_dir().unwrap_or_else(|_| PathBuf::from(".")).join("calibre-plugins");
-    let plugins = Plugins::new(dir, || {
-        magnitide_core::convert::Converter::detect().calibre().map(magnitide_plugins::host::calibre_debug_beside)
-    });
+    let runtime = app.path().app_local_data_dir().unwrap_or_else(|_| PathBuf::from(".")).join("plugin-runtime");
+    let plugins = Plugins::new(dir, runtime);
     let handle = app.clone();
     plugins.set_event_handler(Arc::new(move |e| on_event(&handle, e)));
     app.manage(PluginLibrary::default());
+    app.manage(RuntimeInstall::default());
     plugins
 }
 
@@ -163,6 +304,30 @@ fn on_event(app: &AppHandle, e: Value) {
             tauri::async_runtime::spawn_blocking(move || {
                 let _ = app.emit(PLUGIN_SELECT_EVENT, to_library(&app, &ids));
             });
+        }
+        Some("gui-search") => {
+            let _ = app.emit(PLUGIN_SEARCH_EVENT, text("text").unwrap_or_default());
+        }
+        Some("gui-open-book") => {
+            let (app, id, format) = (app.clone(), e.get("id").and_then(Value::as_i64), text("format"));
+            let Some(id) = id else { return };
+            tauri::async_runtime::spawn_blocking(move || {
+                let id = to_library(&app, &[id])[0];
+                let _ = app.emit(PLUGIN_OPEN_BOOK_EVENT, PluginOpenBook { plugin, id, format });
+            });
+        }
+        Some(phase @ ("job-start" | "job-progress" | "job-done")) => {
+            let job = PluginJob {
+                plugin,
+                job: e.get("job").and_then(Value::as_u64).unwrap_or_default(),
+                description: text("description").unwrap_or_default(),
+                phase: phase.trim_start_matches("job-").to_owned(),
+                percent: e.get("percent").and_then(Value::as_u64).map(|p| p.min(100) as u32),
+                message: text("message"),
+                failed: e.get("failed").and_then(Value::as_bool).unwrap_or(false),
+                details: text("details"),
+            };
+            let _ = app.emit(PLUGIN_JOB_EVENT, job);
         }
         Some("gui-convert") => {
             // Run when the plugin is done, once the books it added are in the library.
@@ -296,6 +461,14 @@ fn fingerprint(catalog: &Catalog) -> u64 {
 /// changed since, unless `reuse` and one exists for it) and open it in the
 /// host. Returns the GUI plugins' menus.
 fn prepare(app: &AppHandle, reuse: bool) -> CmdResult<PluginMenus> {
+    let library = ensure_shadow(app, reuse)?;
+    app.state::<Plugins>().gui_open(&library)
+}
+
+/// Make the shadow match the open library (rebuilding it if the library
+/// changed since, unless `reuse` and one exists for it). Returns its path.
+/// While a plugin is still working on it, it's left as it is.
+fn ensure_shadow(app: &AppHandle, reuse: bool) -> CmdResult<PathBuf> {
     let lib = app.state::<AppState>().current().ok_or("No library is open")?;
     let native = lib.native.clone().ok_or(
         "calibre plugins work on Magnitide libraries. Import this calibre library into one (library menu) to use them.",
@@ -310,7 +483,7 @@ fn prepare(app: &AppHandle, reuse: bool) -> CmdResult<PluginMenus> {
         if !plugins.gui_close()? {
             // A plugin is still working on the shadow: leave it be.
             return match built.as_ref().filter(|_| same_library) {
-                Some(b) => plugins.gui_open(&b.shadow.library()),
+                Some(b) => Ok(b.shadow.library()),
                 None => Err("A plugin is still working. Finish in its window first.".into()),
             };
         }
@@ -344,8 +517,7 @@ fn prepare(app: &AppHandle, reuse: bool) -> CmdResult<PluginMenus> {
             conversions: Vec::new(),
         });
     }
-    let library = built.as_ref().map(|b| b.shadow.library()).ok_or("no plugin library")?;
-    plugins.gui_open(&library)
+    built.as_ref().map(|b| b.shadow.library()).ok_or_else(|| "no plugin library".into())
 }
 
 /// The names of the GUI plugins that are on (without starting calibre).
@@ -369,8 +541,9 @@ pub async fn plugin_menus(app: AppHandle) -> CmdResult<PluginMenus> {
 }
 
 /// Run a GUI plugin's menu item (`path` and `texts` from its menu; empty for
-/// its toolbar button) on the selected books. Returns once it has started;
-/// `plugin-done` follows when it's finished and its changes are applied.
+/// its toolbar button) on the selected books, with the library's current
+/// search. Returns once it has started; `plugin-done` follows when it's
+/// finished and its changes are applied.
 #[tauri::command]
 pub async fn run_plugin(
     app: AppHandle,
@@ -378,18 +551,20 @@ pub async fn run_plugin(
     path: Vec<u32>,
     texts: Vec<String>,
     selection: Vec<i64>,
+    search: Option<String>,
 ) -> CmdResult<()> {
     tauri::async_runtime::spawn_blocking(move || {
         prepare(&app, false)?;
-        app.state::<Plugins>().gui_trigger(&plugin, &path, &texts, &selection)
+        app.state::<Plugins>().gui_trigger(&plugin, &path, &texts, &selection, search.as_deref().unwrap_or(""))
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
-/// Magnitide's editor closed (`edit`) or its delete finished (`remove`) for
-/// the books a plugin asked about (`plugin-ask`): tell the plugin, which
-/// goes on with the books as they are now in the library.
+/// Magnitide's editor closed (`edit`), its delete finished (`remove`), Find
+/// Metadata finished (`download`) or its conversion finished (`convert`)
+/// for the books a plugin asked about (`plugin-ask`): tell the plugin,
+/// which goes on with the books as they are now in the library.
 #[tauri::command]
 pub async fn plugin_answer(app: AppHandle, token: u64, kind: String, ids: Vec<BookId>) -> CmdResult<()> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -401,7 +576,7 @@ pub async fn plugin_answer(app: AppHandle, token: u64, kind: String, ids: Vec<Bo
             drop(built);
             return plugins.gui_resume(token);
         };
-        let answer = if kind == "edit" {
+        let answer = if kind == "edit" || kind == "download" {
             let books: serde_json::Map<String, Value> = ids
                 .iter()
                 .filter_map(|&id| lib.catalog.get(id))
@@ -414,6 +589,21 @@ pub async fn plugin_answer(app: AppHandle, token: u64, kind: String, ids: Vec<Bo
                 })
                 .collect();
             serde_json::json!({ "books": books })
+        } else if kind == "convert" {
+            // Every format the books have now; the host adds the ones the shadow lacks.
+            let formats: serde_json::Map<String, Value> = ids
+                .iter()
+                .filter_map(|&id| lib.catalog.get(id))
+                .map(|book| {
+                    let files: Vec<Value> = book
+                        .formats
+                        .iter()
+                        .map(|f| serde_json::json!({ "format": f.format, "path": book.format_path(&lib.root, f) }))
+                        .collect();
+                    (b.to_shadow(book.id).to_string(), Value::Array(files))
+                })
+                .collect();
+            serde_json::json!({ "formats": formats })
         } else {
             let removed: Vec<BookId> =
                 ids.iter().filter(|&&id| lib.catalog.get(id).is_none()).map(|&id| b.to_shadow(id)).collect();
@@ -448,8 +638,75 @@ async fn blocking<T: Send + 'static>(
 
 #[tauri::command]
 pub async fn plugins_status(app: AppHandle) -> CmdResult<PluginsStatus> {
-    blocking(app, |p| Ok(PluginsStatus { calibre: p.calibre(), plugins: p.list(), output_format: p.output_format() }))
-        .await
+    blocking(app, |p| {
+        Ok(PluginsStatus {
+            runtime: p.runtime_status(),
+            plugins: p.list(),
+            output_format: p.output_format(),
+            errors: p.errors(),
+        })
+    })
+    .await
+}
+
+/// Open a plugin's own settings (its dialog, in the host) and wait for it
+/// to close.
+#[tauri::command]
+pub async fn configure_plugin(app: AppHandle, name: String) -> CmdResult<Configured> {
+    blocking(app, move |p| p.configure(&name)).await
+}
+
+/// Progress of the runtime's install. Matches `onPluginRuntimeProgress` in ui/src/api.ts.
+pub const PLUGIN_RUNTIME_PROGRESS_EVENT: &str = "plugin-runtime-progress";
+
+/// Whether an install is running, and how to stop it.
+#[derive(Default)]
+pub struct RuntimeInstall(Arc<std::sync::atomic::AtomicBool>);
+
+/// The runtime's state, checked by running it (so a missing system library shows).
+#[tauri::command]
+pub async fn plugin_runtime_status(app: AppHandle) -> CmdResult<RuntimeStatus> {
+    blocking(app, |p| Ok(p.check_runtime())).await
+}
+
+/// Download and install the plugin runtime, with `plugin-runtime-progress`
+/// events meanwhile. Returns its state once installed.
+#[tauri::command]
+pub async fn install_plugin_runtime(app: AppHandle) -> CmdResult<RuntimeStatus> {
+    let cancel = app.state::<RuntimeInstall>().0.clone();
+    cancel.store(false, std::sync::atomic::Ordering::SeqCst);
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let plugins = handle.state::<Plugins>();
+        let mut last = std::time::Instant::now() - std::time::Duration::from_secs(1);
+        let mut report = |p: Progress| {
+            let now = std::time::Instant::now();
+            let boundary = !matches!(p, Progress::Downloading { .. } | Progress::Extracting { .. });
+            if boundary || now.duration_since(last).as_millis() >= 100 {
+                last = now;
+                let _ = handle.emit(PLUGIN_RUNTIME_PROGRESS_EVENT, p);
+            }
+        };
+        let status = plugins.install_runtime(&cancel, &mut report)?;
+        Ok(plugins
+            .check_runtime()
+            .problem
+            .map_or(status, |problem| RuntimeStatus { problem: Some(problem), ..plugins.runtime_status() }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn cancel_plugin_runtime_install(state: State<'_, RuntimeInstall>) -> CmdResult<()> {
+    state.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
+}
+
+/// Remove the runtime (plugins and their settings are kept).
+#[tauri::command]
+pub async fn remove_plugin_runtime(app: AppHandle) -> CmdResult<RuntimeStatus> {
+    blocking(app, |p| p.remove_runtime().map(|()| p.runtime_status())).await
 }
 
 /// Set what books are converted to when a plugin asks.

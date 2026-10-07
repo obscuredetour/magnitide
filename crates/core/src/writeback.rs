@@ -14,6 +14,7 @@ use serde::Serialize;
 
 use crate::edit::dir_for;
 use crate::error::{Error, Result};
+use crate::hooks::{MetadataPlugins, NoHooks};
 use crate::library::{BookId, Library, now};
 use crate::metadata::{Author, BookMetadata, epub, epub_write};
 
@@ -64,6 +65,8 @@ struct Target {
     path: PathBuf,
     /// Known to match: written (or checked) after the book last changed.
     fresh: bool,
+    /// Written through a plugin rather than Magnitide's own writer.
+    plugin: bool,
 }
 
 /// What the library says, as it would be written.
@@ -75,13 +78,18 @@ struct Wanted {
 impl Library {
     /// Whether this book's files match the library, reading them if needed.
     pub fn file_metadata_status(&self, id: BookId) -> Result<FileMetadataStatus> {
-        let (targets, _) = self.targets(id)?;
+        self.file_metadata_status_with(id, &NoHooks)
+    }
+
+    /// [`Self::file_metadata_status`], counting formats plugins can write.
+    pub fn file_metadata_status_with(&self, id: BookId, plugins: &dyn MetadataPlugins) -> Result<FileMetadataStatus> {
+        let (targets, _) = self.targets(id, plugins)?;
         if targets.is_empty() {
             return Ok(FileMetadataStatus::Unsupported);
         }
         let wanted = self.wanted(id)?;
         for t in &targets {
-            if !self.is_current(t, &wanted, false)? {
+            if !self.is_current(t, &wanted, false, plugins)? {
                 return Ok(FileMetadataStatus::Outdated);
             }
         }
@@ -90,21 +98,30 @@ impl Library {
 
     /// Write this book's metadata into its files that differ from the library.
     pub fn write_metadata_to_files(&mut self, id: BookId) -> Result<WriteReport> {
+        self.write_metadata_to_files_with(id, &NoHooks)
+    }
+
+    /// [`Self::write_metadata_to_files`], through plugin writers too.
+    pub fn write_metadata_to_files_with(&mut self, id: BookId, plugins: &dyn MetadataPlugins) -> Result<WriteReport> {
         let mut report = WriteReport::default();
         // Asked for explicitly: check the files themselves, not the record.
-        self.write_book(id, true, &mut report)?;
+        self.write_book(id, true, &mut report, plugins)?;
         Ok(report)
     }
 
     /// How many books and files [`Self::write_all_metadata`] would rewrite.
     pub fn writeback_preview(&self) -> Result<WritebackPreview> {
+        self.writeback_preview_with(&NoHooks)
+    }
+
+    pub fn writeback_preview_with(&self, plugins: &dyn MetadataPlugins) -> Result<WritebackPreview> {
         let mut preview = WritebackPreview::default();
-        for id in self.writable_books()? {
-            let (targets, _) = self.targets(id)?;
+        for id in self.writable_books(plugins)? {
+            let (targets, _) = self.targets(id, plugins)?;
             let wanted = self.wanted(id)?;
             let mut stale = 0;
             for t in &targets {
-                stale += usize::from(!self.is_current(t, &wanted, false)?);
+                stale += usize::from(!self.is_current(t, &wanted, false, plugins)?);
             }
             preview.books += usize::from(stale > 0);
             preview.files += stale;
@@ -114,12 +131,20 @@ impl Library {
 
     /// Write every book's metadata into its files that differ from the library.
     /// A book that fails is reported and left as it was; the rest go ahead.
-    pub fn write_all_metadata(&mut self, mut progress: impl FnMut(usize, usize)) -> Result<WriteReport> {
-        let ids = self.writable_books()?;
+    pub fn write_all_metadata(&mut self, progress: impl FnMut(usize, usize)) -> Result<WriteReport> {
+        self.write_all_metadata_with(progress, &NoHooks)
+    }
+
+    pub fn write_all_metadata_with(
+        &mut self,
+        mut progress: impl FnMut(usize, usize),
+        plugins: &dyn MetadataPlugins,
+    ) -> Result<WriteReport> {
+        let ids = self.writable_books(plugins)?;
         let mut report = WriteReport::default();
         for (done, id) in ids.iter().enumerate() {
             progress(done, ids.len());
-            if let Err(e) = self.write_book(*id, false, &mut report) {
+            if let Err(e) = self.write_book(*id, false, &mut report, plugins) {
                 report.failed.push(format!("Book {id}: {e}"));
             }
         }
@@ -127,8 +152,14 @@ impl Library {
         Ok(report)
     }
 
-    fn write_book(&mut self, id: BookId, check_files: bool, report: &mut WriteReport) -> Result<()> {
-        let (targets, unsupported) = self.targets(id)?;
+    fn write_book(
+        &mut self,
+        id: BookId,
+        check_files: bool,
+        report: &mut WriteReport,
+        plugins: &dyn MetadataPlugins,
+    ) -> Result<()> {
+        let (targets, unsupported) = self.targets(id, plugins)?;
         report.skipped += unsupported;
         if targets.is_empty() {
             return Ok(());
@@ -136,12 +167,17 @@ impl Library {
         report.books += 1;
         let wanted = self.wanted(id)?;
         for t in &targets {
-            if self.is_current(t, &wanted, check_files)? {
+            if self.is_current(t, &wanted, check_files, plugins)? {
                 report.up_to_date += 1;
                 continue;
             }
             let title = wanted.meta.title.as_deref().unwrap_or_default();
-            match epub_write::write(&t.path, &wanted.meta, Some(&wanted.title_sort)) {
+            let written = if t.plugin {
+                write_through_plugin(&t.path, &t.format, &wanted.meta, plugins)
+            } else {
+                epub_write::write(&t.path, &wanted.meta, Some(&wanted.title_sort)).map_err(|e| e.to_string())
+            };
+            match written {
                 Ok(()) => {
                     let size = fs::metadata(&t.path)?.len();
                     self.conn.execute(
@@ -158,11 +194,20 @@ impl Library {
 
     /// Does the file match? Trusts `metadata_written_at` unless `check_file`;
     /// otherwise reads the file, and records a match so it isn't read again.
-    fn is_current(&self, t: &Target, wanted: &Wanted, check_file: bool) -> Result<bool> {
+    /// A plugin-written format is read back through a plugin reader when
+    /// there is one; otherwise only the record says.
+    fn is_current(&self, t: &Target, wanted: &Wanted, check_file: bool, plugins: &dyn MetadataPlugins) -> Result<bool> {
         if t.fresh && !check_file {
             return Ok(true);
         }
-        let matches = epub::read(&t.path).is_some_and(|file| same_metadata(&file, &wanted.meta));
+        let matches = if t.plugin {
+            if plugins.reads(&t.format).is_none() {
+                return Ok(t.fresh);
+            }
+            plugins.read(&t.path, &t.format).is_ok_and(|file| same_metadata(&file, &wanted.meta))
+        } else {
+            epub::read(&t.path).is_some_and(|file| same_metadata(&file, &wanted.meta))
+        };
         if matches && !t.fresh {
             self.conn.execute(
                 "UPDATE files SET metadata_written_at = ? WHERE id = ?",
@@ -173,16 +218,21 @@ impl Library {
     }
 
     /// Books with at least one writable file.
-    fn writable_books(&self) -> Result<Vec<BookId>> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT DISTINCT book_id FROM files WHERE format IN ('EPUB', 'KEPUB') ORDER BY book_id")?;
-        let rows = stmt.query_map([], |r| r.get(0))?;
-        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    fn writable_books(&self, plugins: &dyn MetadataPlugins) -> Result<Vec<BookId>> {
+        let mut stmt = self.conn.prepare("SELECT DISTINCT book_id, format FROM files ORDER BY book_id")?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, BookId>(0)?, r.get::<_, String>(1)?)))?;
+        let mut ids = Vec::new();
+        for row in rows {
+            let (id, format) = row?;
+            if (WRITABLE.contains(&format.as_str()) || plugins.writes(&format)) && ids.last() != Some(&id) {
+                ids.push(id);
+            }
+        }
+        Ok(ids)
     }
 
     /// The book's writable files, and how many others it has.
-    fn targets(&self, id: BookId) -> Result<(Vec<Target>, usize)> {
+    fn targets(&self, id: BookId, plugins: &dyn MetadataPlugins) -> Result<(Vec<Target>, usize)> {
         let mut stmt = self.conn.prepare_cached(
             // Timestamps are whole seconds: equal means "can't tell", so not fresh.
             "SELECT f.id, f.format, f.filename, b.path, coalesce(f.metadata_written_at > b.modified_at, 0)
@@ -196,7 +246,21 @@ impl Library {
         for row in rows {
             let (file_id, format, filename, dir, fresh) = row?;
             if WRITABLE.contains(&format.as_str()) {
-                targets.push(Target { file_id, format, path: dir_for(&self.root, &dir).join(filename), fresh });
+                targets.push(Target {
+                    file_id,
+                    format,
+                    path: dir_for(&self.root, &dir).join(filename),
+                    fresh,
+                    plugin: false,
+                });
+            } else if plugins.writes(&format) {
+                targets.push(Target {
+                    file_id,
+                    format,
+                    path: dir_for(&self.root, &dir).join(filename),
+                    fresh,
+                    plugin: true,
+                });
             } else {
                 other += 1;
             }
@@ -234,6 +298,28 @@ impl Library {
             },
         })
     }
+}
+
+/// Write beside the file, then rename over it, so a failing plugin leaves
+/// the original as it was.
+fn write_through_plugin(
+    path: &Path,
+    format: &str,
+    meta: &BookMetadata,
+    plugins: &dyn MetadataPlugins,
+) -> std::result::Result<(), String> {
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let tmp = path.with_file_name(format!(".{name}.incoming"));
+    fs::copy(path, &tmp).map_err(|e| e.to_string())?;
+    let result = plugins.write(&tmp, format, meta);
+    if let Err(e) = result {
+        let _ = fs::remove_file(&tmp);
+        return Err(e);
+    }
+    fs::rename(&tmp, path).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        e.to_string()
+    })
 }
 
 fn read_cover(path: &Path) -> Result<Vec<u8>> {
@@ -284,7 +370,7 @@ mod tests {
     }
 
     fn epub_path(lib: &Library, id: BookId) -> PathBuf {
-        let (targets, _) = lib.targets(id).unwrap();
+        let (targets, _) = lib.targets(id, &NoHooks).unwrap();
         targets[0].path.clone()
     }
 

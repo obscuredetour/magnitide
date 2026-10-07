@@ -181,8 +181,19 @@ fn main() {
             plugins::plugin_menus,
             plugins::run_plugin,
             plugins::plugin_answer,
-            plugins::set_plugin_output_format
+            plugins::configure_plugin,
+            plugins::set_plugin_output_format,
+            plugins::plugin_runtime_status,
+            plugins::install_plugin_runtime,
+            plugins::cancel_plugin_runtime_install,
+            plugins::remove_plugin_runtime
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Magnitide");
+        .build(tauri::generate_context!())
+        .expect("error while running Magnitide")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                // Library-closed plugins run, and the plugin host shuts down with us.
+                plugins::library_closing(app);
+            }
+        });
 }

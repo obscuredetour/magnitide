@@ -6,7 +6,7 @@ import { For, onMount, Show } from 'solid-js';
 import Puzzle from 'lucide-solid/icons/puzzle';
 
 import type { PluginMenu, PluginMenuItem } from '../api';
-import { items, library, selectedIds } from '../library';
+import { items, library, query, selectedIds } from '../library';
 import { guiPlugins, loadPluginMenus, pluginMenus, runPlugin } from '../plugins';
 import { Icon } from './Icon';
 import { Menu, MenuItem, MenuLabel, MenuSeparator, SubMenu } from './Menu';
@@ -17,7 +17,7 @@ export function PluginItems(props: { ids(): number[] }) {
     if (!pluginMenus()) void loadPluginMenus();
   });
   const run = (menu: PluginMenu, item: PluginMenuItem | null, texts: string[]) =>
-    void runPlugin(menu, item, texts, props.ids());
+    void runPlugin(menu, item, texts, props.ids(), query());
   return (
     <Show
       when={pluginMenus()}

@@ -1,0 +1,3 @@
+# Tools for the compat package's tests and lint (not part of the runtime).
+pytest>=9
+ruff>=0.14

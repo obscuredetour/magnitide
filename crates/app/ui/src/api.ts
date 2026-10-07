@@ -39,6 +39,12 @@ import type { MenuItem as PluginMenuItem } from './bindings/MenuItem';
 import type { PluginDone } from './bindings/PluginDone';
 import type { PluginMessage } from './bindings/PluginMessage';
 import type { PluginAsk } from './bindings/PluginAsk';
+import type { PluginOpenBook } from './bindings/PluginOpenBook';
+import type { PluginJob } from './bindings/PluginJob';
+import type { Configured as PluginConfigured } from './bindings/Configured';
+import type { Hooks as PluginHooks } from './bindings/Hooks';
+import type { RuntimeStatus } from './bindings/RuntimeStatus';
+import type { RuntimeProgress } from './bindings/RuntimeProgress';
 import type { ApplyReport } from './bindings/ApplyReport';
 import type { ServerStatus } from './bindings/ServerStatus';
 import type { TransferProgress } from './bindings/TransferProgress';
@@ -82,6 +88,10 @@ export type {
   ApplyReport,
   InstalledPlugin,
   PluginAsk,
+  PluginOpenBook,
+  PluginJob,
+  PluginConfigured,
+  PluginHooks,
   PluginDone,
   PluginKind,
   PluginMenu,
@@ -89,6 +99,8 @@ export type {
   PluginMenus,
   PluginMessage,
   PluginsStatus,
+  RuntimeStatus,
+  RuntimeProgress,
   ServerStatus,
   AuthorSort,
   BookDetails,
@@ -342,8 +354,19 @@ export const api = {
 
   openThemesFolder: () => invoke<void>('open_themes_folder'),
 
-  /** calibre plugins: whether calibre is installed (so they can run), and those installed. */
+  /** calibre plugins: the plugin runtime's state, and the plugins installed. */
   pluginsStatus: () => invoke<PluginsStatus>('plugins_status'),
+
+  /** The plugin runtime's state, checked by running it (a missing system library shows here). */
+  pluginRuntimeStatus: () => invoke<RuntimeStatus>('plugin_runtime_status'),
+
+  /** Download and install the plugin runtime; `onPluginRuntimeProgress` reports meanwhile. */
+  installPluginRuntime: () => invoke<RuntimeStatus>('install_plugin_runtime'),
+
+  cancelPluginRuntimeInstall: () => invoke<void>('cancel_plugin_runtime_install'),
+
+  /** Remove the plugin runtime (plugins and their settings are kept). */
+  removePluginRuntime: () => invoke<RuntimeStatus>('remove_plugin_runtime'),
 
   /** Install a calibre plugin zip, or update one already installed. */
   installPlugin: (path: string) => invoke<InstalledPlugin>('install_plugin', { path }),
@@ -353,21 +376,27 @@ export const api = {
   setPluginEnabled: (name: string, enabled: boolean) =>
     invoke<InstalledPlugin[]>('set_plugin_enabled', { name, enabled }),
 
-  /** The names of the GUI plugins that are on (doesn't start calibre). */
+  /** The names of the GUI plugins that are on (doesn't start the plugin runtime). */
   guiPluginNames: () => invoke<string[]>('gui_plugin_names'),
 
-  /** The GUI plugins' menus for the open library (starts calibre if needed). */
+  /** The GUI plugins' menus for the open library (starts the plugin runtime if needed). */
   pluginMenus: () => invoke<PluginMenus>('plugin_menus'),
 
   /**
    * Run a GUI plugin's menu item (or, with an empty path, its toolbar button) on
    * these books. Resolves once it has started; `onPluginDone` follows.
    */
-  runPlugin: (plugin: string, path: number[], texts: string[], selection: number[]) =>
-    invoke<void>('run_plugin', { plugin, path, texts, selection }),
+  runPlugin: (plugin: string, path: number[], texts: string[], selection: number[], search = '') =>
+    invoke<void>('run_plugin', { plugin, path, texts, selection, search }),
 
-  /** Magnitide's editor closed, or its delete finished, for a plugin waiting on it (`onPluginAsk`). */
+  /**
+   * Magnitide's editor closed, its delete, Find Metadata or conversion
+   * finished, for a plugin waiting on it (`onPluginAsk`).
+   */
   pluginAnswer: (token: number, kind: string, ids: number[]) => invoke<void>('plugin_answer', { token, kind, ids }),
+
+  /** Open a plugin's own settings (its dialog, in the plugin runtime) and wait for it to close. */
+  configurePlugin: (name: string) => invoke<PluginConfigured>('configure_plugin', { name }),
 
   /** What books are converted to when a plugin asks (calibre's output format). */
   setPluginOutputFormat: (format: string) => invoke<void>('set_plugin_output_format', { format }),
@@ -489,6 +518,33 @@ export function onPluginAsk(handler: (a: PluginAsk) => void): Promise<UnlistenFn
 /** A GUI plugin selected books. */
 export function onPluginSelect(handler: (ids: number[]) => void): Promise<UnlistenFn> {
   return listen<number[]>('plugin-select', (e) => handler(e.payload));
+}
+
+/** A GUI plugin searched the library (calibre's search box). */
+export function onPluginSearch(handler: (text: string) => void): Promise<UnlistenFn> {
+  return listen<string>('plugin-search', (e) => handler(e.payload));
+}
+
+/** A GUI plugin opened a book (calibre's View). */
+export function onPluginOpenBook(handler: (b: PluginOpenBook) => void): Promise<UnlistenFn> {
+  return listen<PluginOpenBook>('plugin-open-book', (e) => handler(e.payload));
+}
+
+/** A job a GUI plugin started in the plugin runtime: started, progressed or done. */
+export function onPluginJob(handler: (j: PluginJob) => void): Promise<UnlistenFn> {
+  return listen<PluginJob>('plugin-job', (e) => handler(e.payload));
+}
+
+/** The plugin runtime's install, as it goes. Matches `PLUGIN_RUNTIME_PROGRESS_EVENT` in plugins.rs. */
+export function onPluginRuntimeProgress(handler: (p: RuntimeProgress) => void): Promise<UnlistenFn> {
+  return listen<RuntimeProgress>('plugin-runtime-progress', (e) => handler(e.payload));
+}
+
+/** The error the backend gives when plugins are used without the runtime (matches `RUNTIME_MISSING` in the plugins crate). */
+export const RUNTIME_MISSING = "The plugin runtime isn't installed. Install it in Settings › Plugins.";
+
+export function isRuntimeMissing(err: unknown): boolean {
+  return errorMessage(err) === RUNTIME_MISSING;
 }
 
 export function onZoomMenu(handler: (action: 'in' | 'out' | 'reset') => void): Promise<UnlistenFn> {

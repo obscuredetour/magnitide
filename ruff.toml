@@ -1,0 +1,32 @@
+# Python in this repo: the calibre compatibility package and host
+# (crates/plugins/python), its tests, the fixture plugins and the scripts.
+line-length = 120
+target-version = "py314"
+extend-exclude = ["target", "crates/app/ui"]
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E731",  # lambdas assigned to names: calibre's style for predicates
+    "B006",  # mutable defaults: calibre's signatures have them
+    "B008",
+    "B904",
+    "UP031",  # % formatting: as calibre's code plugins copy from
+    "E741",
+    "E501",  # long lines: strings and messages; ruff format wraps the code
+    "B007",
+    "B905",
+    "B023",
+]
+
+[lint.per-file-ignores]
+# Fixture plugins look like calibre plugins, builtins and all.
+"crates/plugins/tests/fixtures/**" = ["F821", "F401"]
+"crates/plugins/python/**" = ["F821"]  # `_`, `P`, `I`… are calibre's builtins
+"crates/plugins/python/calibre/startup.py" = ["F821"]
+
+[lint.isort]
+known-first-party = ["calibre", "magnitide_host", "polyglot", "qt", "calibre_plugins"]
+
+[format]
+quote-style = "single"

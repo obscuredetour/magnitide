@@ -3,4 +3,4 @@
 /**
  * What kind of calibre plugin it is (calibre's plugin base class).
  */
-export type PluginKind = "metadataSource" | "interfaceAction" | "fileType" | "metadataReader" | "metadataWriter" | "conversionInput" | "conversionOutput" | "catalog" | "other";
+export type PluginKind = "metadataSource" | "interfaceAction" | "fileType" | "metadataReader" | "metadataWriter" | "conversionInput" | "conversionOutput" | "catalog" | "preferences" | "libraryClosed" | "device" | "store" | "viewer" | "editBookTool" | "other";

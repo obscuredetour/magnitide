@@ -1,30 +1,58 @@
-//! calibre plugins in Magnitide, run on the user's own installed calibre.
+//! calibre plugins in Magnitide, run in Magnitide's own plugin runtime.
 //!
-//! Plugins load through calibre's own plugin loader inside a helper process
-//! (`calibre-debug -e host.py`; see [`host`]), so their imports, Qt,
-//! resources, translations and settings behave as in calibre. Magnitide
-//! bundles nothing of calibre and works without it; only plugins need it.
-//! Plugin settings live in Magnitide's own folder, never calibre's.
+//! Plugins load in a helper process ([`host`]): the plugin runtime's Python
+//! ([`runtime`], downloaded once) running the `magnitide_host` package from
+//! the compat package embedded in the binary, which provides the `calibre`
+//! and `qt` modules plugins import. Plugin settings live in Magnitide's own
+//! folder, never calibre's; calibre needn't be installed.
 //!
 //! Supported so far: metadata sources, in Find Metadata ([`sources`]), and
 //! GUI plugins ([`gui`]), which work on a calibre-format shadow of the open
 //! library ([`shadow`]). Other kinds of plugin can be installed and are
 //! kept, marked as not supported yet. See docs/calibre-plugins.md for the plan.
 
+pub mod filetype;
 pub mod gui;
 pub mod host;
+pub mod metadata;
+pub mod prefs;
+pub mod runtime;
 pub mod shadow;
 pub mod sources;
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use include_dir::{Dir, include_dir};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+pub use filetype::Hook;
 pub use gui::{DEFAULT_OUTPUT_FORMAT, MenuItem, PluginMenu, PluginMenus};
-pub use host::{EventHandler, Host};
+pub use host::{EventHandler, Host, Transport};
+pub use prefs::Configured;
+pub use runtime::{Progress, Runtime};
+
+/// The compat package: `magnitide_host`, `calibre`, `qt` and friends, embedded
+/// so it versions with Magnitide; extracted beside the plugins at run time.
+static COMPAT: Dir = include_dir!("$CARGO_MANIFEST_DIR/python");
+
+/// A hash of the compat package, from build.rs: the folder it's extracted to.
+pub const COMPAT_HASH: &str = env!("MAGNITIDE_COMPAT_HASH");
+
+/// The calibre API level the compat package provides; plugins see it as
+/// calibre's version. Matches `COMPAT_VERSION` in `magnitide_host/__init__.py`.
+pub const CALIBRE_API_VERSION: &str = "9.15.0";
+
+/// The error when the runtime isn't installed (the UI recognizes it).
+pub const RUNTIME_MISSING: &str = "The plugin runtime isn't installed. Install it in Settings › Plugins.";
+
+/// Environment variable naming a compat package directory to use instead of
+/// the embedded one (development: Python edits without a Rust rebuild).
+pub const COMPAT_ENV_OVERRIDE: &str = "MAGNITIDE_COMPAT_DIR";
 
 /// Inspecting a zip loads the plugin's code, which can take a moment.
 const INSPECT_TIMEOUT: Duration = Duration::from_secs(60);
@@ -42,14 +70,65 @@ pub enum PluginKind {
     ConversionInput,
     ConversionOutput,
     Catalog,
+    Preferences,
+    LibraryClosed,
+    Device,
+    Store,
+    Viewer,
+    EditBookTool,
     Other,
 }
 
 impl PluginKind {
-    /// Whether Magnitide can run this kind of plugin yet.
+    /// Whether Magnitide can run this kind of plugin.
     pub fn supported(self) -> bool {
-        matches!(self, PluginKind::MetadataSource | PluginKind::InterfaceAction)
+        matches!(
+            self,
+            PluginKind::MetadataSource
+                | PluginKind::InterfaceAction
+                | PluginKind::FileType
+                | PluginKind::MetadataReader
+                | PluginKind::MetadataWriter
+                | PluginKind::Preferences
+                | PluginKind::LibraryClosed
+        )
     }
+
+    /// Why a kind isn't supported, for Settings.
+    pub fn why_unsupported(self) -> Option<&'static str> {
+        Some(match self {
+            PluginKind::ConversionInput | PluginKind::ConversionOutput => {
+                "Conversion plugins need calibre's conversion pipeline, which Magnitide doesn't run."
+            }
+            PluginKind::Catalog => "Magnitide has no catalog generator yet.",
+            PluginKind::Device => "Magnitide has its own device support.",
+            PluginKind::Store => "Magnitide has no book store.",
+            PluginKind::Viewer => "Magnitide has no viewer.",
+            PluginKind::EditBookTool => "Magnitide has no book editor.",
+            PluginKind::Other => "Magnitide doesn't know this kind of plugin.",
+            _ => return None,
+        })
+    }
+}
+
+/// What a file-type, reader or writer plugin handles, known without
+/// starting the runtime.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct Hooks {
+    /// Lower-case extensions; `*` for every book.
+    pub file_types: Vec<String>,
+    pub on_import: bool,
+    pub on_postimport: bool,
+    pub on_postadd: bool,
+    pub on_postconvert: bool,
+    pub on_postdelete: bool,
+    /// Conversion-time hooks Magnitide doesn't run.
+    pub on_preprocess: bool,
+    pub on_postprocess: bool,
+    /// calibre's plugin priority (its own readers and writers are 1).
+    pub priority: i64,
 }
 
 /// An installed plugin.
@@ -70,39 +149,86 @@ pub struct Installed {
     #[serde(default)]
     pub capabilities: Vec<String>,
     pub minimum_calibre_version: String,
+    /// What a file-type, reader or writer plugin handles; None for other kinds.
+    #[serde(default)]
+    pub hooks: Option<Hooks>,
+    /// Whether it has settings of its own (Settings shows Configure…).
+    #[serde(default)]
+    pub customizable: bool,
+    /// calibre features it uses that Magnitide doesn't provide (from a scan at install).
+    #[serde(default)]
+    pub coverage: Vec<String>,
 }
 
-/// calibre plugins: the installed list, and the host that runs them.
+/// calibre plugins: the installed list, the runtime, and the host that runs them.
 pub struct Plugins {
     /// `<app config>/calibre-plugins`: `plugins/*.zip`, `plugins.json`,
-    /// `settings.json`, and `config/` (calibre's config folder for the plugins).
+    /// `settings.json`, `compat/<hash>/` (the compat package) and `config/`
+    /// (calibre's config folder for the plugins).
     dir: PathBuf,
-    /// Finds calibre's `calibre-debug` (looked up again when the host starts,
-    /// so installing calibre later works without restarting Magnitide).
-    find_calibre: Box<dyn Fn() -> Option<PathBuf> + Send + Sync>,
-    host: Mutex<Option<Arc<Host>>>,
+    /// Where the runtime is installed (`<base>/<runtime::VERSION>/`).
+    runtime_base: PathBuf,
+    installing: AtomicBool,
+    host: Mutex<Option<Arc<dyn Transport>>>,
     list: Mutex<()>,
     on_event: Mutex<Option<EventHandler>>,
+    /// The last error of each plugin, by name, for Settings.
+    errors: Mutex<BTreeMap<String, String>>,
+    hook_failure: filetype::HookFailure,
 }
 
-/// The calibre host's version, for Settings.
+/// The runtime, for Settings.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
-pub struct Calibre {
-    pub path: String,
+pub struct RuntimeStatus {
+    pub installed: bool,
+    pub installing: bool,
+    /// Whether a runtime is published for this computer.
+    pub available: bool,
     pub version: Option<String>,
+    pub python: Option<String>,
+    pub qt: Option<String>,
+    /// The calibre API level the compat package provides.
+    pub compat: String,
+    pub path: Option<String>,
+    /// Bytes on disk, when installed.
+    pub size: Option<u64>,
+    /// The archive's size in bytes, when not installed and available.
+    pub download_size: Option<u64>,
+    /// Why it can't run (a missing system library, say), when installed.
+    pub problem: Option<String>,
 }
 
 impl Plugins {
-    pub fn new(dir: PathBuf, find_calibre: impl Fn() -> Option<PathBuf> + Send + Sync + 'static) -> Self {
+    pub fn new(dir: PathBuf, runtime_base: PathBuf) -> Self {
         Self {
             dir,
-            find_calibre: Box::new(find_calibre),
+            runtime_base,
+            installing: AtomicBool::new(false),
             host: Mutex::new(None),
             list: Mutex::new(()),
             on_event: Mutex::new(None),
+            errors: Mutex::new(BTreeMap::new()),
+            hook_failure: Default::default(),
         }
+    }
+
+    /// Note a plugin's latest error (shown in Settings).
+    pub fn note_error(&self, plugin: &str, error: &str) {
+        self.errors.lock().unwrap_or_else(|e| e.into_inner()).insert(plugin.to_owned(), error.to_owned());
+    }
+
+    /// Each plugin's latest error, by name.
+    pub fn errors(&self) -> BTreeMap<String, String> {
+        self.errors.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// A `Plugins` talking to `transport` instead of a real host (tests).
+    pub fn with_transport(dir: PathBuf, transport: Arc<dyn Transport>) -> Self {
+        let p = Self::new(dir.clone(), dir.join("runtime"));
+        *p.host.lock().unwrap_or_else(|e| e.into_inner()) = Some(transport);
+        p
     }
 
     /// Where the host's events go (GUI plugins' status messages, errors, and
@@ -119,35 +245,90 @@ impl Plugins {
         self.dir.join("plugins.json")
     }
 
-    pub fn calibre_debug(&self) -> Option<PathBuf> {
-        (self.find_calibre)().filter(|p| p.is_file())
+    /// The runtime to run plugins in, if there is one.
+    pub fn runtime(&self) -> Option<Runtime> {
+        Runtime::locate(&self.runtime_base)
+    }
+
+    /// The compat package on disk: the override, or the embedded one
+    /// extracted to `compat/<hash>/` (once; older copies are removed).
+    fn compat_dir(&self) -> Result<PathBuf, String> {
+        if let Some(dir) = std::env::var_os(COMPAT_ENV_OVERRIDE).filter(|v| !v.is_empty()) {
+            let dir = PathBuf::from(dir);
+            if !dir.join("magnitide_host").is_dir() {
+                return Err(format!("{COMPAT_ENV_OVERRIDE} ({}) holds no magnitide_host package", dir.display()));
+            }
+            return Ok(dir);
+        }
+        let root = self.dir.join("compat");
+        let dir = root.join(COMPAT_HASH);
+        if !dir.join(".complete").is_file() {
+            let tmp = root.join(format!(".{COMPAT_HASH}.tmp"));
+            let _ = std::fs::remove_dir_all(&tmp);
+            std::fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
+            COMPAT.extract(&tmp).map_err(|e| format!("couldn't unpack the plugin host: {e}"))?;
+            std::fs::write(tmp.join(".complete"), b"").map_err(|e| e.to_string())?;
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::rename(&tmp, &dir).map_err(|e| e.to_string())?;
+            if let Ok(entries) = std::fs::read_dir(&root) {
+                for e in entries.flatten() {
+                    if e.file_name() != COMPAT_HASH.as_ref() as &std::ffi::OsStr {
+                        let _ = std::fs::remove_dir_all(e.path());
+                    }
+                }
+            }
+        }
+        Ok(dir)
     }
 
     /// The running host, started (or restarted, if it stopped) as needed.
-    pub fn host(&self) -> Result<Arc<Host>, String> {
+    pub fn host(&self) -> Result<Arc<dyn Transport>, String> {
         let mut slot = self.host.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(h) = slot.as_ref().filter(|h| h.is_alive()) {
             return Ok(h.clone());
         }
-        let calibre = self.calibre_debug().ok_or("calibre plugins need calibre installed (calibre.com).")?;
-        let script = self.dir.join("host.py");
+        let runtime = self.runtime().ok_or(RUNTIME_MISSING)?;
+        let compat = self.compat_dir()?;
         std::fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
-        // Rewritten when Magnitide updates it.
-        if std::fs::read_to_string(&script).ok().as_deref() != Some(host::SCRIPT) {
-            std::fs::write(&script, host::SCRIPT).map_err(|e| e.to_string())?;
-        }
         let on_event = self.on_event.lock().unwrap_or_else(|e| e.into_inner()).clone();
-        let h = Arc::new(Host::start(&calibre, &script, &self.dir.join("config"), on_event)?);
+        let h: Arc<dyn Transport> = Arc::new(Host::start(&runtime, &compat, &self.dir.join("config"), on_event)?);
         *slot = Some(h.clone());
+        drop(slot);
+        // The host's own registry (what calibre's `find_plugin` and friends see).
+        self.sync_registry(&h);
         Ok(h)
     }
 
+    /// The installed plugins as the host's registry wants them.
+    fn registry(&self) -> Value {
+        let plugins: Vec<Value> = self
+            .list()
+            .iter()
+            .map(|p| json!({ "path": self.path_of(p), "name": p.name, "enabled": p.enabled, "kind": p.kind }))
+            .collect();
+        json!({ "plugins": plugins })
+    }
+
+    /// Tell a running host which plugins are installed and on.
+    fn sync_registry(&self, host: &Arc<dyn Transport>) {
+        if let Err(e) = host.call("plugins.set", self.registry(), Duration::from_secs(60)) {
+            eprintln!("[plugins] couldn't sync the plugin registry: {e}");
+        }
+    }
+
+    /// After the list changed: the running host, if any, learns of it.
+    fn registry_changed(&self) {
+        if let Some(h) = self.running_host() {
+            self.sync_registry(&h);
+        }
+    }
+
     /// The host if it's running; never starts one.
-    pub(crate) fn running_host(&self) -> Option<Arc<Host>> {
+    pub(crate) fn running_host(&self) -> Option<Arc<dyn Transport>> {
         self.host.lock().unwrap_or_else(|e| e.into_inner()).as_ref().filter(|h| h.is_alive()).cloned()
     }
 
-    /// GUI plugins can't be unloaded from a running calibre, so a change to
+    /// GUI plugins can't be unloaded from a running host, so a change to
     /// which are on restarts the host (it starts again when next needed).
     /// Refused while one is working, rather than closing its windows.
     fn restart_for_gui_change(&self, kind: PluginKind) -> Result<(), String> {
@@ -161,15 +342,78 @@ impl Plugins {
         Ok(())
     }
 
-    /// calibre's location and version (starting the host to ask).
-    pub fn calibre(&self) -> Option<Calibre> {
-        let path = self.calibre_debug()?;
-        let version = self
-            .host()
-            .and_then(|h| h.call("hello", json!({}), Duration::from_secs(60)))
-            .ok()
-            .and_then(|v| v.get("calibre").and_then(Value::as_str).map(str::to_owned));
-        Some(Calibre { path: shown_path(&path), version })
+    /// The runtime's state, for Settings (never starts a host).
+    pub fn runtime_status(&self) -> RuntimeStatus {
+        let release = runtime::release();
+        let installing = self.installing.load(Ordering::SeqCst);
+        match self.runtime() {
+            Some(rt) => RuntimeStatus {
+                installed: true,
+                installing,
+                available: release.is_some(),
+                version: Some(rt.info.version.clone()),
+                python: rt.info.python.clone(),
+                qt: rt.info.qt.clone(),
+                compat: CALIBRE_API_VERSION.into(),
+                path: Some(rt.dir.display().to_string()),
+                size: Some(rt.size_on_disk()),
+                download_size: None,
+                problem: None,
+            },
+            None => RuntimeStatus {
+                installed: false,
+                installing,
+                available: release.is_some(),
+                version: None,
+                python: None,
+                qt: None,
+                compat: CALIBRE_API_VERSION.into(),
+                path: None,
+                size: None,
+                download_size: release.map(|r| r.size),
+                problem: None,
+            },
+        }
+    }
+
+    /// Download and install the runtime, reporting progress. One at a time.
+    pub fn install_runtime(
+        &self,
+        cancel: &AtomicBool,
+        progress: &mut dyn FnMut(Progress),
+    ) -> Result<RuntimeStatus, String> {
+        if self.installing.swap(true, Ordering::SeqCst) {
+            return Err("The plugin runtime is already being installed.".into());
+        }
+        let result = Runtime::install(&self.runtime_base, cancel, progress);
+        self.installing.store(false, Ordering::SeqCst);
+        result?;
+        Ok(self.runtime_status())
+    }
+
+    /// Remove the installed runtime. Refused while a plugin is working.
+    pub fn remove_runtime(&self) -> Result<(), String> {
+        if self.gui_busy() {
+            return Err("A plugin is still working. Finish in its window first, then try again.".into());
+        }
+        *self.host.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        Runtime::remove(&self.runtime_base)
+    }
+
+    /// Check the installed runtime starts (Qt included), noting the problem
+    /// in the status if not.
+    pub fn check_runtime(&self) -> RuntimeStatus {
+        let mut status = self.runtime_status();
+        if let Some(rt) = self.runtime() {
+            match rt.check() {
+                Ok((python, qt)) => {
+                    status.python = Some(python);
+                    status.qt = Some(qt);
+                }
+                Err(e) => status.problem = Some(e),
+            }
+        }
+        status
     }
 
     /// The host's recent output, for troubleshooting.
@@ -196,7 +440,7 @@ impl Plugins {
 
     /// Install a calibre plugin zip (a newer version replaces the installed one
     /// of the same name). The host loads it to check it's a calibre plugin
-    /// that this calibre can run.
+    /// that can run here.
     pub fn install(&self, zip: &Path) -> Result<Installed, String> {
         let _guard = self.list.lock().unwrap_or_else(|e| e.into_inner());
         let dir = self.plugins_dir();
@@ -208,7 +452,11 @@ impl Plugins {
             Ok(v) => v,
             Err(e) => {
                 let _ = std::fs::remove_file(&incoming);
-                return Err(format!("That isn't a calibre plugin this calibre can load: {e}"));
+                return Err(if e == RUNTIME_MISSING {
+                    e
+                } else {
+                    format!("That isn't a calibre plugin Magnitide can load: {e}")
+                });
             }
         };
         let text = |k: &str| info.get(k).and_then(Value::as_str).unwrap_or_default().to_owned();
@@ -223,6 +471,25 @@ impl Plugins {
         let previous = list.iter().position(|p| p.name == name);
         let file = previous.map(|i| list[i].file.clone()).unwrap_or_else(|| unique_file(&slug(&name), &list));
         std::fs::rename(&incoming, dir.join(&file)).map_err(|e| e.to_string())?;
+        let strings = |k: &str| -> Vec<String> {
+            info.get(k)
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(|c| c.as_str().map(str::to_owned)).collect())
+                .unwrap_or_default()
+        };
+        let flag = |k: &str| info.get(k).and_then(Value::as_bool).unwrap_or(false);
+        let hooks = matches!(kind, PluginKind::FileType | PluginKind::MetadataReader | PluginKind::MetadataWriter)
+            .then(|| Hooks {
+                file_types: strings("fileTypes").into_iter().map(|f| f.to_lowercase()).collect(),
+                on_import: flag("onImport"),
+                on_postimport: flag("onPostimport"),
+                on_postadd: flag("onPostadd"),
+                on_postconvert: flag("onPostconvert"),
+                on_postdelete: flag("onPostdelete"),
+                on_preprocess: flag("onPreprocess"),
+                on_postprocess: flag("onPostprocess"),
+                priority: info.get("priority").and_then(Value::as_i64).unwrap_or(1),
+            });
         let installed = Installed {
             name,
             version: text("version"),
@@ -232,12 +499,11 @@ impl Plugins {
             file,
             // An update keeps the user's choice; a new plugin starts on if it can run.
             enabled: previous.map_or(kind.supported(), |i| list[i].enabled),
-            capabilities: info
-                .get("capabilities")
-                .and_then(Value::as_array)
-                .map(|a| a.iter().filter_map(|c| c.as_str().map(str::to_owned)).collect())
-                .unwrap_or_default(),
+            capabilities: strings("capabilities"),
             minimum_calibre_version: text("minimumCalibreVersion"),
+            hooks,
+            customizable: flag("customizable"),
+            coverage: strings("coverage"),
         };
         let replaced = previous.is_some();
         match previous {
@@ -249,6 +515,7 @@ impl Plugins {
         if replaced || installed.enabled {
             self.restart_for_gui_change(kind)?;
         }
+        self.registry_changed();
         Ok(installed)
     }
 
@@ -261,10 +528,12 @@ impl Plugins {
         }
         let p = list.remove(i);
         self.save(&list)?;
-        match std::fs::remove_file(self.path_of(&p)) {
+        let removed = match std::fs::remove_file(self.path_of(&p)) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
             _ => Ok(()),
-        }
+        };
+        self.registry_changed();
+        removed
     }
 
     pub fn set_enabled(&self, name: &str, enabled: bool) -> Result<(), String> {
@@ -275,18 +544,10 @@ impl Plugins {
             self.restart_for_gui_change(p.kind)?;
         }
         p.enabled = enabled;
-        self.save(&list)
+        self.save(&list)?;
+        self.registry_changed();
+        Ok(())
     }
-}
-
-/// Where calibre is, as people know it: on macOS the app ("/Applications/calibre.app"),
-/// elsewhere its folder.
-fn shown_path(calibre_debug: &Path) -> String {
-    let full = calibre_debug.display().to_string();
-    if let Some(i) = full.find(".app/") {
-        return full[..i + 4].to_owned();
-    }
-    calibre_debug.parent().map_or(full.clone(), |p| p.display().to_string())
 }
 
 /// A file name from a plugin name: lower case, letters, digits and dashes.
@@ -333,27 +594,41 @@ mod tests {
             enabled: true,
             capabilities: vec![],
             minimum_calibre_version: String::new(),
+            hooks: None,
+            customizable: false,
+            coverage: vec![],
         }];
         assert_eq!(unique_file("goodreads", &taken), "goodreads-2.zip");
         assert_eq!(unique_file("kobo", &taken), "kobo.zip");
     }
 
     #[test]
-    fn calibre_paths() {
-        assert_eq!(
-            shown_path(Path::new("/Applications/calibre.app/Contents/MacOS/calibre-debug")),
-            "/Applications/calibre.app"
-        );
-        assert_eq!(shown_path(Path::new("/opt/calibre/calibre-debug")), "/opt/calibre");
+    fn the_compat_package_is_embedded() {
+        assert!(COMPAT.get_file("magnitide_host/__init__.py").is_some());
+        assert_eq!(COMPAT_HASH.len(), 16);
+        let dir = tempfile::tempdir().unwrap();
+        let plugins = Plugins::new(dir.path().into(), dir.path().join("runtime"));
+        let compat = plugins.compat_dir().unwrap();
+        assert!(compat.join("magnitide_host/__init__.py").is_file());
+        assert!(compat.ends_with(COMPAT_HASH));
+        let text = std::fs::read_to_string(compat.join("magnitide_host/__init__.py")).unwrap();
+        assert!(text.contains(&format!("COMPAT_VERSION = '{CALIBRE_API_VERSION}'")));
     }
 
     #[test]
-    fn no_calibre() {
+    fn without_a_runtime() {
         let dir = tempfile::tempdir().unwrap();
-        let plugins = Plugins::new(dir.path().into(), || None);
-        assert!(plugins.calibre().is_none());
-        let err = plugins.host().err().unwrap();
-        assert!(err.contains("need calibre installed"), "{err}");
+        let plugins = Plugins::new(dir.path().into(), dir.path().join("runtime"));
+        // The development runtime may exist on this machine; a runtime that
+        // isn't there is what's being tested.
+        let status = plugins.runtime_status();
+        assert_eq!(status.compat, CALIBRE_API_VERSION);
+        if !status.installed {
+            let err = plugins.host().err().unwrap();
+            assert_eq!(err, RUNTIME_MISSING);
+            assert!(plugins.install(Path::new("nope.zip")).is_err());
+        }
         assert!(plugins.list().is_empty());
+        Plugins::remove_runtime(&plugins).unwrap();
     }
 }

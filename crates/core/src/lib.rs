@@ -14,6 +14,7 @@ pub mod error;
 pub mod external;
 pub mod fingerprint;
 pub mod fsinfo;
+pub mod hooks;
 pub mod html;
 mod images;
 pub mod import;

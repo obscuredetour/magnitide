@@ -2,7 +2,7 @@
 // another ("2 / 4"), saving each book's chosen fields as it goes. The next
 // book's search runs while the current one is reviewed.
 
-import { createResource, createSignal, Show } from 'solid-js';
+import { createEffect, createResource, createRoot, createSignal, Show } from 'solid-js';
 
 import { api, type BookEdit, coverChanged, errorMessage, type SearchResult } from './api';
 import { type Applied, type Current, MatchDialog } from './components/MatchDialog';
@@ -65,6 +65,20 @@ export function findMetadataFor(ids: number[]): void {
   outcomes = [];
   shown = false;
   setRun({ queue: ids, index: 0 });
+}
+
+/** Resolves once no Find Metadata run is open (a calibre plugin waits on this). */
+export function untilLookupDone(): Promise<void> {
+  return new Promise((resolve) =>
+    createRoot((dispose) =>
+      createEffect(() => {
+        if (!run()) {
+          dispose();
+          resolve();
+        }
+      }),
+    ),
+  );
 }
 
 function finish(): void {

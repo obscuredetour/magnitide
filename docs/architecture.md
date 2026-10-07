@@ -15,8 +15,9 @@ when you do.
 - **Cross-platform desktop** (macOS, Windows, Linux). Mobile is out of scope.
 - **Works without calibre**, while respecting people's existing calibre libraries.
 - **Can run headless** on a NAS or in a container (planned).
-- **Extensible**: calibre's own plugins run unchanged (in the user's installed
-  calibre), so people don't lose the plugins they rely on by switching.
+- **Extensible**: calibre's own plugins run unchanged, in a plugin runtime
+  Magnitide provides (no calibre install needed), so people don't lose the
+  plugins they rely on by switching.
 
 ## Components
 
@@ -32,8 +33,9 @@ crates/
                    only on request; results ranked by plain string matching.
   app              Desktop app (Tauri 2). Thin commands over core; the cover:// protocol.
     ui/            Solid + TypeScript + Tailwind v4. Talks to the backend only via api.ts.
-  plugins          magnitide-plugins: calibre plugins, run in the user's installed calibre
-                   (`calibre-debug` running host.py, JSON lines over stdin/stdout).
+  plugins          magnitide-plugins: calibre plugins, run in Magnitide's own plugin runtime
+                   (CPython + PyQt6, downloaded once) with a calibre compatibility package
+                   (`crates/plugins/python`, embedded in the app); JSON lines over stdin/stdout.
   server           magnitide-server: the library over HTTP, read-only: a plain web page
                    for e-reader browsers and an OPDS catalogue. Used by the app today
                    (Settings › Library Server); the headless server will build on it.
@@ -172,16 +174,19 @@ a library file directly.
   third-party code plugs in where first-party code does.
 - **Import is a pipeline** with hook points: detect file → plugin hooks →
   read metadata → store. calibre's `FileTypePlugin` maps here.
-- **calibre plugins** run unchanged in the user's own calibre
-  (`magnitide-plugins`): a helper process under `calibre-debug` loads them
-  with calibre's own loader, so their imports, Qt, resources, translations
-  and settings behave as in calibre, and Magnitide bundles nothing of
-  calibre. Their settings live in Magnitide's folder
-  (`CALIBRE_CONFIG_DIRECTORY`), never calibre's. Metadata sources are asked
-  in Find Metadata; GUI plugins run on a calibre-format shadow of the open
-  library with a stand-in for calibre's main window, and what they change is
-  applied back through Magnitide's edit path. The survey and plan are in
-  [calibre-plugins.md](calibre-plugins.md).
+- **calibre plugins** run unchanged (`magnitide-plugins`), without calibre
+  installed: Magnitide downloads its own plugin runtime once (CPython 3.14,
+  a stripped PyQt6 and a few wheels, built by CI, hash-pinned in the app) and
+  ships a `calibre` compatibility package written for Magnitide that
+  provides the API plugins use (the loader, `calibre.db` on a shadow
+  library, `Metadata`, config, ICU-style collation, jobs, the GUI classes),
+  backed by Magnitide's library and a stand-in for calibre's main window.
+  Plugin settings live in Magnitide's folder (`CALIBRE_CONFIG_DIRECTORY`),
+  never calibre's. Metadata sources are asked in Find Metadata; GUI plugins
+  run on a calibre-format shadow of the open library, and what they change is
+  applied back through Magnitide's edit path; file-type plugins, metadata
+  readers and writers plug into `core::hooks`. The survey, the design and
+  what each plugin type gets are in [calibre-plugins.md](calibre-plugins.md).
 - **Magnitide's own plugins** (later) run as WebAssembly modules (sandboxed,
   language-agnostic, safe on a server) once the traits have settled.
 
@@ -223,5 +228,7 @@ a library file directly.
 | 2026-10-05 | Shelves are Magnitide's own collections (schema v4) and are written to a Kobo for both Kobo's app (`KoboReader.sqlite` `Shelf`/`ShelfContent`, as calibre's KoboTouch driver writes them, after a backup) and KOReader (`collection.lua`, read and rewritten in KOReader's own format). Only Magnitide's shelves and recognised books are changed; nothing is deleted.                                                                                                                               |
 | 2026-10-05 | The app's library server is its own crate (tiny_http, no async runtime) behind a `Source` trait, off by default and read-only (GET/HEAD only). Kobo's browser gets KEPUBs converted on demand into the cache; e-reader pages are script-free HTML for old WebKit; OPDS 1.2 for reading apps.                                                                                                                                                                                                         |
 | 2026-10-05 | KOReader progress sync speaks koreader-sync-server's protocol on the library server. Positions go in their own app-level database (calibre libraries sync too, and the library stays read-only to the server), keyed by KOReader's partial-MD5 fingerprint, which core computes the same way.                                                                                                                                                                                                        |
-| 2026-10-06 | calibre plugins run in the user's installed calibre (a `calibre-debug` helper process, calibre's own plugin loader, JSON lines), not a reimplementation of calibre's API; plugin settings in Magnitide's own calibre config folder. Metadata sources first.                                                                                                                                                                                                                                          |
+| 2026-10-06 | (superseded 2026-10-07) calibre plugins run in the user's installed calibre (a `calibre-debug` helper process, calibre's own plugin loader, JSON lines), not a reimplementation of calibre's API; plugin settings in Magnitide's own calibre config folder. Metadata sources first.                                                                                                                                                                                                                                          |
 | 2026-10-06 | GUI plugins work on a shadow library: the open library written in calibre's format (same ids) with links to the real files, each turned into a private copy before calibre hands out its path or writes to it. Changes are read back when the plugin is idle and applied through Magnitide's edit path; books a plugin removed are deleted only after asking. Rebuilt whole when the library changed (incremental later). The host runs Qt only once a GUI plugin is used, as a macOS accessory app. |
+| 2026-10-07 | calibre plugins run in Magnitide's own plugin runtime: CPython 3.14 + a stripped PyQt6 + pinned wheels (python-build-standalone, built by `.github/workflows/plugin-runtime.yml`), downloaded on request with its sha256 compiled into the app and installed atomically; no installed-calibre fallback. The `calibre` package plugins import is Magnitide's own (`crates/plugins/python`, embedded in the binary), mirroring calibre 9.15's API; vendoring calibre's GPL modules is the documented fallback (`scripts/vendor-calibre.py`), not the default. |
+| 2026-10-07 | Plugin kinds: metadata sources, GUI (interface action), file-type (on import and after add/convert/delete), metadata reader/writer, preferences and library-closed plugins run; conversion, catalog, device, store, viewer and editor plugins install as "not supported" with the reason. Import hooks and metadata readers/writers are `core::hooks` traits (the first API Magnitide's own WASM plugins will get).                                                                                  |

@@ -1,2 +1,5 @@
 /target
 .DS_Store
+
+# Python bytecode (the compat package and fixtures run from source)
+__pycache__/

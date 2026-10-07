@@ -46,11 +46,29 @@ pub struct Author {
 /// Best-effort metadata for a book file: read from inside the file where
 /// supported, with the file name filling any gaps (title, authors).
 pub fn read(path: &Path, format: &str) -> BookMetadata {
+    read_with(path, format, &crate::hooks::NoHooks)
+}
+
+/// Whether Magnitide reads `format` itself.
+pub fn builtin_reads(format: &str) -> bool {
+    matches!(format, "EPUB" | "KEPUB" | "MOBI" | "AZW" | "AZW3" | "AZW4" | "PRC" | "PDB")
+}
+
+/// [`read`], with plugin readers: one that overrides is asked first (ours
+/// on failure); one that's a fallback only for formats we can't read.
+pub fn read_with(path: &Path, format: &str, plugins: &dyn crate::hooks::MetadataPlugins) -> BookMetadata {
+    use crate::hooks::Precedence;
+
     let from_name = filename::parse(path);
-    let mut meta = match format {
+    let builtin = || match format {
         "EPUB" | "KEPUB" => epub::read(path).unwrap_or_default(),
         "MOBI" | "AZW" | "AZW3" | "AZW4" | "PRC" | "PDB" => mobi::read(path).unwrap_or_default(),
         _ => BookMetadata::default(),
+    };
+    let mut meta = match plugins.reads(format) {
+        Some(Precedence::Override) => plugins.read(path, format).unwrap_or_else(|_| builtin()),
+        Some(Precedence::Fallback) if !builtin_reads(format) => plugins.read(path, format).unwrap_or_default(),
+        _ => builtin(),
     };
     if meta.title.is_none() {
         meta.title = from_name.title;
