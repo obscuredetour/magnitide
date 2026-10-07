@@ -12,7 +12,7 @@ How the pieces fit, and the decisions behind them: [docs/architecture.md](docs/a
 | [`core`](crates/core)                     | `magnitide-core`: the native Magnitide library (schema, migrations, edits), calibre import, adding book files with EPUB metadata. No Tauri code, so the planned server can share it |
 | [`catalog`](crates/catalog)               | `magnitide-catalog`: the in-memory book model, search and sort that every kind of library loads into                                                                                |
 | [`sources`](crates/sources)               | `magnitide-sources`: metadata lookup from Open Library and Google Books, on request only                                                                                            |
-| [`plugins`](crates/plugins)               | `magnitide-plugins`: runs calibre plugins in the user's installed calibre (metadata sources so far)                                                                                 |
+| [`plugins`](crates/plugins)               | `magnitide-plugins`: runs calibre plugins in the user's installed calibre (metadata sources, and GUI plugins on a shadow library)                                                   |
 | [`server`](crates/server)                 | `magnitide-server`: serves a library read-only on the local network, as a plain web page for e-reader browsers and an OPDS catalogue for reading apps                               |
 | [`calibre-compat`](crates/calibre-compat) | Read-only access to calibre libraries (`metadata.db` + book folders), plus a CLI to inspect them                                                                                    |
 
@@ -133,7 +133,7 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Interface size: Settings → Appearance (80–200% in steps; a new size asks to be kept and reverts by itself after 15 s, like a display resolution), or ⌘+ / ⌘− / ⌘0 (View menu on macOS). The whole window zooms, remembered per device; the macOS title bar stays native size, and the window's minimum size grows with it so the toolbar always fits
 - [x] Keyboard shortcuts shown the platform's way (⌘E on macOS, Ctrl+E elsewhere), all listed in Settings → Keyboard Shortcuts
 - [x] calibre plugins, step 1: Settings → Plugins installs calibre plugin zips, run in your installed calibre with their own settings; metadata-source plugins are asked in Find Metadata alongside the built-in sources (survey and plan: [docs/calibre-plugins.md](docs/calibre-plugins.md))
-- [ ] calibre plugins, step 2: GUI plugins (EmbedComicMetadata, EpubSplit, EpubMerge, Count Pages, Comments Cleaner) on a calibre-format shadow library
+- [ ] calibre plugins, step 2: GUI plugins (EmbedComicMetadata, EpubSplit, EpubMerge, Count Pages, Comments Cleaner) on a calibre-format shadow library. In progress: GUI plugins run from the book menu's Plugins submenu and their changes come back into the library; calibre's own actions (Edit Metadata, Remove Books, …) aren't mapped yet
 - [ ] calibre plugins, step 3: Ebook Translator, FanFicFare, Goodreads Sync
 - [ ] Find Duplicates, built in
 - [ ] Built-in reader

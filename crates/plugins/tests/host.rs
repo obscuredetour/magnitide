@@ -1,13 +1,21 @@
-//! The plugin host against a real calibre, with the test metadata source in
-//! tests/fixtures. Skipped (with a note) where calibre isn't installed, as
-//! on CI; set MAGNITIDE_CALIBRE_DEBUG to point at a calibre-debug elsewhere.
+//! The plugin host against a real calibre, with the test metadata source and
+//! the test GUI plugin in tests/fixtures. Skipped (with a note) where calibre
+//! isn't installed, as on CI; set MAGNITIDE_CALIBRE_DEBUG to point at a
+//! calibre-debug elsewhere.
 
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, mpsc};
+use std::time::Duration;
 
+use magnitide_catalog::diff::{CoverChange, FileChange};
+use magnitide_catalog::{Book, Catalog, Format};
+use magnitide_plugins::shadow::Shadow;
 use magnitide_plugins::sources::is_plugin_cover;
 use magnitide_plugins::{PluginKind, Plugins};
 use magnitide_sources::Lookup;
+use serde_json::Value;
 
 fn calibre_debug() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("MAGNITIDE_CALIBRE_DEBUG") {
@@ -23,17 +31,22 @@ fn calibre_debug() -> Option<PathBuf> {
     candidates.iter().map(PathBuf::from).find(|p| p.is_file())
 }
 
-/// The fixture plugin as calibre expects it: a zip of the folder's files.
-fn test_plugin_zip(dir: &Path) -> PathBuf {
-    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_source");
-    let path = dir.join("Test Source.zip");
+/// A fixture plugin as calibre expects it: a zip of the folder's files.
+fn fixture_zip(dir: &Path, fixture: &str) -> PathBuf {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(fixture);
+    let path = dir.join(format!("{fixture}.zip"));
     let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
-    for name in ["__init__.py", "plugin-import-name-magnitide_test_source.txt"] {
-        zip.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
-        zip.write_all(&std::fs::read(src.join(name)).unwrap()).unwrap();
+    for entry in std::fs::read_dir(&src).unwrap() {
+        let entry = entry.unwrap();
+        zip.start_file(entry.file_name().to_string_lossy(), zip::write::SimpleFileOptions::default()).unwrap();
+        zip.write_all(&std::fs::read(entry.path()).unwrap()).unwrap();
     }
     zip.finish().unwrap();
     path
+}
+
+fn test_plugin_zip(dir: &Path) -> PathBuf {
+    fixture_zip(dir, "test_source")
 }
 
 #[test]
@@ -117,4 +130,141 @@ fn not_a_plugin() {
     assert!(plugins.list().is_empty());
     let leftovers: Vec<_> = std::fs::read_dir(dir.path().join("p/plugins")).unwrap().collect();
     assert!(leftovers.is_empty(), "the rejected copy is removed");
+}
+
+/// A library of `titles`, each with an EPUB, as Magnitide's catalog would have it.
+fn small_library(root: &Path, titles: &[&str]) -> Catalog {
+    let books = (1..)
+        .zip(titles)
+        .map(|(id, title)| {
+            let book = Book {
+                id,
+                title: title.to_string(),
+                sort: None,
+                authors: vec!["Author".into()],
+                author_sort: None,
+                series: None,
+                series_index: 1.0,
+                series_end: None,
+                more_series: vec![],
+                collects: vec![],
+                collected_in: vec![],
+                tags: vec![],
+                shelves: vec![],
+                publisher: None,
+                rating: None,
+                languages: vec![],
+                identifiers: BTreeMap::new(),
+                comments: None,
+                timestamp: None,
+                pubdate: None,
+                last_modified: Some(chrono::Utc::now()),
+                path: format!("Author/{title} ({id})"),
+                uuid: None,
+                has_cover: false,
+                formats: vec![Format { format: "EPUB".into(), size: 4, name: format!("{title} - Author") }],
+                custom: BTreeMap::new(),
+            };
+            std::fs::create_dir_all(book.dir(root)).unwrap();
+            std::fs::write(book.format_path(root, &book.formats[0]), "epub").unwrap();
+            book
+        })
+        .collect();
+    Catalog::new(Some("test-library".into()), vec![], books, vec![])
+}
+
+/// Run a top-level item of the test GUI plugin's menu, by its text, and wait
+/// until the plugin is done.
+fn run(plugins: &Plugins, events: &mpsc::Receiver<Value>, item: &str, selection: &[i64]) -> Value {
+    // No valid path: the host finds the item by its text.
+    plugins.gui_trigger("Magnitide Test Action", &[u32::MAX], &[item.to_owned()], selection).unwrap();
+    loop {
+        let e = events.recv_timeout(Duration::from_secs(60)).expect("the plugin finishes");
+        if e["event"] == "gui-idle" {
+            return e;
+        }
+    }
+}
+
+#[test]
+fn gui_plugin_end_to_end() {
+    let Some(calibre) = calibre_debug() else {
+        eprintln!("skipped: calibre isn't installed here");
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let plugins = Plugins::new(dir.path().join("calibre-plugins"), move || Some(calibre.clone()));
+    let (tx, events) = mpsc::channel();
+    plugins.set_event_handler(Arc::new(move |e| {
+        let _ = tx.send(e);
+    }));
+    let installed = plugins.install(&fixture_zip(dir.path(), "test_action")).unwrap();
+    assert_eq!((installed.kind, installed.enabled), (PluginKind::InterfaceAction, true));
+
+    let root = dir.path().join("library");
+    let catalog = small_library(&root, &["Dune", "Hyperion"]);
+    let shadow = Shadow::new(dir.path().join("shadow"));
+    shadow.build(&catalog, &root, &Default::default()).unwrap();
+
+    // Its menu, as the plugin builds it (rebuilt on show, with a submenu).
+    let opened = plugins.gui_open(&shadow.library()).unwrap();
+    assert!(opened.errors.is_empty(), "{:?}", opened.errors);
+    let menu = &opened.menus[0];
+    assert_eq!((menu.plugin.as_str(), menu.text.as_str(), menu.main), ("Magnitide Test Action", "Test Action", true));
+    let texts: Vec<&str> = menu.items.iter().filter(|i| !i.separator).map(|i| i.text.as_str()).collect();
+    assert_eq!(texts[0], "Mark selected", "accelerator stripped");
+    let more = menu.items.iter().find(|i| i.text == "More").unwrap();
+    assert!(!more.children[0].enabled && more.children[1].checkable && more.children[1].checked);
+
+    // Metadata through both of calibre's APIs; done only once the plugin is.
+    let mark = menu.items.iter().find(|i| i.text == "Mark selected").unwrap();
+    plugins.gui_trigger("Magnitide Test Action", &mark.path, std::slice::from_ref(&mark.text), &[1]).unwrap();
+    let done = loop {
+        let e = events.recv_timeout(Duration::from_secs(60)).unwrap();
+        if e["event"] == "gui-idle" {
+            break e;
+        }
+    };
+    assert_eq!(done["changed"], true, "it refreshed the book list");
+
+    // A file written in place, a cover, a status message, a new book.
+    run(&plugins, &events, "Rewrite EPUB", &[2]);
+    run(&plugins, &events, "Set cover", &[2]);
+    run(&plugins, &events, "Add a book", &[]);
+    plugins.gui_trigger("Magnitide Test Action", &[u32::MAX], &["Say hello".into()], &[1, 2]).unwrap();
+    let status = loop {
+        let e = events.recv_timeout(Duration::from_secs(60)).unwrap();
+        if e["event"] == "gui-status" {
+            break e;
+        }
+    };
+    assert_eq!(status["message"], "Hello from the test plugin (2 selected)");
+    // A dialog, waited for.
+    run(&plugins, &events, "Open dialog…", &[2]);
+    assert!(!plugins.gui_busy());
+
+    let changes = shadow.changes(&catalog, &root).unwrap();
+    let one = changes.books.iter().find(|b| b.id == 1).unwrap();
+    assert_eq!(one.fields.title.as_deref(), Some("Dune (marked)"));
+    assert_eq!(one.fields.tags.as_deref(), Some(&["Marked".to_owned()][..]));
+    let two = changes.books.iter().find(|b| b.id == 2).unwrap();
+    assert_eq!(two.fields.title.as_deref(), Some("Hyperion (marked)"), "the dialog's OK marked it");
+    assert!(matches!(&two.files[..], [FileChange::Replaced { format, .. }] if format == "EPUB"), "{:?}", two.files);
+    assert!(matches!(two.cover, Some(CoverChange::Set(_))));
+    assert_eq!(changes.added.len(), 1);
+    assert_eq!(changes.added[0].book.title, "Added by a Plugin");
+    // The library's own file is untouched; the plugin wrote to its own copy.
+    let hyperion = catalog.get(2).unwrap();
+    assert_eq!(std::fs::read_to_string(hyperion.format_path(&root, &hyperion.formats[0])).unwrap(), "epub");
+
+    // Closed for a rebuild; reopened, the plugin sees the new library.
+    assert!(plugins.gui_close().unwrap());
+    shadow.build(&catalog, &root, &Default::default()).unwrap();
+    let reopened = plugins.gui_open(&shadow.library()).unwrap();
+    assert_eq!(reopened.menus.len(), 1);
+    assert!(shadow.changes(&catalog, &root).unwrap().is_empty());
+
+    // Turning it off restarts the host, so it's gone from the menus.
+    plugins.set_enabled(&installed.name, false).unwrap();
+    assert!(plugins.gui_open(&shadow.library()).unwrap().menus.is_empty());
 }

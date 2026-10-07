@@ -28,6 +28,12 @@ import type { SendReport } from './bindings/SendReport';
 import type { Installed as InstalledPlugin } from './bindings/Installed';
 import type { PluginKind } from './bindings/PluginKind';
 import type { PluginsStatus } from './bindings/PluginsStatus';
+import type { PluginMenus } from './bindings/PluginMenus';
+import type { PluginMenu } from './bindings/PluginMenu';
+import type { MenuItem as PluginMenuItem } from './bindings/MenuItem';
+import type { PluginDone } from './bindings/PluginDone';
+import type { PluginMessage } from './bindings/PluginMessage';
+import type { ApplyReport } from './bindings/ApplyReport';
 import type { ServerStatus } from './bindings/ServerStatus';
 import type { TransferProgress } from './bindings/TransferProgress';
 import type { Lookup } from './bindings/Lookup';
@@ -62,8 +68,14 @@ import type { SortKey } from './bindings/SortKey';
 
 export type {
   AddReport,
+  ApplyReport,
   InstalledPlugin,
+  PluginDone,
   PluginKind,
+  PluginMenu,
+  PluginMenuItem,
+  PluginMenus,
+  PluginMessage,
   PluginsStatus,
   ServerStatus,
   AuthorSort,
@@ -318,6 +330,19 @@ export const api = {
   setPluginEnabled: (name: string, enabled: boolean) =>
     invoke<InstalledPlugin[]>('set_plugin_enabled', { name, enabled }),
 
+  /** The names of the GUI plugins that are on (doesn't start calibre). */
+  guiPluginNames: () => invoke<string[]>('gui_plugin_names'),
+
+  /** The GUI plugins' menus for the open library (starts calibre if needed). */
+  pluginMenus: () => invoke<PluginMenus>('plugin_menus'),
+
+  /**
+   * Run a GUI plugin's menu item (or, with an empty path, its toolbar button) on
+   * these books. Resolves once it has started; `onPluginDone` follows.
+   */
+  runPlugin: (plugin: string, path: number[], texts: string[], selection: number[]) =>
+    invoke<void>('run_plugin', { plugin, path, texts, selection }),
+
   /** The plugin host's recent output (what plugins printed, tracebacks). */
   pluginLog: () => invoke<string[]>('plugin_log'),
 
@@ -404,6 +429,21 @@ export function onOpenSettings(handler: () => void): Promise<UnlistenFn> {
 }
 
 /** View › Zoom In / Zoom Out / Actual Size in the macOS menu bar. Matches `ZOOM_EVENT` in menu.rs. */
+/** A GUI plugin finished; its changes (if any) are in the library. */
+export function onPluginDone(handler: (d: PluginDone) => void): Promise<UnlistenFn> {
+  return listen<PluginDone>('plugin-done', (e) => handler(e.payload));
+}
+
+/** A GUI plugin's status message, or an error in it. */
+export function onPluginMessage(handler: (m: PluginMessage) => void): Promise<UnlistenFn> {
+  return listen<PluginMessage>('plugin-message', (e) => handler(e.payload));
+}
+
+/** A GUI plugin selected books. */
+export function onPluginSelect(handler: (ids: number[]) => void): Promise<UnlistenFn> {
+  return listen<number[]>('plugin-select', (e) => handler(e.payload));
+}
+
 export function onZoomMenu(handler: (action: 'in' | 'out' | 'reset') => void): Promise<UnlistenFn> {
   return listen<'in' | 'out' | 'reset'>('zoom', (e) => handler(e.payload));
 }

@@ -44,6 +44,7 @@ import { coverSize, setViewMode, sidebarOpen, viewMode } from './view';
 import { resetZoom, stepZoom } from './zoom';
 import { drag, dragJustEnded, startBookDrag } from './bookDrag';
 import { addToShelf, newShelfFor, refreshShelves, shelves } from './shelves';
+import { initPlugins } from './plugins';
 import { Sidebar } from './components/Sidebar';
 
 export function App() {
@@ -212,6 +213,7 @@ export function App() {
     onCleanup(() => void unlistenZoom.then((off) => off()));
     void openInitialLibrary();
     watchDevices();
+    initPlugins();
     void loadThemeAddons().catch(() => {}); // the cached copy already applies
   });
   onCleanup(() => document.removeEventListener('keydown', onKeyDown));

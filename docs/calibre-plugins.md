@@ -115,6 +115,54 @@ calibre-format writer.
 2. **Shadow library and window stand-in**, with the plugins that need least
    of the window: EmbedComicMetadata, EpubSplit, EpubMerge, then Count Pages
    (custom columns and jobs) and Comments Cleaner (the Edit Metadata mapping).
+   In progress (2026-10-06). Working, and tested end to end with calibre 9.15
+   and a test plugin (`crates/plugins/tests/fixtures/test_action`) that does
+   what the surveyed plugins do:
+   - **The shadow** (`plugins::shadow`): `calibre_compat::write` writes the
+     open library's catalog as a `metadata.db` with the same book ids, uuids,
+     folders and custom columns (it is the mirror of the reader, and calibre
+     opens it); book folders hold links to the real files. 103 books build in
+     under 0.1 s. Plugin settings stored in the library (`preferences`,
+     `books_plugin_data`) survive rebuilds.
+   - **Files are safe**: calibre's `add_format` and others write _through_ a
+     link, so the host turns a link into a private copy (a clone on APFS,
+     Btrfs, XFS) before calibre hands a plugin its path (`format_abspath`) or
+     writes to it (`apply_to_format`, `add_format`, `set_cover`, hard-linking
+     copies). Only inside shadow libraries.
+   - **The window** (`host.py`): Qt starts on the host's main thread the first
+     time a GUI plugin is used. Plugins load as calibre loads them (genesis,
+     layout complete, initialization complete; `library_changed` on rebuild).
+     `gui` has the book list (selection is Magnitide's; refreshes are noted),
+     `current_db`, `status_bar` (Magnitide's toasts), calibre's own keyboard
+     manager and job manager, `iactions` for hosted plugins, and inert
+     stand-ins (logged on first use) for everything else. On macOS the host is
+     an accessory app: no Dock icon, plugin windows come to the front, and the
+     focus goes back to Magnitide when they close.
+   - **Menus and running**: the book menu's Plugins submenu shows each
+     plugin's menu as calibre would (filled the way the plugin fills it on
+     show); an item runs on the selected books.
+   - **Reading back**: when the plugin is idle (its action returned, its
+     windows are closed, its jobs are done) Magnitide compares the shadow
+     with the catalog it was written from and applies the difference through
+     its own edit path (`core::external`): metadata, custom values, new
+     custom columns, replaced/added/removed formats, covers, new books. Books
+     a plugin removed are only deleted after Magnitide asks.
+
+   Still to do in this step:
+   - Stand-ins for calibre's own actions plugins call through `gui.iactions`
+     (Edit Metadata, Remove Books, Convert Books, Choose Library, Add Books),
+     mapped to Magnitide's; today they're inert and logged.
+   - Trying the surveyed plugins themselves (their zips aren't in the repo).
+   - Creating custom columns in Magnitide for plugins that ask the user to
+     (Count Pages): today a column a plugin creates in the shadow comes back,
+     but there's no Magnitide UI to make one first.
+   - Incremental shadow updates: the shadow is rebuilt whole when the library
+     changed, which is quick for thousands of books but not for 50,000.
+   - A plugin writing to a path it built itself (not from `format_abspath`)
+     writes through the link into the library. None of the surveyed plugins
+     do, but it isn't prevented.
+   - Windows: links need Developer Mode there; without it files are copied.
+
 3. **The heavy ones**: Ebook Translator (conversion pipeline; mostly
    translates through online services, AI ones included, which is the user's
    choice of plugin rather than a Magnitide feature), FanFicFare (the most

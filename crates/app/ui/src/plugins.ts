@@ -1,0 +1,124 @@
+// GUI calibre plugins: their menus (the book menu's Plugins submenu) and
+// running them. A plugin runs in calibre's own code on a copy of the library;
+// when it's done, what it changed is applied here and reported as a job
+// (see crates/app/src/plugins.rs).
+
+import { createSignal } from 'solid-js';
+
+import {
+  api,
+  type ApplyReport,
+  coverChanged,
+  errorMessage,
+  onPluginDone,
+  onPluginMessage,
+  onPluginSelect,
+  type PluginMenu,
+  type PluginMenuItem,
+  type PluginMenus,
+} from './api';
+import { type JobHandle, recordJob, startJob } from './jobs';
+import { refresh, selectBooks, setEditRevision } from './library';
+import { toast } from './toast';
+import { deleteBooks } from './transfer';
+
+/** The GUI plugins that are on, by name; known without starting calibre. */
+const [guiPlugins, setGuiPlugins] = createSignal<string[]>([]);
+/** Their menus, once loaded; null until then (loading starts calibre). */
+const [pluginMenus, setPluginMenus] = createSignal<PluginMenus | null>(null);
+export { guiPlugins, pluginMenus };
+
+let loading: Promise<void> | null = null;
+
+/** Check which GUI plugins are on (at start, and after they change in Settings). */
+export async function refreshGuiPlugins(): Promise<void> {
+  try {
+    setGuiPlugins(await api.guiPluginNames());
+  } catch {
+    setGuiPlugins([]);
+  }
+  setPluginMenus(null);
+}
+
+/** Load the plugins' menus, starting calibre the first time. */
+export function loadPluginMenus(): Promise<void> {
+  if (!loading) {
+    loading = api
+      .pluginMenus()
+      .then(
+        (m) => {
+          setPluginMenus(m);
+          for (const e of m.errors) console.warn(e);
+        },
+        (err) => {
+          setPluginMenus({ menus: [], errors: [errorMessage(err)] });
+        },
+      )
+      .finally(() => (loading = null));
+  }
+  return loading;
+}
+
+/** Runs waiting for their plugin to finish, by plugin. */
+const running = new Map<string, JobHandle>();
+
+/**
+ * Run a plugin's menu item (`item` at `texts`, its path of names), or with no
+ * item its toolbar button, on these books.
+ */
+export async function runPlugin(menu: PluginMenu, item: PluginMenuItem | null, texts: string[], ids: number[]) {
+  const job = startJob(menu.plugin, `${item ? texts.join(' › ') : menu.text}…`);
+  running.get(menu.plugin)?.finish('Still running when it was started again');
+  running.set(menu.plugin, job);
+  try {
+    await api.runPlugin(menu.plugin, item ? item.path : [], texts, ids);
+  } catch (err) {
+    running.delete(menu.plugin);
+    job.finish(errorMessage(err), { error: true });
+  }
+}
+
+function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+function summary(r: ApplyReport | null): string {
+  if (!r) return 'Done; nothing changed';
+  const parts = [
+    r.updated.length && `updated ${plural(r.updated.length, 'book')}`,
+    r.added.length && `added ${plural(r.added.length, 'book')}`,
+    r.fieldsAdded && `added ${plural(r.fieldsAdded, 'field')}`,
+  ].filter(Boolean);
+  const done = parts.length ? parts.join(', ') : 'nothing changed';
+  const failed = r.failed.length ? `; ${plural(r.failed.length, 'book')} couldn't be changed` : '';
+  return `${done[0]!.toUpperCase()}${done.slice(1)}${failed}`;
+}
+
+/** Listen for plugins finishing, reporting and selecting. Once, at start-up. */
+export function initPlugins(): void {
+  void refreshGuiPlugins();
+  void onPluginDone(async (d) => {
+    const job = running.get(d.plugin);
+    running.delete(d.plugin);
+    const r = d.report;
+    if (r) {
+      for (const id of r.updated) coverChanged(id);
+      setEditRevision((n) => n + 1);
+      await refresh();
+    }
+    const text = d.error ? `Its changes couldn't be applied: ${d.error}` : summary(r);
+    const details = [...(r?.failed ?? []), ...(r?.warnings ?? [])];
+    const error = !!d.error || !!r?.failed.length;
+    if (job) job.finish(text, { error, details });
+    // A plugin can also change things on its own (a job it started, a window left open).
+    else if (r || d.error) recordJob(d.plugin, text, { error, details });
+    if (r?.removed.length) {
+      toast(`${d.plugin} removed ${plural(r.removed.length, 'book')}`);
+      await deleteBooks(r.removed);
+    }
+  });
+  void onPluginMessage((m) =>
+    toast(m.plugin ? `${m.plugin}: ${m.message}` : m.message, { error: m.error, duration: m.error ? 7000 : 4000 }),
+  );
+  void onPluginSelect((ids) => selectBooks(ids));
+}

@@ -13,6 +13,7 @@ use anyhow::{Result, bail};
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use rusqlite::{Connection, params};
 
+use crate::write::create_custom_column;
 use crate::{dates, sqlfuncs};
 
 pub const SCHEMA: &str = include_str!("../schema/metadata_sqlite.sql");
@@ -280,22 +281,24 @@ pub fn create(dir: &Path, opts: &Options) -> Result<()> {
     let tx = conn.transaction()?;
 
     // Custom columns, one of each common kind.
-    let read = create_custom_column(&tx, "read", "Read", "bool", false, "{}")?;
-    let genre = create_custom_column(&tx, "genre", "Genre", "text", true, r#"{"is_names": false}"#)?;
+    let read = create_custom_column(&tx, None, "read", "Read", "bool", false, "{}")?;
+    let genre = create_custom_column(&tx, None, "genre", "Genre", "text", true, r#"{"is_names": false}"#)?;
     let shelf_values = serde_json::to_string(SHELVES)?;
     let shelf = create_custom_column(
         &tx,
+        None,
         "shelf",
         "Shelf",
         "enumeration",
         false,
         &format!(r#"{{"enum_values": {shelf_values}, "enum_colors": []}}"#),
     )?;
-    let my_rating = create_custom_column(&tx, "my_rating", "My Rating", "rating", false, "{}")?;
-    let date_read = create_custom_column(&tx, "date_read", "Date Read", "datetime", false, "{}")?;
-    let reading_order = create_custom_column(&tx, "reading_order", "Reading Order", "series", false, "{}")?;
+    let my_rating = create_custom_column(&tx, None, "my_rating", "My Rating", "rating", false, "{}")?;
+    let date_read = create_custom_column(&tx, None, "date_read", "Date Read", "datetime", false, "{}")?;
+    let reading_order = create_custom_column(&tx, None, "reading_order", "Reading Order", "series", false, "{}")?;
     create_custom_column(
         &tx,
+        None,
         "isbn",
         "ISBN",
         "composite",
@@ -502,70 +505,4 @@ fn insert_names<S: AsRef<str>>(conn: &Connection, sql: &str, names: &[S]) -> Res
         ids.push(conn.last_insert_rowid());
     }
     Ok(ids)
-}
-
-/// Port of the table/index/trigger DDL from calibre's
-/// `DB.create_custom_column` (src/calibre/db/backend.py). The tag-browser
-/// views are omitted because they need calibre's `books_list_filter` function.
-fn create_custom_column(
-    conn: &Connection,
-    label: &str,
-    name: &str,
-    datatype: &str,
-    is_multiple: bool,
-    display: &str,
-) -> Result<i64> {
-    let normalized = !matches!(datatype, "datetime" | "comments" | "int" | "bool" | "float" | "composite");
-    let is_multiple = is_multiple && matches!(datatype, "text" | "composite");
-    conn.execute(
-        "INSERT INTO custom_columns(label, name, datatype, is_multiple, editable, display, normalized) \
-         VALUES (?, ?, ?, ?, 1, ?, ?)",
-        params![label, name, datatype, is_multiple, display, normalized],
-    )?;
-    let num = conn.last_insert_rowid();
-    let dt = match datatype {
-        "rating" | "int" => "INT",
-        "float" => "REAL",
-        "datetime" => "timestamp",
-        "bool" => "BOOL",
-        _ => "TEXT",
-    };
-    let collate = if dt == "TEXT" { "COLLATE NOCASE" } else { "" };
-    let table = format!("custom_column_{num}");
-    let lt = format!("books_custom_column_{num}_link");
-    let fk_book = |trigger: &str, when: &str, tbl: &str| {
-        format!(
-            "CREATE TRIGGER {trigger} {when} ON {tbl} BEGIN SELECT CASE \
-             WHEN (SELECT id FROM books WHERE id=NEW.book) IS NULL \
-             THEN RAISE(ABORT, 'Foreign key violation: book not in books') END; END;"
-        )
-    };
-    let ddl = if normalized {
-        let extra = if datatype == "series" { "extra REAL," } else { "" };
-        format!(
-            "CREATE TABLE {table}(id INTEGER PRIMARY KEY AUTOINCREMENT, value {dt} NOT NULL {collate}, \
-                 link TEXT NOT NULL DEFAULT '', UNIQUE(value));
-             CREATE INDEX {table}_idx ON {table} (value {collate});
-             CREATE TABLE {lt}(id INTEGER PRIMARY KEY AUTOINCREMENT, book INTEGER NOT NULL, \
-                 value INTEGER NOT NULL, {extra} UNIQUE(book, value));
-             CREATE INDEX {lt}_aidx ON {lt} (value);
-             CREATE INDEX {lt}_bidx ON {lt} (book);
-             {}
-             CREATE TRIGGER fkc_delete_{lt} AFTER DELETE ON {table} BEGIN DELETE FROM {lt} WHERE value=OLD.id; END;",
-            fk_book(&format!("fkc_update_{lt}_a"), "BEFORE UPDATE OF book", &lt),
-        )
-    } else {
-        format!(
-            "CREATE TABLE {table}(id INTEGER PRIMARY KEY AUTOINCREMENT, book INTEGER, \
-                 value {dt} NOT NULL {collate}, UNIQUE(book));
-             CREATE INDEX {table}_idx ON {table} (book);
-             {}
-             {}",
-            fk_book(&format!("fkc_insert_{table}"), "BEFORE INSERT", &table),
-            fk_book(&format!("fkc_update_{table}"), "BEFORE UPDATE OF book", &table),
-        )
-    };
-    // calibre creates a (never used) value table even for composite columns.
-    conn.execute_batch(&ddl)?;
-    Ok(num)
 }

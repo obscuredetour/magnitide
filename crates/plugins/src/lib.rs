@@ -6,11 +6,14 @@
 //! bundles nothing of calibre and works without it; only plugins need it.
 //! Plugin settings live in Magnitide's own folder, never calibre's.
 //!
-//! Supported so far: metadata sources, in Find Metadata ([`sources`]).
-//! Other kinds of plugin can be installed and are kept, marked as not
-//! supported yet. See docs/calibre-plugins.md for the plan.
+//! Supported so far: metadata sources, in Find Metadata ([`sources`]), and
+//! GUI plugins ([`gui`]), which work on a calibre-format shadow of the open
+//! library ([`shadow`]). Other kinds of plugin can be installed and are
+//! kept, marked as not supported yet. See docs/calibre-plugins.md for the plan.
 
+pub mod gui;
 pub mod host;
+pub mod shadow;
 pub mod sources;
 
 use std::path::{Path, PathBuf};
@@ -20,7 +23,8 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-pub use host::Host;
+pub use gui::{MenuItem, PluginMenu, PluginMenus};
+pub use host::{EventHandler, Host};
 
 /// Inspecting a zip loads the plugin's code, which can take a moment.
 const INSPECT_TIMEOUT: Duration = Duration::from_secs(60);
@@ -44,7 +48,7 @@ pub enum PluginKind {
 impl PluginKind {
     /// Whether Magnitide can run this kind of plugin yet.
     pub fn supported(self) -> bool {
-        matches!(self, PluginKind::MetadataSource)
+        matches!(self, PluginKind::MetadataSource | PluginKind::InterfaceAction)
     }
 }
 
@@ -78,6 +82,7 @@ pub struct Plugins {
     find_calibre: Box<dyn Fn() -> Option<PathBuf> + Send + Sync>,
     host: Mutex<Option<Arc<Host>>>,
     list: Mutex<()>,
+    on_event: Mutex<Option<EventHandler>>,
 }
 
 /// The calibre host's version, for Settings.
@@ -91,7 +96,19 @@ pub struct Calibre {
 
 impl Plugins {
     pub fn new(dir: PathBuf, find_calibre: impl Fn() -> Option<PathBuf> + Send + Sync + 'static) -> Self {
-        Self { dir, find_calibre: Box::new(find_calibre), host: Mutex::new(None), list: Mutex::new(()) }
+        Self {
+            dir,
+            find_calibre: Box::new(find_calibre),
+            host: Mutex::new(None),
+            list: Mutex::new(()),
+            on_event: Mutex::new(None),
+        }
+    }
+
+    /// Where the host's events go (GUI plugins' status messages, errors, and
+    /// that they're done). Applies to hosts started from now on.
+    pub fn set_event_handler(&self, f: EventHandler) {
+        *self.on_event.lock().unwrap_or_else(|e| e.into_inner()) = Some(f);
     }
 
     fn plugins_dir(&self) -> PathBuf {
@@ -119,9 +136,29 @@ impl Plugins {
         if std::fs::read_to_string(&script).ok().as_deref() != Some(host::SCRIPT) {
             std::fs::write(&script, host::SCRIPT).map_err(|e| e.to_string())?;
         }
-        let h = Arc::new(Host::start(&calibre, &script, &self.dir.join("config"))?);
+        let on_event = self.on_event.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let h = Arc::new(Host::start(&calibre, &script, &self.dir.join("config"), on_event)?);
         *slot = Some(h.clone());
         Ok(h)
+    }
+
+    /// The host if it's running; never starts one.
+    pub(crate) fn running_host(&self) -> Option<Arc<Host>> {
+        self.host.lock().unwrap_or_else(|e| e.into_inner()).as_ref().filter(|h| h.is_alive()).cloned()
+    }
+
+    /// GUI plugins can't be unloaded from a running calibre, so a change to
+    /// which are on restarts the host (it starts again when next needed).
+    /// Refused while one is working, rather than closing its windows.
+    fn restart_for_gui_change(&self, kind: PluginKind) -> Result<(), String> {
+        if kind != PluginKind::InterfaceAction || self.running_host().is_none() {
+            return Ok(());
+        }
+        if self.gui_busy() {
+            return Err("A plugin is still working. Finish in its window first, then try again.".into());
+        }
+        *self.host.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        Ok(())
     }
 
     /// calibre's location and version (starting the host to ask).
@@ -202,12 +239,16 @@ impl Plugins {
                 .unwrap_or_default(),
             minimum_calibre_version: text("minimumCalibreVersion"),
         };
+        let replaced = previous.is_some();
         match previous {
             Some(i) => list[i] = installed.clone(),
             None => list.push(installed.clone()),
         }
         list.sort_by_key(|p| p.name.to_lowercase());
         self.save(&list)?;
+        if replaced || installed.enabled {
+            self.restart_for_gui_change(kind)?;
+        }
         Ok(installed)
     }
 
@@ -215,6 +256,9 @@ impl Plugins {
         let _guard = self.list.lock().unwrap_or_else(|e| e.into_inner());
         let mut list = self.list();
         let Some(i) = list.iter().position(|p| p.name == name) else { return Ok(()) };
+        if list[i].enabled {
+            self.restart_for_gui_change(list[i].kind)?;
+        }
         let p = list.remove(i);
         self.save(&list)?;
         match std::fs::remove_file(self.path_of(&p)) {
@@ -227,6 +271,9 @@ impl Plugins {
         let _guard = self.list.lock().unwrap_or_else(|e| e.into_inner());
         let mut list = self.list();
         let p = list.iter_mut().find(|p| p.name == name).ok_or("That plugin isn't installed.")?;
+        if p.enabled != enabled {
+            self.restart_for_gui_change(p.kind)?;
+        }
         p.enabled = enabled;
         self.save(&list)
     }

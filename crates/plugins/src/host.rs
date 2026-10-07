@@ -2,8 +2,9 @@
 //!
 //! One process serves every request (plugins keep state between calls, such
 //! as the cover URLs a metadata source finds while identifying); requests
-//! run concurrently in it and replies are matched by id. What the host and
-//! plugins print is kept as a log.
+//! run concurrently in it and replies are matched by id. Events the host
+//! sends unasked (a GUI plugin's status message, error, or that it's done)
+//! go to an [`EventHandler`]. What the host and plugins print is kept as a log.
 
 use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -24,6 +25,9 @@ const LOG_LINES: usize = 400;
 
 type Pending = Arc<Mutex<HashMap<u64, Sender<Result<Value, String>>>>>;
 
+/// Called (on the host's reader thread) with each event: `{"event": "gui-idle", …}`.
+pub type EventHandler = Arc<dyn Fn(Value) + Send + Sync>;
+
 pub struct Host {
     child: Mutex<Child>,
     stdin: Mutex<ChildStdin>,
@@ -42,12 +46,19 @@ pub fn calibre_debug_beside(ebook_convert: &Path) -> PathBuf {
 impl Host {
     /// Start the host with `calibre_debug`, running `script`, with plugin
     /// settings kept in `config_dir` (never calibre's own).
-    pub fn start(calibre_debug: &Path, script: &Path, config_dir: &Path) -> Result<Self, String> {
+    pub fn start(
+        calibre_debug: &Path,
+        script: &Path,
+        config_dir: &Path,
+        on_event: Option<EventHandler>,
+    ) -> Result<Self, String> {
         std::fs::create_dir_all(config_dir).map_err(|e| e.to_string())?;
         let mut cmd = Command::new(calibre_debug);
         cmd.arg("-e")
             .arg(script)
             .env("CALIBRE_CONFIG_DIRECTORY", config_dir)
+            // So the host can give the focus back when a plugin's windows close.
+            .env("MAGNITIDE_PID", std::process::id().to_string())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -72,6 +83,12 @@ impl Host {
             for line in BufReader::new(stdout).lines() {
                 let Ok(line) = line else { break };
                 let Ok(reply) = serde_json::from_str::<Value>(&line) else { continue };
+                if reply.get("event").is_some() {
+                    if let Some(f) = &on_event {
+                        f(reply);
+                    }
+                    continue;
+                }
                 let Some(id) = reply.get("id").and_then(Value::as_u64) else { continue };
                 let answer = match reply.get("error").and_then(Value::as_str) {
                     Some(e) => Err(e.to_owned()),

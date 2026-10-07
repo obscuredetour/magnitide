@@ -28,6 +28,7 @@ import { startImport } from '../importer';
 import { addonReport, addThemeFile, loadThemeAddons, setTheme, themeAttrs, themeChoice, themes } from '../theme';
 import { AccentPicker } from './AccentPicker';
 import { toast } from '../toast';
+import { refreshGuiPlugins } from '../plugins';
 import { confirm } from '../confirm';
 import {
   columnOrder,
@@ -1080,6 +1081,9 @@ const PLUGIN_KINDS: Record<PluginKind, string> = {
   other: 'Other',
 };
 
+/** The kinds Magnitide runs; the rest are kept for when it can. */
+const SUPPORTED_PLUGIN_KINDS: PluginKind[] = ['metadataSource', 'interfaceAction'];
+
 function PluginSettings() {
   const [status, { mutate, refetch }] = createResource(() => api.pluginsStatus().catch(() => undefined));
   const [busy, setBusy] = createSignal(false);
@@ -1096,10 +1100,13 @@ function PluginSettings() {
     try {
       const p = await api.installPlugin(path);
       await refetch();
+      void refreshGuiPlugins();
       toast(
         p.kind === 'metadataSource'
           ? `Added ${p.name}: it's now asked in Find Metadata`
-          : `Added ${p.name}. Magnitide can't run this kind of plugin yet; it's kept for when it can.`,
+          : p.kind === 'interfaceAction'
+            ? `Added ${p.name}: its menu is in the book menu, under Plugins`
+            : `Added ${p.name}. Magnitide can't run this kind of plugin yet; it's kept for when it can.`,
       );
     } catch (err) {
       toast(errorMessage(err), { error: true });
@@ -1109,7 +1116,13 @@ function PluginSettings() {
   };
 
   const run = (f: () => Promise<InstalledPlugin[]>) =>
-    f().then(setPlugins, (err) => toast(errorMessage(err), { error: true }));
+    f().then(
+      (plugins) => {
+        setPlugins(plugins);
+        void refreshGuiPlugins();
+      },
+      (err) => toast(errorMessage(err), { error: true }),
+    );
 
   const remove = async (p: InstalledPlugin) => {
     const ok = await confirm({
@@ -1126,8 +1139,10 @@ function PluginSettings() {
       <Heading>Plugins</Heading>
       <p class="mb-4 text-xs text-muted">
         Magnitide runs calibre plugins in your installed calibre, so they work as they do there, with their own settings
-        kept apart from calibre's. Metadata sources work now, in Find Metadata; other kinds of plugin can be added and
-        will start working as Magnitide supports them. Plugins are programs that run on your computer: only add ones you
+        kept apart from calibre's. Metadata sources are asked in Find Metadata. Library tools (calibre's toolbar
+        plugins) are in the book menu, under Plugins: they work on the selected books, their windows open as in calibre,
+        and what they change comes back into the library when they're done. Other kinds of plugin can be added and will
+        start working as Magnitide supports them. Plugins are programs that run on your computer: only add ones you
         trust.
       </p>
       <Show when={status()} fallback={<p class="text-xs text-muted">Checking for calibre…</p>}>
@@ -1156,7 +1171,7 @@ function PluginSettings() {
                         {p.description}
                         <span class="mt-0.5 block">
                           {PLUGIN_KINDS[p.kind]} · by {p.author}
-                          <Show when={p.kind !== 'metadataSource'}>
+                          <Show when={!SUPPORTED_PLUGIN_KINDS.includes(p.kind)}>
                             <span class="text-warning"> · Not supported yet</span>
                           </Show>
                         </span>
@@ -1168,7 +1183,7 @@ function PluginSettings() {
                       class="size-4 accent-accent"
                       aria-label={`Use ${p.name}`}
                       checked={p.enabled}
-                      disabled={p.kind !== 'metadataSource'}
+                      disabled={!SUPPORTED_PLUGIN_KINDS.includes(p.kind)}
                       onChange={(e) => void run(() => api.setPluginEnabled(p.name, e.currentTarget.checked))}
                     />
                     <button class={button} onClick={() => void remove(p)}>

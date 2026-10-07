@@ -2384,7 +2384,11 @@ name = "magnitide-plugins"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "calibre-compat",
+ "chrono",
+ "magnitide-catalog",
  "magnitide-sources",
+ "rusqlite",
  "serde",
  "serde_json",
  "tempfile",

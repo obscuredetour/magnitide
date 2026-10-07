@@ -196,7 +196,7 @@ impl Library {
     }
 }
 
-fn custom_columns(conn: &Connection) -> Result<Vec<CustomColumn>> {
+pub(crate) fn custom_columns(conn: &Connection) -> Result<Vec<CustomColumn>> {
     let mut cols = Vec::new();
     each_row(conn, "SELECT id, key, name, kind, multiple, config FROM custom_fields ORDER BY id", [], |r| {
         let kind: String = r.get(3)?;

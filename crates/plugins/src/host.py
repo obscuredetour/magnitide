@@ -8,8 +8,10 @@ touch the user's calibre settings.
 
 Protocol: one JSON object per line. Requests arrive on stdin as
 {"id": n, "method": "...", "params": {...}}; replies go to the original
-stdout as {"id": n, "result": ...} or {"id": n, "error": "..."}. Each request
-runs on its own thread, so slow lookups don't hold up others. Anything
+stdout as {"id": n, "result": ...} or {"id": n, "error": "..."}, and events
+nobody asked for (a GUI plugin's status message, error, or that it's done)
+as {"event": "...", ...}. Each request runs on its own thread, so slow
+lookups don't hold up others; GUI work runs on the main thread, in Qt. Anything
 calibre or a plugin prints goes to stderr, which Magnitide keeps as the
 host's log, so it can't corrupt the replies.
 """
@@ -253,7 +255,753 @@ def m_cover(params):
     return {'bytes': 0, 'log': buf.getvalue()[-20000:]}
 
 
-METHODS = {'hello': m_hello, 'inspect': m_inspect, 'identify': m_identify, 'cover': m_cover}
+# ---------------------------------------------------------------------------
+# GUI plugins (calibre's "interface actions").
+#
+# They need Qt, which lives on the main thread: it starts the first time a GUI
+# plugin is used (metadata sources never need it). Each plugin gets a
+# stand-in for calibre's main window (`gui`) with the parts plugins use, on a
+# shadow copy of the library that Magnitide writes in calibre's format (see
+# crates/plugins/src/shadow.rs). What the plugin changes there, Magnitide
+# reads back once the plugin is idle and applies through its own edit path.
+
+
+def event(name, **fields):
+    """Something Magnitide didn't ask about: a status message, an error, idle."""
+    send({'event': name, **fields})
+
+
+_main_calls = Queue()  # run on the main thread before Qt has started
+_qt = {}  # 'app' and 'invoker', once started
+_qt_ready = Event()
+_qt_lock = threading.Lock()
+
+
+def on_main(fn, wait=True):
+    """Run fn on the main thread, where Qt lives; return its result."""
+    if threading.current_thread() is threading.main_thread():
+        return fn()
+    done, box = Event(), {}
+
+    def run():
+        try:
+            box['value'] = fn()
+        except BaseException as e:
+            box['error'] = e
+        finally:
+            done.set()
+
+    invoker = _qt.get('invoker')
+    if invoker is not None:
+        invoker.call.emit(run)
+    else:
+        _main_calls.put(run)
+    if not wait:
+        return None
+    done.wait()
+    if 'error' in box:
+        raise box['error']
+    return box.get('value')
+
+
+def ensure_qt():
+    with _qt_lock:
+        if not _qt_ready.is_set() and 'starting' not in _qt:
+            _qt['starting'] = True
+            _main_calls.put(_run_qt)
+    _qt_ready.wait()
+
+
+def _run_qt():
+    """On the main thread: start Qt and run its event loop until shutdown."""
+    from qt.core import QObject, Qt, pyqtSignal
+
+    from calibre.gui2 import Application
+
+    class Invoker(QObject):
+        call = pyqtSignal(object)
+
+        def __init__(self):
+            QObject.__init__(self)
+            self.call.connect(self.run, type=Qt.ConnectionType.QueuedConnection)
+
+        def run(self, fn):
+            fn()
+
+    # On macOS, Qt would make the host a regular app (a Dock icon, and the
+    # focus taken from Magnitide as it starts); calibre's Qt leaves it alone
+    # with this, as calibre does when it runs headless.
+    os.environ['QT_MAC_DISABLE_FOREGROUND_APPLICATION_TRANSFORM'] = '1'
+    _macos_accessory()
+    app = Application(['magnitide-plugins'])
+    app.setQuitOnLastWindowClosed(False)
+    # An exception in a plugin's slot must not abort the process (PyQt's
+    # default); report it and carry on, as calibre does.
+    sys.excepthook = _excepthook
+    _raise_plugin_windows(app)
+    _qt['app'], _qt['invoker'] = app, Invoker()
+    _qt_ready.set()
+    while not _main_calls.empty():
+        fn = _main_calls.get_nowait()
+        if fn is not None:
+            _qt['invoker'].call.emit(fn)
+    app.exec()
+
+
+def _objc(receiver, selector, arg=None):
+    """macOS: send an Objective-C message (receiver: a class name or an
+    object; one integer argument at most) through the runtime."""
+    import ctypes
+    import ctypes.util
+
+    objc = ctypes.cdll.LoadLibrary(ctypes.util.find_library('objc'))
+    objc.objc_getClass.restype = ctypes.c_void_p
+    objc.sel_registerName.restype = ctypes.c_void_p
+    if isinstance(receiver, bytes):
+        receiver = objc.objc_getClass(receiver)
+    args = () if arg is None else (arg,)
+    # objc_msgSend must be called through a prototype matching the method.
+    send = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, *(ctypes.c_long for _ in args))(
+        ('objc_msgSend', objc)
+    )
+    return send(receiver, objc.sel_registerName(selector), *args)
+
+
+def _ns_app():
+    return _objc(b'NSApplication', b'sharedApplication')
+
+
+def _macos_accessory():
+    """No Dock icon or menu bar for the host: its windows are plugins'
+    dialogs, which belong with Magnitide (NSApplicationActivationPolicyAccessory)."""
+    if sys.platform == 'darwin':
+        try:
+            _objc(_ns_app(), b'setActivationPolicy:', 1)
+        except Exception:
+            traceback.print_exc()
+
+
+def _bring_to_front(window):
+    """A plugin opened a window: show it in front of Magnitide, whose menu
+    item the user just chose."""
+    if sys.platform == 'darwin':
+        try:
+            _objc(_ns_app(), b'activateIgnoringOtherApps:', 1)
+        except Exception:
+            traceback.print_exc()
+    window.raise_()
+    window.activateWindow()
+
+
+def _return_focus():
+    """The plugin is done: if its windows had the focus, give it back to
+    Magnitide (which started this host and says who it is)."""
+    if sys.platform != 'darwin':
+        return
+    try:
+        if not (_objc(_ns_app(), b'isActive') or 0) & 0xFF:
+            return
+        pid = int(os.environ.get('MAGNITIDE_PID') or os.getppid())
+        parent = _objc(b'NSRunningApplication', b'runningApplicationWithProcessIdentifier:', pid)
+        if parent:
+            _objc(parent, b'activateWithOptions:', 2)  # NSApplicationActivateIgnoringOtherApps
+    except Exception:
+        traceback.print_exc()
+
+
+def _raise_plugin_windows(app):
+    """Bring each window a plugin opens (its dialogs) to the front."""
+    from qt.core import QEvent, QObject
+
+    class Raiser(QObject):
+        def eventFilter(self, obj, ev):
+            if ev.type() == QEvent.Type.Show and obj.isWidgetType() and obj.isWindow() and obj is not _gui:
+                if not obj.inherits('QMenu') and not obj.inherits('QToolTip'):
+                    _bring_to_front(obj)
+            return False
+
+    _qt['raiser'] = Raiser(app)
+    app.installEventFilter(_qt['raiser'])
+
+
+def _excepthook(kind, value, tb):
+    print(''.join(traceback.format_exception(kind, value, tb)), file=sys.stderr, flush=True)
+    event('gui-error', plugin=_gui_state.get('plugin'), message=f'{kind.__name__}: {value}'.strip())
+
+
+# --- Book files: the shadow links to the library's files; a link becomes a
+# private copy before calibre hands out its path or writes to it, so a plugin
+# can't change the user's files. Only inside shadow libraries.
+
+_shadow_roots = set()
+
+
+def materialize(path):
+    if not path or not os.path.islink(path):
+        return
+    absolute = os.path.abspath(path)
+    if not any(absolute.startswith(root + os.sep) for root in _shadow_roots):
+        return
+    target = os.path.realpath(path)
+    tmp = path + '.magnitide-copy'
+    _clone(target, tmp)
+    os.replace(tmp, path)
+
+
+def _clone(src, dst):
+    """Copy-on-write where the disk can (APFS, Btrfs, XFS); else a plain copy."""
+    import shutil
+
+    if sys.platform == 'darwin':
+        import ctypes
+        import ctypes.util
+
+        libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
+        if libc.clonefile(os.fsencode(src), os.fsencode(dst), 0) == 0:
+            return
+    elif sys.platform.startswith('linux'):
+        import fcntl
+
+        try:
+            with open(src, 'rb') as s, open(dst, 'wb') as d:
+                fcntl.ioctl(d.fileno(), 0x40049409, s.fileno())  # FICLONE
+            return
+        except OSError:
+            pass
+    shutil.copy2(src, dst)
+
+
+def _install_file_guards():
+    if _shadow_roots:
+        return  # already installed, with the first library
+    from calibre.db.backend import DB
+    from calibre.db.cache import Cache
+
+    def wrap(cls, name, before=None, after=None):
+        original = getattr(cls, name)
+
+        def wrapper(self, *args, **kwargs):
+            if before:
+                before(self, *args, **kwargs)
+            result = original(self, *args, **kwargs)
+            if after:
+                after(result)
+            return result
+
+        wrapper.__name__ = name
+        wrapper.__wrapped__ = original
+        setattr(cls, name, wrapper)
+
+    def book_files(backend, path, fmt=None):
+        folder = os.path.join(backend.library_path, path)
+        try:
+            names = os.listdir(folder)
+        except OSError:
+            return []
+        suffix = ('.' + fmt.lower()) if fmt else None
+        return [os.path.join(folder, n) for n in names if suffix is None or n.lower().endswith(suffix)]
+
+    # The path calibre hands a plugin, which may write to it.
+    wrap(Cache, 'format_abspath', after=materialize)
+
+    # calibre writing into files itself.
+    def apply_to_format(self, book_id, path, fname, fmt, *a, **k):
+        materialize(os.path.join(self.library_path, path, fname + '.' + fmt.lower()))
+
+    def add_format(self, book_id, fmt, stream, title, author, path, *a, **k):
+        for f in book_files(self, path, fmt):
+            materialize(f)
+
+    def set_cover(self, book_id, path, *a, **k):
+        materialize(os.path.join(self.library_path, path, 'cover.jpg'))
+
+    def copy_format_to(self, book_id, fmt, fname, path, *a, use_hardlink=False, **k):
+        if use_hardlink:
+            for f in book_files(self, path, fmt):
+                materialize(f)
+
+    def copy_cover_to(self, path, *a, use_hardlink=False, **k):
+        if use_hardlink:
+            materialize(os.path.join(self.library_path, path, 'cover.jpg'))
+
+    wrap(DB, 'apply_to_format', before=apply_to_format)
+    wrap(DB, 'add_format', before=add_format)
+    wrap(DB, 'set_cover', before=set_cover)
+    wrap(DB, 'copy_format_to', before=copy_format_to)
+    wrap(DB, 'copy_cover_to', before=copy_cover_to)
+
+
+# --- The stand-in for calibre's main window.
+
+
+class Inert:
+    """A part of calibre's window that Magnitide doesn't have: any attribute
+    or call works and does nothing. The first use of each is logged, to show
+    what a plugin is missing."""
+
+    _logged = set()
+
+    def __init__(self, name):
+        object.__setattr__(self, '_name', name)
+
+    def __getattr__(self, attr):
+        if attr.startswith('__'):
+            raise AttributeError(attr)
+        return Inert(f'{self._name}.{attr}')
+
+    def __setattr__(self, attr, value):
+        pass
+
+    def __call__(self, *args, **kwargs):
+        if self._name not in Inert._logged:
+            Inert._logged.add(self._name)
+            print(f"[magnitide] a plugin used {self._name}(), which Magnitide doesn't have; ignored", file=sys.stderr, flush=True)
+        return Inert(self._name + '()')
+
+    def __bool__(self):
+        return False
+
+    def __iter__(self):
+        return iter(())
+
+    def __len__(self):
+        return 0
+
+
+_gui = None
+_gui_state = {'running': 0, 'plugin': None, 'watching': False, 'changed': False}
+_loaded = {}  # zip path -> the plugin's InterfaceAction
+
+
+def _build_gui():
+    from qt.core import QAbstractTableModel, QItemSelection, QItemSelectionModel, QMainWindow, QModelIndex, Qt, QTableView
+
+    from calibre.gui2.jobs import JobManager
+    from calibre.gui2.keyboard import Manager
+    from calibre.gui2.ui import get_gui
+
+    class BooksModel(QAbstractTableModel):
+        """calibre's book list model: every book in the library, one row each."""
+
+        def __init__(self, gui):
+            QAbstractTableModel.__init__(self, gui)
+            self.gui = gui
+            self.ids = []
+
+        @property
+        def db(self):
+            return self.gui.current_db
+
+        def reload(self):
+            self.beginResetModel()
+            self.ids = sorted(self.db.new_api.all_book_ids()) if self.db is not None else []
+            self.endResetModel()
+
+        def rowCount(self, parent=QModelIndex()):
+            return 0 if parent.isValid() else len(self.ids)
+
+        def columnCount(self, parent=QModelIndex()):
+            return 1
+
+        def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+            if role == Qt.ItemDataRole.DisplayRole and index.isValid():
+                return self.db.new_api.field_for('title', self.ids[index.row()])
+
+        def id(self, row):
+            return self.ids[row.row() if hasattr(row, 'row') else row]
+
+        def row(self, book_id):
+            return self.ids.index(book_id)
+
+        def count(self):
+            return len(self.ids)
+
+        # Plugins tell the book list what changed; Magnitide reads it back.
+        def refresh_ids(self, ids, current_row=-1):
+            self.gui.changed()
+
+        def refresh_rows(self, rows, current_row=-1):
+            self.gui.changed()
+
+        def refresh(self, reset=True):
+            self.reload()
+            self.gui.changed()
+
+        def books_added(self, num):
+            self.reload()
+            self.gui.changed()
+
+        def books_deleted(self):
+            self.reload()
+            self.gui.changed()
+
+        def __getattr__(self, name):
+            if name.startswith('__'):
+                raise AttributeError(name)
+            return Inert(f'gui.library_view.model().{name}')
+
+    class LibraryView(QTableView):
+        """calibre's book list; its selection is Magnitide's."""
+
+        def __init__(self, gui):
+            QTableView.__init__(self, gui)
+            self.setModel(BooksModel(gui))
+
+        def get_selected_ids(self, as_set=False):
+            m = self.model()
+            ids = [m.id(i) for i in self.selectionModel().selectedRows()]
+            return set(ids) if as_set else ids
+
+        def set_selection(self, ids):
+            m, sel = self.model(), QItemSelection()
+            rows = [m.row(i) for i in ids if i in m.ids]
+            for r in rows:
+                sel.select(m.index(r, 0), m.index(r, 0))
+            flags = QItemSelectionModel.SelectionFlag
+            self.selectionModel().select(sel, flags.ClearAndSelect | flags.Rows)
+            if rows:
+                self.selectionModel().setCurrentIndex(m.index(rows[0], 0), flags.NoUpdate)
+
+        def select_rows(self, identifiers, using_ids=True, change_current=True, scroll=True):
+            m = self.model()
+            ids = [i for i in identifiers] if using_ids else [m.id(r) for r in identifiers]
+            self.set_selection(ids)
+            event('gui-select', ids=ids)
+
+        @property
+        def current_id(self):
+            index = self.currentIndex()
+            return self.model().id(index) if index.isValid() else None
+
+        def __getattr__(self, name):
+            if name.startswith('__'):
+                raise AttributeError(name)
+            return Inert(f'gui.library_view.{name}')
+
+    class StatusBar:
+        def show_message(self, msg, timeout=0, show_notification=True):
+            event('gui-status', plugin=_gui_state.get('plugin'), message=str(msg), timeout=timeout or 0)
+
+        def clear_message(self):
+            pass
+
+        def __getattr__(self, name):
+            if name.startswith('__'):
+                raise AttributeError(name)
+            return Inert(f'gui.status_bar.{name}')
+
+    class Actions(dict):
+        """`gui.iactions`: the hosted plugins by name; calibre's own actions
+        aren't here yet (stand-ins, logged when used)."""
+
+        def __missing__(self, name):
+            return Inert(f'gui.iactions[{name!r}]')
+
+    class MagnitideGui(QMainWindow):
+        """Stands in for calibre's main window (never shown)."""
+
+        def __init__(self):
+            QMainWindow.__init__(self)
+            self.setWindowTitle('Magnitide')
+            self.db = None
+            self.library_path = None
+            self.keyboard = Manager(self)
+            self.iactions = Actions()
+            self.status_bar = StatusBar()
+            self.job_manager = JobManager()
+            self.library_view = LibraryView(self)
+            setattr(get_gui, 'ans', self)
+
+        @property
+        def current_db(self):
+            return self.db
+
+        def set_library(self, db):
+            self.db = db
+            self.library_path = db.library_path
+            self.library_view.model().reload()
+
+        def changed(self):
+            _gui_state['changed'] = True
+
+        def __getattr__(self, name):
+            if name.startswith('__'):
+                raise AttributeError(name)
+            return Inert(f'gui.{name}')
+
+    return MagnitideGui()
+
+
+def _open_library(library):
+    """Open (or reopen, after Magnitide rebuilt it) the shadow library."""
+    from calibre.db.legacy import LibraryDatabase
+
+    global _gui
+    if _gui is None:
+        _gui = _build_gui()
+    _install_file_guards()
+    _shadow_roots.add(os.path.abspath(library))
+    old = _gui.db
+    if old is not None and not getattr(old, '_magnitide_closed', False) and old.library_path == library:
+        return
+    db = LibraryDatabase(library)
+    _gui.set_library(db)
+    for ac in _loaded.values():
+        try:
+            ac.library_changed(db)
+        except Exception:
+            traceback.print_exc()
+
+
+def _load_plugins(paths):
+    """Load GUI plugins not loaded yet, as calibre does at start-up."""
+    from calibre.customize import InterfaceActionBase, PluginInstallationType
+
+    errors, new = {}, []
+    for path in paths:
+        if path in _loaded:
+            continue
+        try:
+            base = plugin(path)
+            if not isinstance(base, InterfaceActionBase):
+                raise ValueError(f'{base.name} is not a GUI plugin')
+            ac = base.load_actual_plugin(_gui)
+            ac.plugin_path = path
+            ac.interface_action_base_plugin = base
+            ac.installation_type = PluginInstallationType.EXTERNAL
+            ac.do_genesis()
+            _gui.iactions[ac.name] = ac
+            _loaded[path] = ac
+            new.append(ac)
+        except Exception as e:
+            traceback.print_exc()
+            errors[path] = f'{type(e).__name__}: {e}'.strip()
+    try:
+        _gui.keyboard.finalize()
+    except Exception:
+        traceback.print_exc()
+    for ac in new:
+        for step in ('gui_layout_complete', 'initialization_complete'):
+            try:
+                getattr(ac, step)()
+            except Exception:
+                traceback.print_exc()
+    return errors
+
+
+def _text(action):
+    """A menu item's text without its keyboard accelerator ("&Mark" → "Mark")."""
+    return action.text().replace('&&', '\0').replace('&', '').replace('\0', '&')
+
+
+def _icon(action):
+    from qt.core import QBuffer, QByteArray, QIODevice
+
+    icon = action.icon()
+    if icon is None or icon.isNull():
+        return None
+    data = QByteArray()
+    buf = QBuffer(data)
+    buf.open(QIODevice.OpenModeFlag.WriteOnly)
+    icon.pixmap(64, 64).save(buf, 'PNG')
+    import base64
+
+    return 'data:image/png;base64,' + base64.b64encode(bytes(data)).decode('ascii')
+
+
+def _show(menu):
+    """Let the plugin fill its menu, as it would just before calibre shows it."""
+    try:
+        menu.aboutToShow.emit()
+    except Exception:
+        traceback.print_exc()
+
+
+def _menu_items(menu, prefix):
+    _show(menu)
+    items = []
+    for i, a in enumerate(menu.actions()):
+        if not a.isVisible():
+            continue
+        if a.isSeparator():
+            items.append({'separator': True})
+            continue
+        item = {
+            'path': prefix + [i],
+            'text': _text(a),
+            'enabled': a.isEnabled(),
+            'checkable': a.isCheckable(),
+            'checked': a.isChecked(),
+        }
+        sub = a.menu()
+        if sub is not None:
+            item['children'] = _menu_items(sub, prefix + [i])
+        items.append(item)
+    return items
+
+
+def _actions():
+    out = []
+    for path, ac in _loaded.items():
+        qa = ac.qaction
+        menu = qa.menu()
+        out.append({
+            'plugin': ac.interface_action_base_plugin.name,
+            'file': os.path.basename(path),
+            'text': _text(qa) or ac.name,
+            'icon': _icon(qa),
+            # Whether the plugin's toolbar button does something itself.
+            'main': qa.receivers(qa.triggered) > 0,
+            'items': _menu_items(menu, []) if menu is not None else [],
+        })
+    return out
+
+
+def _find(menu, path, texts):
+    """The menu item at `path`, checking it still has the text listed (menus
+    rebuilt on show can move items); by text if it moved."""
+    action = None
+    for depth, (index, text) in enumerate(zip(path, texts)):
+        if menu is None:
+            return None
+        _show(menu)
+        actions = menu.actions()
+        action = actions[index] if index < len(actions) and _text(actions[index]) == text else None
+        if action is None:
+            action = next((a for a in actions if _text(a) == text), None)
+        if action is None:
+            return None
+        menu = action.menu() if depth < len(path) - 1 else None
+    return action
+
+
+def _busy():
+    """A plugin is still working: in an action, a window of its open, or a job."""
+    from qt.core import QApplication
+
+    if _gui_state['running']:
+        return True
+    for w in QApplication.topLevelWidgets():
+        if w is not _gui and w.isVisible() and not w.inherits('QMenu'):
+            return True
+    try:
+        return bool(_gui.job_manager.unfinished_jobs())
+    except Exception:
+        return False
+
+
+def _watch_until_idle():
+    """Tell Magnitide when the plugin is done, so it can read back its changes."""
+    from qt.core import QTimer
+
+    if _gui_state['watching']:
+        return
+    _gui_state['watching'] = True
+    timer = QTimer(_gui)
+    timer.setInterval(400)
+
+    def check():
+        if _busy():
+            return
+        timer.stop()
+        timer.deleteLater()
+        _gui_state['watching'] = False
+        _return_focus()
+        event('gui-idle', plugin=_gui_state.get('plugin'), changed=_gui_state['changed'])
+        _gui_state['changed'] = False
+
+    timer.timeout.connect(check)
+    timer.start()
+
+
+def _trigger(name, path, texts, selection):
+    from qt.core import QTimer
+
+    ac = next((a for a in _loaded.values() if a.interface_action_base_plugin.name == name), None)
+    if ac is None:
+        raise ValueError(f'{name} is not loaded')
+    target = ac.qaction if not path else _find(ac.qaction.menu(), path, texts)
+    if target is None:
+        raise ValueError(f'{name} no longer has “{" › ".join(texts)}”')
+    if not target.isEnabled():
+        raise ValueError(f'“{texts[-1] if texts else name}” is not available right now')
+    _gui.library_view.set_selection(selection)
+    _gui_state['plugin'] = name
+
+    def run():
+        _gui_state['running'] += 1
+        try:
+            target.trigger()
+        finally:
+            _gui_state['running'] -= 1
+
+    # Later, so this request answers even if the action opens a modal dialog.
+    QTimer.singleShot(0, run)
+    _watch_until_idle()
+    return {'started': True}
+
+
+def m_gui_open(params):
+    """Open the shadow library (reopening it if Magnitide rebuilt it) and load
+    the GUI plugins; returns their menus."""
+    ensure_qt()
+
+    def go():
+        _open_library(params['library'])
+        errors = _load_plugins(params.get('plugins') or [])
+        return {'actions': _actions(), 'errors': errors}
+
+    return on_main(go)
+
+
+def m_gui_close(params):
+    """Close the shadow library so Magnitide can rebuild it. Refused while a
+    plugin is working."""
+    if 'invoker' not in _qt:
+        return {'closed': True}
+
+    def go():
+        if _gui is None or _gui.db is None:
+            return {'closed': True}
+        if _busy():
+            return {'closed': False}
+        _gui.db.close()
+        _gui.db._magnitide_closed = True
+        return {'closed': True}
+
+    return on_main(go)
+
+
+def m_gui_actions(params):
+    if 'invoker' not in _qt:
+        return {'actions': []}
+    return on_main(lambda: {'actions': _actions() if _gui is not None else []})
+
+
+def m_gui_trigger(params):
+    ensure_qt()
+    return on_main(
+        lambda: _trigger(params['plugin'], params.get('path') or [], params.get('texts') or [], params.get('selection') or [])
+    )
+
+
+def m_gui_busy(params):
+    if 'invoker' not in _qt:
+        return {'busy': False}
+    return on_main(lambda: {'busy': _gui is not None and _busy()})
+
+
+METHODS = {
+    'hello': m_hello,
+    'inspect': m_inspect,
+    'identify': m_identify,
+    'cover': m_cover,
+    'gui_open': m_gui_open,
+    'gui_close': m_gui_close,
+    'gui_actions': m_gui_actions,
+    'gui_trigger': m_gui_trigger,
+    'gui_busy': m_gui_busy,
+}
 
 
 def handle(request):
@@ -269,7 +1017,7 @@ def handle(request):
         send({'id': rid, 'error': f'{type(e).__name__}: {e}'.strip()})
 
 
-def main():
+def read_requests():
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -282,6 +1030,22 @@ def main():
             send({'id': request.get('id'), 'result': None})
             break
         threading.Thread(target=handle, args=(request,), daemon=True).start()
+    # stdin closed or shutdown: stop Qt, if it's running, and the main loop.
+    app = _qt.get('app')
+    if app is not None:
+        _qt['invoker'].call.emit(app.quit)
+    _main_calls.put(None)
+
+
+def main():
+    # Requests are read on a thread; the main thread is kept for Qt, which
+    # starts the first time a GUI plugin needs it.
+    threading.Thread(target=read_requests, daemon=True).start()
+    while True:
+        fn = _main_calls.get()
+        if fn is None:
+            break
+        fn()
 
 
 main()
