@@ -751,7 +751,7 @@ function About() {
       <h3 class="mt-4 font-serif text-2xl font-semibold">Magnitide</h3>
       <Show when={version()}>{(v) => <div class="mt-1 text-xs text-muted">Version {v()}</div>}</Show>
       <p class="mt-4 max-w-sm text-sm text-muted">
-        An AI-free ebook library manager. Opens calibre libraries read-only, and imports them into Magnitide libraries
+        A fast ebook library manager. Opens calibre libraries read-only, and imports them into Magnitide libraries
         without changing them.
       </p>
       <p class="mt-4 text-xs text-faint">Licensed under the GNU GPL v3 or later.</p>

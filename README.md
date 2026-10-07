@@ -1,8 +1,29 @@
-# magnitide
+# Magnitide
 
-An AI-free ebook library manager that works with existing calibre libraries.
+A fast, modern ebook library manager that starts from the calibre library you already have.
 
-How the pieces fit, and the decisions behind them: [docs/architecture.md](docs/architecture.md).
+Magnitide opens your calibre library as it is, read-only, so calibre keeps working alongside it. When you're ready
+to edit, import it into a Magnitide library of its own: books are copied as copy-on-write clones where the disk
+supports it (no extra space on APFS, Btrfs or XFS), and your custom columns come too. Underneath is a native Rust
+core with a Tauri desktop app, built to stay quick with 50,000 books and more.
+
+## What it does
+
+- **Browse and find.** Covers or a sortable, resizable table; search with `author:`, `tag:`, `series:` and your own
+  fields (`#pages:300`); shelves of your own; a details panel with everything about a book.
+- **Edit.** One book or many at once, including author sort names, omnibus editions, several series per book and
+  custom fields. Find Metadata looks books up on Open Library and Google Books and lets you take what you want field
+  by field. Folders and file names follow your edits, and metadata can be written back into EPUB files.
+- **Add books.** Drag and drop EPUB, MOBI, AZW3 and more, with their metadata and covers.
+- **E-readers.** Kobo, Kindle and other devices show up when plugged in. Books go over in the format each reads
+  best, converted from EPUB to KEPUB or AZW3 natively (calibre is only a fallback), and shelves become collections
+  on a Kobo, for Kobo's own app and KOReader alike.
+- **On your network.** An optional library server with an OPDS catalogue for reading apps, a simple page for
+  e-reader browsers, and KOReader progress sync.
+- **Make it yours.** Themes (light, dark, sepia, Catppuccin, Dracula and more), accent colours, and interface size.
+
+Magnitide is in active development: the [roadmap](#roadmap) tracks what's done and what's next. How the pieces fit,
+and the decisions behind them: [docs/architecture.md](docs/architecture.md).
 
 ## Crates
 
@@ -45,9 +66,10 @@ cargo tauri dev                  # live reload: UI changes appear on save, Rust 
 cargo tauri build --bundles app  # release Magnitide.app in target/release/bundle/macos/
 ```
 
-It opens the library calibre last used, falling back to `~/Calibre Library`.
-Click the library name in the top-left to open a different one. The library
-is only ever read; cover thumbnails are cached in the app's cache folder
+It opens the library you used last, or else the one calibre last used, falling
+back to `~/Calibre Library`. Click the library name in the top-left to open a
+different one. calibre libraries are only ever read; Magnitide libraries are
+yours to edit. Cover thumbnails are cached in the app's cache folder
 (`~/Library/Caches/dev.magnitide.app` on macOS).
 
 Keys: `/` or ⌘F search · ⌘, settings · ⌘1 covers, ⌘2 list · arrows move · ⌘-click / Shift-click / ⌘A select several · Enter opens details · ⌘E edits · double-click or ⌘O opens the book in its default app · Esc closes.
@@ -116,7 +138,7 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Custom fields: make, rename and delete them (Settings › Library), see them in the details panel and as list columns, edit them with a book or several at once, sort and search by them (`#pages:300`). calibre libraries’ custom columns show too, read-only
 - [x] File name clean-up: names follow edits, and Settings → Library → "Tidy file names" fixes drifted books and reports files missing from disk
 - [x] Write metadata and covers back into EPUB/KEPUB files (details panel "Write to file", Settings → Library for every book, optional write on save); only files that differ are rewritten
-- [x] Metadata lookup from Open Library and Google Books (your own API key) with a field-by-field matching dialog: "Find Metadata…" in the edit window, sources in Settings → Metadata Sources. On request only; ranking is plain string matching, no AI
+- [x] Metadata lookup from Open Library and Google Books (your own API key) with a field-by-field matching dialog: "Find Metadata…" in the edit window, sources in Settings → Metadata Sources. On request only; ranking is plain string matching
 - [x] E-reader detection (Kobo, Kindle, any calibre-managed USB device): plugged-in devices appear in the top bar, books on them get an "On Device" column, a cover badge and a line in the details panel, and the list can be filtered to books on or not on a device. Matched by calibre's uuid, ISBN, identical file, then title and author; Eject from the device menu
 - [x] File transfer: send selected books to a device (the format it reads best; EPUBs get the library's metadata, cover and id written into the copy), remove them (with KOReader's notes), and add a device's other files to the library
 - [x] Format conversion: "Convert…" in the details panel and selection bar adds the new format to the book. EPUB → KEPUB (Kobo spans, like kepubify) and EPUB → AZW3 are built in; MOBI, PDF and others use calibre's `ebook-convert` when installed (detected, never bundled). Sending converts on the way when a device's default format is missing, or when a Kindle gets an EPUB-only book
