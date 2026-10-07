@@ -3,7 +3,7 @@
 //! Nothing here runs unless the user asks (a "Find Metadata" search, a cover
 //! download). Requests carry only what was searched for, identify Magnitide
 //! by name, and are throttled per host. Results are ranked by plain string
-//! matching ([`magnitide_catalog::matching`]); no learned or AI ranking.
+//! matching ([`magnitide_catalog::matching`]); no learned ranking.
 //!
 //! Results come back as raw records; descriptions are untrusted HTML and
 //! must be sanitized before display.
