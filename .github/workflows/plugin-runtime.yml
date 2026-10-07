@@ -27,6 +27,7 @@ on:
 
 permissions:
   contents: write
+  actions: read  # another run's artifacts, for `artifacts_from`
 
 jobs:
   plan:
