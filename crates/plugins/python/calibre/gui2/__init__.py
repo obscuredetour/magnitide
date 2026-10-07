@@ -8,7 +8,6 @@ and `icon_from_name` give a drawn stand-in (a plugin's own images, through
 `get_icons`, are its own).
 """
 
-import json
 import os
 import sys
 import weakref
@@ -283,49 +282,20 @@ def icon_from_name(name, fallback_data=b''):
     return ans
 
 
-_lucide_map = None
-
-
 def _lucide_icon(name):
-    """calibre's built-in icon names drawn with Magnitide's icon set: the
-    mapping in resources/images/calibre-icons.json, the SVGs beside it,
-    coloured with the palette's text colour."""
-    global _lucide_map
-    if _lucide_map is None:
-        _lucide_map = {}
-        try:
-            with open(P('images/calibre-icons.json'), encoding='utf-8') as f:  # noqa: F821
-                _lucide_map = json.load(f).get('icons', {})
-        except Exception:
-            pass
-    base = name[:-4] if name.endswith('.png') else name
-    lucide = _lucide_map.get(base)
-    if not lucide:
-        return None
-    path = P(f'images/lucide/{lucide}.svg')  # noqa: F821
-    if not os.path.exists(path):
-        return None
-    try:
-        from qt.core import QApplication, QPainter, QPalette, QPixmap, QSvgRenderer
+    """calibre's built-in icon names drawn with Magnitide's icon set (see
+    `calibre.utils.lucide_icons`), at the sizes menus and buttons use."""
+    from calibre.utils.lucide_icons import render, svg_path
 
-        with open(path, encoding='utf-8') as f:
-            svg = f.read()
-        app = QApplication.instance()
-        colour = app.palette().color(QPalette.ColorRole.WindowText).name() if app is not None else '#000000'
-        renderer = QSvgRenderer(svg.replace('currentColor', colour).encode('utf-8'))
-        if not renderer.isValid():
-            return None
-        ans = QIcon()
-        for size in (16, 24, 32, 48, 64):
-            pm = QPixmap(size, size)
-            pm.fill(Qt.GlobalColor.transparent)
-            p = QPainter(pm)
-            renderer.render(p)
-            p.end()
-            ans.addPixmap(pm)
-        return ans
-    except Exception:
+    if svg_path(name) is None:
         return None
+    ans = QIcon()
+    for size in (16, 24, 32, 48, 64):
+        img = render(name, size)
+        if img is None:
+            return None
+        ans.addPixmap(QPixmap.fromImage(img))
+    return ans
 
 
 class IconResourceManager:

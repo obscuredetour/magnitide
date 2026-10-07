@@ -40,3 +40,18 @@ def test_calibre_icon_names_draw_with_lucide(qapp):
     assert QIcon.ic('search.png').pixmap(24, 24).width() == 24
     # Unmapped names still get the drawn stand-in rather than nothing.
     assert not icon_from_name('no-such-icon.png').isNull()
+
+
+def test_i_gives_a_real_file_for_calibre_icon_names(qapp):
+    import os
+
+    from calibre.utils.resources import get_image_path as I  # the I() built-in
+    from qt.core import QIcon, QPixmap
+
+    path = I('dialog_information.png')
+    assert os.path.exists(path) and path.endswith('.png')
+    assert not QIcon(path).isNull() and not QPixmap(path).isNull()
+    assert I('dialog_information.png') == path, 'rendered once'
+    with open(I('config.png'), 'rb') as f:
+        assert f.read(8) == b'\x89PNG\r\n\x1a\n'
+    assert not os.path.exists(I('no-such-icon.png')), 'unmapped names stay missing, as calibre would report'

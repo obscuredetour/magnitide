@@ -2,9 +2,11 @@
 `I()`, which calibre installs as built-ins for finding resource files.
 
 Magnitide ships few of calibre's resources: the tweaks file, mime types
-and language data. `I()` for calibre's icon names gives a path that doesn't
-exist; `QIcon.ic()` draws a stand-in for those (see `calibre.gui2`). A
-`resources/` folder under the user's config folder overrides, as in calibre.
+and language data. calibre's icon names are drawn with Magnitide's icon
+set (`calibre.utils.lucide_icons`): `I('config.png')` is a rendered PNG in
+the cache folder, and `QIcon.ic()` draws unmapped names as a stand-in (see
+`calibre.gui2`). A `resources/` folder under the user's config folder
+overrides, as in calibre.
 """
 
 import builtins
@@ -67,7 +69,19 @@ def get_path(path, data=False, allow_user_override=True):
 def get_image_path(path, data=False, allow_user_override=True):
     if not path:
         return get_path('images', allow_user_override=allow_user_override)
-    return get_path('images/' + path, data=data, allow_user_override=allow_user_override)
+    fpath = _resolver('images/' + path, allow_user_override=allow_user_override)
+    if not os.path.exists(fpath):
+        # calibre's own icons, drawn with Magnitide's icon set: a PNG that
+        # exists, so QIcon(I('config.png')) and open(I(...)) work.
+        from calibre.utils.lucide_icons import png_path
+
+        rendered = png_path(path)
+        if rendered is not None:
+            fpath = rendered
+    if data:
+        with open(fpath, 'rb') as f:
+            return f.read()
+    return fpath
 
 
 def get_user_path(path):
