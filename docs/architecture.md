@@ -1,6 +1,6 @@
 # Magnitide architecture
 
-Magnitide is an AI-free ebook library manager: a faster, redesigned
+Magnitide is an ebook library manager: a faster, redesigned
 alternative to calibre that can import calibre libraries and, later, serve
 them on a network the way calibre's Content Server and Calibre-Web do.
 
