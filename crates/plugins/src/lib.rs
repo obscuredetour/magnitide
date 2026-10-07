@@ -23,7 +23,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-pub use gui::{MenuItem, PluginMenu, PluginMenus};
+pub use gui::{DEFAULT_OUTPUT_FORMAT, MenuItem, PluginMenu, PluginMenus};
 pub use host::{EventHandler, Host};
 
 /// Inspecting a zip loads the plugin's code, which can take a moment.
@@ -75,7 +75,7 @@ pub struct Installed {
 /// calibre plugins: the installed list, and the host that runs them.
 pub struct Plugins {
     /// `<app config>/calibre-plugins`: `plugins/*.zip`, `plugins.json`,
-    /// and `config/` (calibre's config folder for the plugins).
+    /// `settings.json`, and `config/` (calibre's config folder for the plugins).
     dir: PathBuf,
     /// Finds calibre's `calibre-debug` (looked up again when the host starts,
     /// so installing calibre later works without restarting Magnitide).

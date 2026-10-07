@@ -348,6 +348,9 @@ export const api = {
   /** Magnitide's editor closed, or its delete finished, for a plugin waiting on it (`onPluginAsk`). */
   pluginAnswer: (token: number, kind: string, ids: number[]) => invoke<void>('plugin_answer', { token, kind, ids }),
 
+  /** What books are converted to when a plugin asks (calibre's output format). */
+  setPluginOutputFormat: (format: string) => invoke<void>('set_plugin_output_format', { format }),
+
   /** The plugin host's recent output (what plugins printed, tracebacks). */
   pluginLog: () => invoke<string[]>('plugin_log'),
 

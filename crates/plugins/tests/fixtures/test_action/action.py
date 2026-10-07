@@ -54,6 +54,7 @@ class TestAction(InterfaceAction):
         add('new_edit', 'New book, then edit it', self.new_then_edit)
         add('remove', 'Remove selected', self.remove_selected)
         add('apply', 'Apply metadata changes', self.apply_changes)
+        add('convert', 'Auto-convert selected', self.auto_convert)
         sub = m.addMenu('More')
         off = sub.addAction('Unavailable')
         off.setEnabled(False)
@@ -149,3 +150,10 @@ class TestAction(InterfaceAction):
             self.gui.status_bar.show_message(f'Applied to {len(applied)}', 3000)
 
         self.gui.iactions['Edit Metadata'].apply_metadata_changes(id_map, callback=done)
+
+    def auto_convert(self):
+        """As FanFicFare does after downloading: convert to the output format."""
+        from calibre.utils.config import prefs
+
+        self.gui.iactions['Convert Books'].auto_convert_auto_add(self.selected())
+        self.gui.status_bar.show_message(f'Converting to {prefs["output_format"].upper()}', 3000)

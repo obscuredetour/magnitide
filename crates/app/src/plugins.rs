@@ -59,6 +59,17 @@ pub struct PluginDone {
     report: Option<ApplyReport>,
     /// Its changes couldn't be read back or applied.
     error: Option<String>,
+    /// Conversions it asked for (calibre's Convert Books), for the app to run now.
+    convert: Vec<PluginConversion>,
+}
+
+/// Books a plugin asked to have converted, and to what.
+#[derive(Clone, Serialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginConversion {
+    format: String,
+    ids: Vec<BookId>,
 }
 
 #[derive(Clone, Serialize, TS)]
@@ -86,6 +97,8 @@ struct Built {
     ids: HashMap<BookId, BookId>,
     /// What this run has applied so far (reported when the plugin is done).
     report: ApplyReport,
+    /// Conversions this run asked for, by format, in shadow ids.
+    conversions: Vec<(String, Vec<BookId>)>,
 }
 
 impl Built {
@@ -106,6 +119,8 @@ pub struct PluginsStatus {
     /// None: calibre isn't installed, so plugins can't run.
     calibre: Option<Calibre>,
     plugins: Vec<Installed>,
+    /// What books are converted to when a plugin asks (calibre's output format).
+    output_format: String,
 }
 
 /// Plugins live in `<app config>/calibre-plugins`; calibre is found where
@@ -132,7 +147,9 @@ fn on_event(app: &AppHandle, e: Value) {
                     Ok(report) => (report, None),
                     Err(e) => (None, Some(e)),
                 };
-                let _ = app.emit(PLUGIN_DONE_EVENT, PluginDone { plugin: plugin.unwrap_or_default(), report, error });
+                let convert = take_conversions(&app);
+                let _ = app
+                    .emit(PLUGIN_DONE_EVENT, PluginDone { plugin: plugin.unwrap_or_default(), report, error, convert });
             });
         }
         Some(kind @ ("gui-status" | "gui-error")) => {
@@ -145,6 +162,17 @@ fn on_event(app: &AppHandle, e: Value) {
             let (app, ids) = (app.clone(), ids_of(&e));
             tauri::async_runtime::spawn_blocking(move || {
                 let _ = app.emit(PLUGIN_SELECT_EVENT, to_library(&app, &ids));
+            });
+        }
+        Some("gui-convert") => {
+            // Run when the plugin is done, once the books it added are in the library.
+            let (app, ids, format) = (app.clone(), ids_of(&e), text("format").unwrap_or_default());
+            tauri::async_runtime::spawn_blocking(move || {
+                let state = app.state::<PluginLibrary>();
+                let mut built = state.0.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(b) = built.as_mut() {
+                    b.conversions.push((format, ids));
+                }
             });
         }
         Some("gui-ask") => {
@@ -182,6 +210,22 @@ fn to_library(app: &AppHandle, ids: &[BookId]) -> Vec<BookId> {
     let state = app.state::<PluginLibrary>();
     let built = state.0.lock().unwrap_or_else(|e| e.into_inner());
     ids.iter().map(|&id| built.as_ref().map_or(id, |b| b.to_library(id))).collect()
+}
+
+/// The conversions the run asked for, as library ids, merged by format.
+fn take_conversions(app: &AppHandle) -> Vec<PluginConversion> {
+    let state = app.state::<PluginLibrary>();
+    let mut built = state.0.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(b) = built.as_mut() else { return Vec::new() };
+    let mut out: Vec<PluginConversion> = Vec::new();
+    for (format, ids) in std::mem::take(&mut b.conversions) {
+        let ids: Vec<BookId> = ids.into_iter().map(|id| b.to_library(id)).collect();
+        match out.iter_mut().find(|c| c.format == format) {
+            Some(c) => c.ids.extend(ids.into_iter().filter(|id| !c.ids.contains(id)).collect::<Vec<_>>()),
+            None => out.push(PluginConversion { format, ids }),
+        }
+    }
+    out
 }
 
 /// The plugin is done: catch up, and report everything this run applied.
@@ -297,6 +341,7 @@ fn prepare(app: &AppHandle, reuse: bool) -> CmdResult<PluginMenus> {
             baseline: lib.catalog.clone(),
             ids: HashMap::new(),
             report: ApplyReport::default(),
+            conversions: Vec::new(),
         });
     }
     let library = built.as_ref().map(|b| b.shadow.library()).ok_or("no plugin library")?;
@@ -403,7 +448,14 @@ async fn blocking<T: Send + 'static>(
 
 #[tauri::command]
 pub async fn plugins_status(app: AppHandle) -> CmdResult<PluginsStatus> {
-    blocking(app, |p| Ok(PluginsStatus { calibre: p.calibre(), plugins: p.list() })).await
+    blocking(app, |p| Ok(PluginsStatus { calibre: p.calibre(), plugins: p.list(), output_format: p.output_format() }))
+        .await
+}
+
+/// Set what books are converted to when a plugin asks.
+#[tauri::command]
+pub async fn set_plugin_output_format(app: AppHandle, format: String) -> CmdResult<()> {
+    blocking(app, move |p| p.set_output_format(&format)).await
 }
 
 /// Install a calibre plugin zip (or update one already installed).

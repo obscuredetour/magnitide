@@ -9,4 +9,8 @@ export type PluginsStatus = {
 /**
  * None: calibre isn't installed, so plugins can't run.
  */
-calibre: Calibre | null, plugins: Array<Installed>, };
+calibre: Calibre | null, plugins: Array<Installed>, 
+/**
+ * What books are converted to when a plugin asks (calibre's output format).
+ */
+outputFormat: string, };

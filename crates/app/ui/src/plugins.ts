@@ -22,7 +22,7 @@ import { type JobHandle, recordJob, startJob } from './jobs';
 import { editBooks, openEditor, untilEditorsClosed } from './editor';
 import { refresh, selectBooks, setEditRevision } from './library';
 import { toast } from './toast';
-import { deleteBooks } from './transfer';
+import { convertBooks, deleteBooks } from './transfer';
 
 /** The GUI plugins that are on, by name; known without starting calibre. */
 const [guiPlugins, setGuiPlugins] = createSignal<string[]>([]);
@@ -122,6 +122,7 @@ export function initPlugins(): void {
       ...(r?.warnings ?? []),
       ...(r ? said.map((m) => `It said: ${m}`) : said.slice(0, -1).map((m) => `It said: ${m}`)),
       ...errors.map((e) => `Error: ${e}`),
+      ...d.convert.map((c) => `Asked to convert ${plural(c.ids.length, 'book')} to ${c.format}`),
     ];
     const error = !!d.error || !!r?.failed.length || (!!errors.length && !r);
     if (run) run.job.finish(text, { error, details });
@@ -131,6 +132,8 @@ export function initPlugins(): void {
       toast(`${d.plugin} removed ${plural(r.removed.length, 'book')}`);
       await deleteBooks(r.removed);
     }
+    // calibre's Convert Books is Magnitide's: each runs as its own job.
+    for (const c of d.convert) await convertBooks(c.ids, c.format);
   });
   void onPluginMessage((m) => {
     const run = m.plugin ? running.get(m.plugin) : undefined;

@@ -133,7 +133,7 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] Interface size: Settings → Appearance (80–200% in steps; a new size asks to be kept and reverts by itself after 15 s, like a display resolution), or ⌘+ / ⌘− / ⌘0 (View menu on macOS). The whole window zooms, remembered per device; the macOS title bar stays native size, and the window's minimum size grows with it so the toolbar always fits
 - [x] Keyboard shortcuts shown the platform's way (⌘E on macOS, Ctrl+E elsewhere), all listed in Settings → Keyboard Shortcuts
 - [x] calibre plugins, step 1: Settings → Plugins installs calibre plugin zips, run in your installed calibre with their own settings; metadata-source plugins are asked in Find Metadata alongside the built-in sources (survey and plan: [docs/calibre-plugins.md](docs/calibre-plugins.md))
-- [ ] calibre plugins, step 2: GUI plugins (EmbedComicMetadata, EpubSplit, EpubMerge, Count Pages, Comments Cleaner) on a calibre-format shadow library. In progress: GUI plugins run from the toolbar's Plugins button and the book menu, their changes come back into the library, and calibre's Edit Metadata and Remove Books are Magnitide's; Convert Books and the rest aren't mapped yet
+- [ ] calibre plugins, step 2: GUI plugins (EmbedComicMetadata, EpubSplit, EpubMerge, Count Pages, Comments Cleaner) on a calibre-format shadow library. In progress: GUI plugins run from the toolbar's Plugins button and the book menu, their changes come back into the library, and calibre's Edit Metadata, Remove Books and Convert Books are Magnitide's; the rest of calibre's actions aren't mapped yet
 - [ ] calibre plugins, step 3: Ebook Translator, FanFicFare, Goodreads Sync
 - [ ] Find Duplicates, built in
 - [ ] Built-in reader

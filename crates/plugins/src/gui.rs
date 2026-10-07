@@ -77,7 +77,11 @@ impl Plugins {
     pub fn gui_open(&self, library: &Path) -> Result<PluginMenus, String> {
         let plugins = self.gui_plugins();
         let paths: Vec<_> = plugins.iter().map(|p| self.path_of(p)).collect();
-        let reply = self.host()?.call("gui_open", json!({ "library": library, "plugins": paths }), OPEN_TIMEOUT)?;
+        let reply = self.host()?.call(
+            "gui_open",
+            json!({ "library": library, "plugins": paths, "outputFormat": self.output_format() }),
+            OPEN_TIMEOUT,
+        )?;
         let menus: Vec<PluginMenu> =
             serde_json::from_value(reply.get("actions").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
         let errors = reply
@@ -129,7 +133,44 @@ impl Plugins {
     }
 }
 
+/// The format books are converted to when a plugin asks (calibre's "output
+/// format", e.g. FanFicFare converting what it downloads).
+pub const DEFAULT_OUTPUT_FORMAT: &str = "EPUB";
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Settings {
+    output_format: Option<String>,
+}
+
 impl Plugins {
+    fn settings_path(&self) -> std::path::PathBuf {
+        self.dir.join("settings.json")
+    }
+
+    fn settings(&self) -> Settings {
+        std::fs::read(self.settings_path()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    }
+
+    /// What books are converted to when a plugin asks (upper case, e.g. "AZW3").
+    pub fn output_format(&self) -> String {
+        self.settings().output_format.unwrap_or_else(|| DEFAULT_OUTPUT_FORMAT.into())
+    }
+
+    /// Set it. Plugins see it as calibre's output format from their next run.
+    pub fn set_output_format(&self, format: &str) -> Result<(), String> {
+        let format = format.trim().to_uppercase();
+        if format.is_empty() || !format.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return Err(format!("“{format}” isn't a book format"));
+        }
+        let settings = Settings { output_format: Some(format) };
+        std::fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
+        let tmp = self.dir.join(".settings.json.tmp");
+        std::fs::write(&tmp, serde_json::to_vec_pretty(&settings).map_err(|e| e.to_string())?)
+            .and_then(|()| std::fs::rename(&tmp, self.settings_path()))
+            .map_err(|e| e.to_string())
+    }
+
     /// Answer a plugin waiting on Magnitide (a `gui-ask` event, for calibre's
     /// Edit Metadata or Remove Books): `answer` holds the books as saved
     /// (`{"books": {shadow id: book}}`, a book as Magnitide's catalog has it,
@@ -153,6 +194,17 @@ impl Plugins {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn output_format_setting() {
+        let dir = tempfile::tempdir().unwrap();
+        let plugins = Plugins::new(dir.path().into(), || None);
+        assert_eq!(plugins.output_format(), "EPUB");
+        plugins.set_output_format("azw3").unwrap();
+        assert_eq!(plugins.output_format(), "AZW3");
+        assert!(plugins.set_output_format("../x").is_err());
+        assert_eq!(Plugins::new(dir.path().into(), || None).output_format(), "AZW3", "kept");
+    }
 
     #[test]
     fn reads_the_hosts_menus() {

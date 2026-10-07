@@ -1082,6 +1082,9 @@ const PLUGIN_KINDS: Record<PluginKind, string> = {
   other: 'Other',
 };
 
+/** What a plugin's conversions can produce (natively, or with calibre, which plugins need anyway). */
+const PLUGIN_OUTPUT_FORMATS = ['EPUB', 'KEPUB', 'AZW3', 'MOBI', 'PDF', 'DOCX', 'TXT'];
+
 /** The kinds Magnitide runs; the rest are kept for when it can. */
 const SUPPORTED_PLUGIN_KINDS: PluginKind[] = ['metadataSource', 'interfaceAction'];
 
@@ -1153,6 +1156,25 @@ function PluginSettings() {
               <button class={button} disabled={!s().calibre || busy()} onClick={() => void add()}>
                 {busy() ? 'Adding…' : 'Add Plugin…'}
               </button>
+            </Row>
+            <Row
+              label="Plugin conversions"
+              description="When a plugin converts books (FanFicFare after downloading, say), they're converted to this. Plugins see it as calibre's output format."
+            >
+              <select
+                class="h-7 rounded-control border border-line bg-field px-2 text-xs"
+                aria-label="Format plugins convert to"
+                value={s().outputFormat}
+                onChange={(e) => {
+                  const format = e.currentTarget.value;
+                  api.setPluginOutputFormat(format).then(
+                    () => mutate({ ...s(), outputFormat: format }),
+                    (err) => toast(errorMessage(err), { error: true }),
+                  );
+                }}
+              >
+                <For each={PLUGIN_OUTPUT_FORMATS}>{(f) => <option value={f}>{f}</option>}</For>
+              </select>
             </Row>
             <Show
               when={s().plugins.length}

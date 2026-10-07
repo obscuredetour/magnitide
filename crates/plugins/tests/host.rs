@@ -356,4 +356,28 @@ fn calibres_edit_metadata_and_remove_books_are_magnitides() {
     let dune = changes.books.iter().find(|b| b.id == 1).unwrap();
     assert_eq!(dune.fields.publisher, Some(Some("Plugin Press".into())));
     assert_eq!(dune.fields.tags.as_deref(), Some(&["Applied".to_owned()][..]));
+
+    // Convert Books: the output format is Magnitide's setting; conversions
+    // are asked for (Magnitide runs them), not done in calibre.
+    plugins.set_output_format("txt").unwrap();
+    plugins.gui_open(&shadow.library()).unwrap();
+    trigger("Auto-convert selected", &[1, 3]);
+    let (convert, _) = wait_for(&plugins, &events, "gui-convert", &|_| Value::Null);
+    assert_eq!((&convert["ids"], convert["format"].as_str()), (&serde_json::json!([1, 3]), Some("TXT")));
+    let (status, _) = wait_for(&plugins, &events, "gui-status", &|_| Value::Null);
+    assert_eq!(status["message"], "Converting to TXT", "plugins see Magnitide's setting as calibre's");
+    wait_for(&plugins, &events, "gui-idle", &|_| Value::Null);
+    // Books that have the format already aren't converted again.
+    plugins.set_output_format("EPUB").unwrap();
+    plugins.gui_open(&shadow.library()).unwrap();
+    trigger("Auto-convert selected", &[1]);
+    let mut seen = Vec::new();
+    loop {
+        let e = events.recv_timeout(Duration::from_secs(60)).expect("the plugin finishes");
+        seen.push(e["event"].as_str().unwrap_or_default().to_owned());
+        if e["event"] == "gui-idle" {
+            break;
+        }
+    }
+    assert!(seen.contains(&"gui-status".to_owned()) && !seen.contains(&"gui-convert".to_owned()), "{seen:?}");
 }

@@ -728,6 +728,41 @@ class RemoveBooks:
         return Inert(f"gui.iactions['Remove Books'].{name}")
 
 
+class ConvertBooks:
+    """calibre's Convert Books action: conversions a plugin asks for are
+    Magnitide's, run when the plugin is done (after the books it added are
+    in the library). Like calibre's, these calls return at once."""
+
+    def __init__(self, gui):
+        self.gui = gui
+        self.name = 'Convert Books'
+
+    def _queue(self, book_ids, fmt, skip_if_present=True):
+        db = self.gui.current_db.new_api
+        fmt = fmt.upper()
+        ids = [i for i in book_ids if db.has_id(i) and not (skip_if_present and fmt in db.formats(i))]
+        if ids:
+            event('gui-convert', plugin=_gui_state.get('plugin'), ids=ids, format=fmt)
+
+    def auto_convert_auto_add(self, book_ids):
+        """To the output format, for books that don't have it (FanFicFare)."""
+        from calibre.gui2 import gprefs
+        from calibre.utils.config import prefs
+
+        self._queue(book_ids, prefs['output_format'], skip_if_present=not gprefs['auto_convert_same_fmt'])
+
+    def auto_convert(self, book_ids, on_card, format):
+        self._queue(book_ids, format)
+
+    def convert_ebooks_to_format(self, book_ids, to_fmt):
+        self._queue(book_ids, to_fmt)
+
+    def __getattr__(self, name):
+        if name.startswith('__'):
+            raise AttributeError(name)
+        return Inert(f"gui.iactions['Convert Books'].{name}")
+
+
 _gui = None
 _gui_state = {'running': 0, 'plugin': None, 'watching': False, 'changed': False}
 _loaded = {}  # zip path -> the plugin's InterfaceAction
@@ -867,7 +902,9 @@ def _build_gui():
             self.db = None
             self.library_path = None
             self.keyboard = Manager(self)
-            self.iactions = Actions({'Edit Metadata': EditMetadata(self), 'Remove Books': RemoveBooks(self)})
+            self.iactions = Actions(
+                {'Edit Metadata': EditMetadata(self), 'Remove Books': RemoveBooks(self), 'Convert Books': ConvertBooks(self)}
+            )
             self.status_bar = StatusBar()
             self.job_manager = JobManager()
             self.library_view = LibraryView(self)
@@ -1108,6 +1145,12 @@ def m_gui_open(params):
     ensure_qt()
 
     def go():
+        if params.get('outputFormat'):
+            from calibre.utils.config import prefs
+
+            # Magnitide's setting, where plugins (and Convert Books) look for it.
+            if prefs['output_format'] != params['outputFormat'].lower():
+                prefs['output_format'] = params['outputFormat'].lower()
         _open_library(params['library'])
         errors = _load_plugins(params.get('plugins') or [])
         return {'actions': _actions(), 'errors': errors}

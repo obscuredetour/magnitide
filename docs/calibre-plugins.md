@@ -157,12 +157,19 @@ calibre-format writer.
      re-encoded), measures from there, and lets the plugin go on with it.
      `apply_metadata_changes` (kiwidude's plugins) runs calibre's own logic
      on the shadow.
+   - **calibre's Convert Books is Magnitide's.** `auto_convert_auto_add`
+     (FanFicFare, after downloading), `auto_convert` and
+     `convert_ebooks_to_format` return at once, as calibre's do; the
+     conversions run as Magnitide jobs when the plugin is done, after the
+     books it added are in the library. The format is a Magnitide setting
+     (Settings › Plugins), which plugins also see as calibre's
+     `output_format`.
 
    Still to do in this step:
    - Stand-ins for the rest of calibre's own actions plugins call through
-     `gui.iactions` (Convert Books, Choose Library, Add Books, and Edit
-     Metadata's `download_metadata`), mapped to Magnitide's; today they're
-     inert and logged.
+     `gui.iactions` (Choose Library, Add Books, Edit Metadata's
+     `download_metadata`, Convert Books' conversion dialog), mapped to
+     Magnitide's; today they're inert and logged.
    - Trying the surveyed plugins themselves (their zips aren't in the repo).
    - Creating custom columns in Magnitide for plugins that ask the user to
      (Count Pages): today a column a plugin creates in the shadow comes back,
