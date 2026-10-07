@@ -91,7 +91,7 @@ class Browser(ModernBrowser):
         clone = self.__class__()
         clone.https_handler = self.https_handler
         clone.addheaders = copy.deepcopy(self.addheaders)
-        clone.set_cookiejar(copy.deepcopy(self.cookiejar) if hasattr(self, 'cookiejar') else mechanize.CookieJar())
+        clone.set_cookiejar(copy_cookiejar(self.cookiejar) if hasattr(self, 'cookiejar') else mechanize.CookieJar())
         for func, args, kwargs in self._clone_actions.values():
             func = getattr(clone, func)
             func(*args, **kwargs)
