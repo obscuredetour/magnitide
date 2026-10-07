@@ -15,6 +15,7 @@ import {
   type SourceRecord,
 } from '../api';
 import { Icon } from './Icon';
+import { Select } from './Select';
 import { primaryButton, secondaryButton } from '../buttons';
 import { keys } from '../keys';
 
@@ -629,14 +630,14 @@ function FieldRow(props: {
       <div class="min-w-0" classList={{ 'opacity-60': !props.on }}>
         <Show when={props.sources}>
           {(s) => (
-            <select
-              class="mb-1 h-6 rounded-control border border-line bg-field px-1 text-[11px]"
+            <Select
+              class="mb-1 h-6 pl-1.5 text-[11px]"
               aria-label={`Source for ${props.label.toLowerCase()}`}
               value={props.pick}
               onChange={(e) => props.onPick(Number(e.currentTarget.value))}
             >
               <For each={s()}>{(name, i) => <option value={i()}>{name}</option>}</For>
-            </select>
+            </Select>
           )}
         </Show>
         <div>{props.found}</div>
