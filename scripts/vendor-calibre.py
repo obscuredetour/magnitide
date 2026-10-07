@@ -186,8 +186,12 @@ def copy_tree(src, dest, files):
 def vendor(cfg, source, commit, report_nested):
     out_dir = os.path.join(ROOT, cfg['output']['dir'])
     seen, third, exts = closure(source, cfg, report_nested)
-    missing_exts = sorted(e for e in exts if not os.path.exists(os.path.join(SHIMS, e.split('.')[1] + '.py'))
-                          if e.count('.') >= 1 and e.split('.')[1] not in cfg['closure']['extensions'])
+    missing_exts = sorted(
+        e
+        for e in exts
+        if not os.path.exists(os.path.join(SHIMS, e.split('.')[1] + '.py'))
+        if e.count('.') >= 1 and e.split('.')[1] not in cfg['closure']['extensions']
+    )
     if missing_exts:
         print('warning: no stand-in for', ', '.join(missing_exts), file=sys.stderr)
     if os.path.exists(out_dir):
@@ -222,22 +226,29 @@ def vendor(cfg, source, commit, report_nested):
         else:
             print(f'warning: resource {name} not in the checkout', file=sys.stderr)
     for name in cfg['resources']['generate']:
-        print(f'note: {name} must be generated (calibre\'s setup/iso_codes.py); scripts/plugin-runtime/gen-iso-data.py has the data')
+        print(
+            f"note: {name} must be generated (calibre's setup/iso_codes.py); scripts/plugin-runtime/gen-iso-data.py has the data"
+        )
     # Licence and notices.
     for lic in ('LICENSE', 'COPYRIGHT'):
         src = os.path.join(source.root, lic)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(out_dir, f'{lic}.calibre'))
     with open(os.path.join(out_dir, 'THIRD_PARTY_NOTICES.md'), 'w', encoding='utf-8') as f:
-        f.write('# Third-party notices\n\nThis tree is a subset of calibre, copyright Kovid Goyal and contributors, '
-                f'GPL-3.0 (LICENSE.calibre), taken from {cfg["calibre"]["tag"]} ({commit or "local checkout"}) by '
-                'scripts/vendor-calibre.py. Files listed in VENDOR_MANIFEST.json under "replaced" are Magnitide\'s.\n')
+        f.write(
+            '# Third-party notices\n\nThis tree is a subset of calibre, copyright Kovid Goyal and contributors, '
+            f'GPL-3.0 (LICENSE.calibre), taken from {cfg["calibre"]["tag"]} ({commit or "local checkout"}) by '
+            'scripts/vendor-calibre.py. Files listed in VENDOR_MANIFEST.json under "replaced" are Magnitide\'s.\n'
+        )
     # The manifest.
     manifest = {
-        'tag': cfg['calibre']['tag'], 'commit': commit,
+        'tag': cfg['calibre']['tag'],
+        'commit': commit,
         'files': {rel: sha256(os.path.join(out_dir, rel)) for rel in sorted(set(copied))},
-        'replaced': sorted(cfg['closure']['replace']), 'denied': sorted(cfg['closure']['deny']),
-        'extensions': sorted(exts), 'third_party': {k: sorted(v) for k, v in sorted(third.items())},
+        'replaced': sorted(cfg['closure']['replace']),
+        'denied': sorted(cfg['closure']['deny']),
+        'extensions': sorted(exts),
+        'third_party': {k: sorted(v) for k, v in sorted(third.items())},
         'generated': cfg['resources']['generate'],
     }
     with open(os.path.join(out_dir, 'VENDOR_MANIFEST.json'), 'w', encoding='utf-8') as f:
@@ -253,8 +264,10 @@ def vendor(cfg, source, commit, report_nested):
                 failed.append(f'{rel}: {e.msg}')
     for rel in failed:
         print('does not compile:', rel, file=sys.stderr)
-    print(f'{len(manifest["files"])} files into {os.path.relpath(out_dir, ROOT)}; third-party: '
-          f'{", ".join(sorted(third)) or "none"}; extensions: {len(exts)}')
+    print(
+        f'{len(manifest["files"])} files into {os.path.relpath(out_dir, ROOT)}; third-party: '
+        f'{", ".join(sorted(third)) or "none"}; extensions: {len(exts)}'
+    )
     return 1 if failed else 0
 
 
@@ -266,8 +279,11 @@ def check(cfg):
         return 0
     with open(path, encoding='utf-8') as f:
         manifest = json.load(f)
-    bad = [rel for rel, h in manifest['files'].items()
-           if not os.path.exists(os.path.join(out_dir, rel)) or sha256(os.path.join(out_dir, rel)) != h]
+    bad = [
+        rel
+        for rel, h in manifest['files'].items()
+        if not os.path.exists(os.path.join(out_dir, rel)) or sha256(os.path.join(out_dir, rel)) != h
+    ]
     for rel in bad:
         print('changed or missing:', rel, file=sys.stderr)
     return 1 if bad else 0

@@ -8,6 +8,7 @@ and `icon_from_name` give a drawn stand-in (a plugin's own images, through
 `get_icons`, are its own).
 """
 
+import json
 import os
 import sys
 import weakref
@@ -264,8 +265,11 @@ def icon_from_name(name, fallback_data=b''):
     if ans is not None:
         return ans
     path = I(name)  # noqa: F821 (built-in from calibre.utils.resources)
+    lucide = _lucide_icon(name)
     if os.path.exists(path):
         ans = QIcon(path)
+    elif lucide is not None:
+        ans = lucide
     elif fallback_data:
         pm = QPixmap()
         pm.loadFromData(fallback_data)
@@ -277,6 +281,51 @@ def icon_from_name(name, fallback_data=b''):
         ans = QIcon(_placeholder_pixmap(name))
     _icon_cache[name] = ans
     return ans
+
+
+_lucide_map = None
+
+
+def _lucide_icon(name):
+    """calibre's built-in icon names drawn with Magnitide's icon set: the
+    mapping in resources/images/calibre-icons.json, the SVGs beside it,
+    coloured with the palette's text colour."""
+    global _lucide_map
+    if _lucide_map is None:
+        _lucide_map = {}
+        try:
+            with open(P('images/calibre-icons.json'), encoding='utf-8') as f:  # noqa: F821
+                _lucide_map = json.load(f).get('icons', {})
+        except Exception:
+            pass
+    base = name[:-4] if name.endswith('.png') else name
+    lucide = _lucide_map.get(base)
+    if not lucide:
+        return None
+    path = P(f'images/lucide/{lucide}.svg')  # noqa: F821
+    if not os.path.exists(path):
+        return None
+    try:
+        from qt.core import QApplication, QPainter, QPalette, QPixmap, QSvgRenderer
+
+        with open(path, encoding='utf-8') as f:
+            svg = f.read()
+        app = QApplication.instance()
+        colour = app.palette().color(QPalette.ColorRole.WindowText).name() if app is not None else '#000000'
+        renderer = QSvgRenderer(svg.replace('currentColor', colour).encode('utf-8'))
+        if not renderer.isValid():
+            return None
+        ans = QIcon()
+        for size in (16, 24, 32, 48, 64):
+            pm = QPixmap(size, size)
+            pm.fill(Qt.GlobalColor.transparent)
+            p = QPainter(pm)
+            renderer.render(p)
+            p.end()
+            ans.addPixmap(pm)
+        return ans
+    except Exception:
+        return None
 
 
 class IconResourceManager:

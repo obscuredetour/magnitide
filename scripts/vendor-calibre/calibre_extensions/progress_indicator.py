@@ -14,7 +14,6 @@ _ICON_FACTORY = {'fn': None}
 
 
 class SpinAnimator:
-
     def __init__(self, parent=None):
         self.angle = 0
         self.timer = QTimer(parent)
@@ -31,7 +30,6 @@ class SpinAnimator:
 
 
 class QProgressIndicator(QWidget):
-
     def __init__(self, parent=None, size=64, interval=10):
         QWidget.__init__(self, parent)
         self.display_size = size
@@ -74,7 +72,9 @@ class QProgressIndicator(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         side = min(self.width(), self.height())
-        rect = QRectF((self.width() - side) / 2 + side * 0.15, (self.height() - side) / 2 + side * 0.15, side * 0.7, side * 0.7)
+        rect = QRectF(
+            (self.width() - side) / 2 + side * 0.15, (self.height() - side) / 2 + side * 0.15, side * 0.7, side * 0.7
+        )
         pen = QPen(self.palette().color(self.foregroundRole()))
         pen.setWidthF(max(2.0, side / 12))
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
@@ -132,7 +132,7 @@ def contrast_ratio(a, b):
 
 def utf16_slice(text, start, end):
     data = text.encode('utf-16-le')
-    return data[start * 2:end * 2].decode('utf-16-le', 'ignore')
+    return data[start * 2 : end * 2].decode('utf-16-le', 'ignore')
 
 
 def install_qt_translator(*a, **k):
@@ -147,7 +147,23 @@ def draw_snake_spinner(painter, rect, angle, light, dark):
     pass
 
 
-__all__ = ['QProgressIndicator', 'SpinAnimator', 'set_menu_on_action', 'menu_for_action', 'icon_from_name',
-           'set_icon_theme', 'contrast_ratio', 'utf16_slice', 'install_qt_translator', 'set_image_allocation_limit',
-           'get_image_allocation_limit', 'load_style', 'draw_snake_spinner', 'math', 'sip', 'QAction', 'QMenu',
-           'pyqtSignal']
+__all__ = [
+    'QProgressIndicator',
+    'SpinAnimator',
+    'set_menu_on_action',
+    'menu_for_action',
+    'icon_from_name',
+    'set_icon_theme',
+    'contrast_ratio',
+    'utf16_slice',
+    'install_qt_translator',
+    'set_image_allocation_limit',
+    'get_image_allocation_limit',
+    'load_style',
+    'draw_snake_spinner',
+    'math',
+    'sip',
+    'QAction',
+    'QMenu',
+    'pyqtSignal',
+]

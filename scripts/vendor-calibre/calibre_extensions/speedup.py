@@ -24,8 +24,15 @@ def parse_iso8601(raw, assume_utc=False, as_utc=True, require_aware=False):
         hh, mm = tz[1:3], tz[-2:]
         offset = sign * (int(hh) * 3600 + int(mm) * 60)
     micro = int((g.get('fraction') or '0')[:6].ljust(6, '0'))
-    dt = datetime(int(g['year']), int(g.get('month') or 1), int(g.get('day') or 1), int(g.get('hour') or 0),
-                  int(g.get('minute') or 0), int(g.get('second') or 0), micro)
+    dt = datetime(
+        int(g['year']),
+        int(g.get('month') or 1),
+        int(g.get('day') or 1),
+        int(g.get('hour') or 0),
+        int(g.get('minute') or 0),
+        int(g.get('second') or 0),
+        micro,
+    )
     if aware or assume_utc:
         dt = dt.replace(tzinfo=timezone(timedelta(seconds=offset)))
         if as_utc:
@@ -82,8 +89,19 @@ def set_thread_name(name):
 
 
 def create_texture(width, height, red, green, blue, blend_alpha=0.1, density=0.7, weight=3.0, radius=1, dither=True):
-    raise ImportError('speedup.create_texture needs calibre\'s C extension')
+    raise ImportError("speedup.create_texture needs calibre's C extension")
 
 
-__all__ = ['parse_iso8601', 'parse_date', 'clean_xml_chars', 'barename', 'namespace', 'pdf_float',
-           'get_num_of_significant_chars', 'pread_all', 'websocket_mask', 'utf8_decode', 'set_thread_name']
+__all__ = [
+    'parse_iso8601',
+    'parse_date',
+    'clean_xml_chars',
+    'barename',
+    'namespace',
+    'pdf_float',
+    'get_num_of_significant_chars',
+    'pread_all',
+    'websocket_mask',
+    'utf8_decode',
+    'set_thread_name',
+]

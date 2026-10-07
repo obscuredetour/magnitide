@@ -20,3 +20,23 @@ def test_message_box_has_calibres_attributes(qapp):
     assert not d.det_msg_toggle.isVisibleTo(d)
     q = MessageBox(MessageBox.QUESTION, 'Sure?', 'Really?', yes_text='Do it', no_text='Leave it')
     assert q.is_question and q.bb.buttons()
+
+
+def test_calibre_icon_names_draw_with_lucide(qapp):
+    import json
+
+    from conftest import COMPAT
+
+    from calibre.gui2 import icon_from_name
+    from qt.core import QIcon
+
+    mapping = json.loads((COMPAT / 'resources' / 'images' / 'calibre-icons.json').read_text(encoding='utf-8'))
+    for calibre_name, lucide in mapping['icons'].items():
+        assert (COMPAT / 'resources' / 'images' / 'lucide' / f'{lucide}.svg').exists(), lucide
+    for name in ('config.png', 'trash.png', 'edit_input.png', 'plus', 'dialog_warning.png'):
+        icon = icon_from_name(name)
+        assert isinstance(icon, QIcon) and not icon.isNull(), name
+        assert not icon.pixmap(16, 16).isNull()
+    assert QIcon.ic('search.png').pixmap(24, 24).width() == 24
+    # Unmapped names still get the drawn stand-in rather than nothing.
+    assert not icon_from_name('no-such-icon.png').isNull()

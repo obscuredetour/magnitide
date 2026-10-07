@@ -10,7 +10,7 @@ def decompress(data):
         if c == 0:
             out.append(0)
         elif c <= 8:
-            out.extend(data[i:i + c])
+            out.extend(data[i : i + c])
             i += c
         elif c <= 0x7F:
             out.append(c)
@@ -36,7 +36,7 @@ def compress(data):
         if i > 10 and n - i > 10:
             found = False
             for length in range(10, 2, -1):
-                chunk = data[i:i + length]
+                chunk = data[i : i + length]
                 j = data.rfind(chunk, max(0, i - 2047), i)
                 if j != -1:
                     dist = i - j

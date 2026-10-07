@@ -36,17 +36,34 @@ ROOT = HERE.parent.parent
 VERSION = (HERE / 'VERSION').read_text().strip()
 PYTHON = json.loads((HERE / 'python.json').read_text())
 
-TARGETS = ('aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-pc-windows-msvc',
-           'x86_64-unknown-linux-gnu', 'aarch64-unknown-linux-gnu')
+TARGETS = (
+    'aarch64-apple-darwin',
+    'x86_64-apple-darwin',
+    'x86_64-pc-windows-msvc',
+    'x86_64-unknown-linux-gnu',
+    'aarch64-unknown-linux-gnu',
+)
 
 # Qt modules calibre's qt.core uses (plus what they link to). Everything
 # else in the PyQt6-Qt6 wheel is deleted: WebEngine, Qml/Quick, Multimedia,
 # Pdf, Positioning, Sensors, Sql, TextToSpeech, Xml, Bluetooth, Nfc, …
-QT_KEEP = ('Core', 'Gui', 'Widgets', 'Network', 'PrintSupport', 'Svg', 'SvgWidgets',
-           'OpenGL', 'OpenGLWidgets', 'DBus')
-QT_PLUGIN_DIRS_KEEP = ('platforms', 'styles', 'imageformats', 'iconengines', 'tls', 'printsupport', 'generic',
-                       'platforminputcontexts', 'platformthemes', 'xcbglintegrations', 'wayland-decoration-client',
-                       'wayland-graphics-integration-client', 'wayland-shell-integration', 'networkinformation')
+QT_KEEP = ('Core', 'Gui', 'Widgets', 'Network', 'PrintSupport', 'Svg', 'SvgWidgets', 'OpenGL', 'OpenGLWidgets', 'DBus')
+QT_PLUGIN_DIRS_KEEP = (
+    'platforms',
+    'styles',
+    'imageformats',
+    'iconengines',
+    'tls',
+    'printsupport',
+    'generic',
+    'platforminputcontexts',
+    'platformthemes',
+    'xcbglintegrations',
+    'wayland-decoration-client',
+    'wayland-graphics-integration-client',
+    'wayland-shell-integration',
+    'networkinformation',
+)
 QT_PLATFORM_PLUGINS_KEEP = ('cocoa', 'windows', 'xcb', 'wayland', 'wayland-egl', 'minimal', 'offscreen')
 # Qt frameworks/libraries that the kept ones may link to without a PyQt6
 # module of their own: on Linux the xcb and Wayland platform plugins (and
@@ -146,13 +163,29 @@ def find_uv() -> str:
 
 def install_wheels(py: Path, target: str, native: bool) -> None:
     uv = find_uv()
-    cmd = [uv, 'pip', 'install', '--require-hashes', '--no-deps', '--only-binary', ':all:', '--no-cache',
-           '-r', str(HERE / 'requirements.txt')]
+    cmd = [
+        uv,
+        'pip',
+        'install',
+        '--require-hashes',
+        '--no-deps',
+        '--only-binary',
+        ':all:',
+        '--no-cache',
+        '-r',
+        str(HERE / 'requirements.txt'),
+    ]
     if native:
         cmd += ['--python', str(interpreter(py, target))]
     else:
-        cmd += ['--python-platform', target, '--python-version', PYTHON['version'],
-                '--target', str(site_packages(py, target))]
+        cmd += [
+            '--python-platform',
+            target,
+            '--python-version',
+            PYTHON['version'],
+            '--target',
+            str(site_packages(py, target)),
+        ]
     log('installing wheels')
     subprocess.run(cmd, check=True, env={**os.environ, 'UV_PYTHON_DOWNLOADS': 'never'})
 
@@ -160,9 +193,20 @@ def install_wheels(py: Path, target: str, native: bool) -> None:
 def strip_python(py: Path, target: str) -> None:
     log('stripping the standard library and tools')
     lib = stdlib_dir(py, target)
-    for name in ('test', 'idlelib', 'tkinter', 'turtledemo', 'ensurepip', 'pydoc_data', 'lib2to3', '__phello__',
-                 'site-packages/pip', 'site-packages/setuptools', 'site-packages/_distutils_hack',
-                 'site-packages/pkg_resources'):
+    for name in (
+        'test',
+        'idlelib',
+        'tkinter',
+        'turtledemo',
+        'ensurepip',
+        'pydoc_data',
+        'lib2to3',
+        '__phello__',
+        'site-packages/pip',
+        'site-packages/setuptools',
+        'site-packages/_distutils_hack',
+        'site-packages/pkg_resources',
+    ):
         rmtree(lib / name)
     for d in (py / 'share', py / 'include', py / 'libs', py / 'tcl', py / 'Doc'):
         rmtree(d)
@@ -180,8 +224,13 @@ def strip_python(py: Path, target: str) -> None:
             if p.name.startswith(('_tkinter', '_test', 'xxlimited', '_xx', '_ctypes_test')):
                 p.unlink()
     if 'windows' in target:
-        for p in list(py.glob('*.pdb')) + list(py.glob('DLLs/_test*')) + list(py.glob('DLLs/_tkinter*')) + \
-                list(py.glob('DLLs/tcl*')) + list(py.glob('DLLs/tk*')):
+        for p in (
+            list(py.glob('*.pdb'))
+            + list(py.glob('DLLs/_test*'))
+            + list(py.glob('DLLs/_tkinter*'))
+            + list(py.glob('DLLs/tcl*'))
+            + list(py.glob('DLLs/tk*'))
+        ):
             rmtree(p)
 
 
@@ -205,7 +254,7 @@ def strip_qt(py: Path, target: str) -> None:
         name = p.name
         mod = None
         if mac and name.startswith('Qt') and name.endswith('.framework'):
-            mod = name[2:-len('.framework')]
+            mod = name[2 : -len('.framework')]
         elif win and name.startswith('Qt6') and name.endswith('.dll'):
             mod = name[3:-4]
         elif not mac and not win and name.startswith('libQt6'):
@@ -226,8 +275,18 @@ def strip_qt(py: Path, target: str) -> None:
             mod = n[2:].split('.')[0]
             if mod not in set(QT_KEEP):
                 rmtree(p)
-        elif n in ('bindings', 'uic', 'lupdate', 'qml', 'pylupdate.abi3.so', 'pylupdate.pyd', 'pylupdate.pyi',
-                   'pyrcc.abi3.so', 'pyrcc.pyd', 'pyrcc.pyi'):
+        elif n in (
+            'bindings',
+            'uic',
+            'lupdate',
+            'qml',
+            'pylupdate.abi3.so',
+            'pylupdate.pyd',
+            'pylupdate.pyi',
+            'pyrcc.abi3.so',
+            'pyrcc.pyd',
+            'pyrcc.pyi',
+        ):
             rmtree(p)
     for d in ('qml', 'translations', 'libexec', 'resources', 'include', 'mkspecs', 'metatypes', 'modules', 'sbom'):
         rmtree(qt / d)
@@ -247,7 +306,7 @@ def strip_qt(py: Path, target: str) -> None:
                 base = p.name
                 for prefix in ('libq', 'q'):
                     if base.startswith(prefix):
-                        base = base[len(prefix):]
+                        base = base[len(prefix) :]
                         break
                 base = base.split('.')[0]
                 if base not in QT_PLATFORM_PLUGINS_KEEP:
@@ -321,8 +380,11 @@ def link_check(py: Path, target: str) -> None:
     present = {p.name for p in qt.rglob('*') if p.is_file() or p.is_symlink()}
     present |= {p.name for p in qt.glob('lib/*.framework')}
     missing = set()
-    for p in list(qt.rglob('*.dylib')) + list(qt.rglob('*.so*')) + \
-            [f for f in qt.glob('lib/*.framework/Versions/A/*') if f.is_file() and f.suffix == '']:
+    for p in (
+        list(qt.rglob('*.dylib'))
+        + list(qt.rglob('*.so*'))
+        + [f for f in qt.glob('lib/*.framework/Versions/A/*') if f.is_file() and f.suffix == '']
+    ):
         if p.is_symlink() or not p.is_file():
             continue
         if sys.platform == 'darwin':
@@ -410,9 +472,19 @@ def pack(py: Path, target: str, out: Path) -> Path:
     log(f'{name}: {size / 1e6:.1f} MB, sha256 {digest}')
     if size > MAX_ARCHIVE_MB * 1e6:
         fail(f'archive is {size / 1e6:.0f} MB, over the {MAX_ARCHIVE_MB} MB limit')
-    (out / f'{name}.json').write_text(json.dumps({
-        'target': target, 'file': name, 'sha256': digest, 'size': size, 'installedSize': dir_size(py),
-    }, indent=2) + '\n')
+    (out / f'{name}.json').write_text(
+        json.dumps(
+            {
+                'target': target,
+                'file': name,
+                'sha256': digest,
+                'size': size,
+                'installedSize': dir_size(py),
+            },
+            indent=2,
+        )
+        + '\n'
+    )
     return archive
 
 
@@ -450,10 +522,19 @@ def build(args) -> None:
         rmtree(dest)
         dest.mkdir(parents=True)
         shutil.move(str(py), str(dest / 'python'))
-        (dest / 'installed.json').write_text(json.dumps({
-            'version': VERSION, 'python': info['python'], 'qt': info['qt'], 'sha256': None,
-            'installedAt': info['builtAt'],
-        }, indent=2) + '\n')
+        (dest / 'installed.json').write_text(
+            json.dumps(
+                {
+                    'version': VERSION,
+                    'python': info['python'],
+                    'qt': info['qt'],
+                    'sha256': None,
+                    'installedAt': info['builtAt'],
+                },
+                indent=2,
+            )
+            + '\n'
+        )
         current = ROOT / 'target' / 'plugin-runtime' / 'current'
         rmtree(current)
         if sys.platform == 'win32':
@@ -482,9 +563,11 @@ def rust_table(path: Path) -> None:
     m = json.loads(path.read_text())
     print('pub const RELEASES: &[Release] = &[')
     for target, e in sorted(m['targets'].items()):
-        print(f'    Release {{\n        target: "{target}",\n        file: "{e["file"]}",\n'
-              f'        sha256: "{e["sha256"]}",\n        size: {e["size"]},\n'
-              f'        installed_size: {e["installedSize"]},\n    }},')
+        print(
+            f'    Release {{\n        target: "{target}",\n        file: "{e["file"]}",\n'
+            f'        sha256: "{e["sha256"]}",\n        size: {e["size"]},\n'
+            f'        installed_size: {e["installedSize"]},\n    }},'
+        )
     print('];')
 
 
@@ -492,10 +575,14 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--target', help='target triple (default: this machine)')
     ap.add_argument('--out', help='where the archive goes (default: dist/)')
-    ap.add_argument('--local', action='store_true', help='leave the runtime in target/plugin-runtime/ instead of packing')
+    ap.add_argument(
+        '--local', action='store_true', help='leave the runtime in target/plugin-runtime/ instead of packing'
+    )
     ap.add_argument('--work', help='scratch directory')
     ap.add_argument('--cache', help='download cache (default: ~/.cache/magnitide-plugin-runtime)')
-    ap.add_argument('--manifest', metavar='DIST', help='merge DIST/*.tar.zst.json into manifest.json and sha256sums.txt')
+    ap.add_argument(
+        '--manifest', metavar='DIST', help='merge DIST/*.tar.zst.json into manifest.json and sha256sums.txt'
+    )
     ap.add_argument('--sha256sums', metavar='FILE', help='with --manifest: where to write the sums')
     ap.add_argument('--rust-table', metavar='MANIFEST', help='print the RELEASES table for runtime.rs')
     args = ap.parse_args()

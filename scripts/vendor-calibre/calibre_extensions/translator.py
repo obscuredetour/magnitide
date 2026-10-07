@@ -5,7 +5,6 @@ import io
 
 
 class Translator(gettext.GNUTranslations):
-
     def __init__(self, mo_data=None, mo_file=None):
         if mo_data is not None:
             gettext.GNUTranslations.__init__(self, io.BytesIO(mo_data))

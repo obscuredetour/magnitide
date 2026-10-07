@@ -46,14 +46,19 @@ def main():
         if e.get('bibliographic'):
             bib_to_term[e['bibliographic']] = term
     by_3.setdefault('und', 'Undetermined')
-    data = {'by_3': dict(sorted(by_3.items())), '2_to_3': dict(sorted(two_to_3.items())),
-            'bib_to_term': dict(sorted(bib_to_term.items())),
-            'source': 'iso-codes (https://salsa.debian.org/iso-codes-team/iso-codes), LGPL-2.1'}
+    data = {
+        'by_3': dict(sorted(by_3.items())),
+        '2_to_3': dict(sorted(two_to_3.items())),
+        'bib_to_term': dict(sorted(bib_to_term.items())),
+        'source': 'iso-codes (https://salsa.debian.org/iso-codes-team/iso-codes), LGPL-2.1',
+    }
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
         f.write('\n')
-    print(f'{len(by_3)} languages, {len(two_to_3)} two-letter codes, {len(bib_to_term)} bibliographic codes → {os.path.normpath(OUT)}')
+    print(
+        f'{len(by_3)} languages, {len(two_to_3)} two-letter codes, {len(bib_to_term)} bibliographic codes → {os.path.normpath(OUT)}'
+    )
 
 
 if __name__ == '__main__':
