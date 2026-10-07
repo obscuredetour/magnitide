@@ -57,12 +57,12 @@ def _pyqt5_compat(m):
                             break
         if 'exec' in attrs and not hasattr(cls, 'exec_'):
             try:
-                cls.exec_ = cls.exec
+                cls.exec_ = attrs['exec']  # the raw descriptor: via the class it comes back bound to the class
             except TypeError, AttributeError:
                 pass
         if name in ('QFontMetrics', 'QFontMetricsF') and not hasattr(cls, 'width'):
             try:
-                cls.width = cls.horizontalAdvance
+                cls.width = attrs.get('horizontalAdvance', cls.horizontalAdvance)
             except TypeError, AttributeError:
                 pass
 
