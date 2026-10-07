@@ -37,9 +37,43 @@ pub struct Release {
 
 /// Printed by `build.py --rust-table manifest.json` after a release; must
 /// match `scripts/plugin-runtime/sha256sums.txt` (a test checks).
-// Version 2 (pycryptodome added) is being published; the table is filled in
-// from the release's manifest (`build.py --rust-table`).
-pub const RELEASES: &[Release] = &[];
+pub const RELEASES: &[Release] = &[
+    Release {
+        target: "aarch64-apple-darwin",
+        file: "magnitide-plugin-runtime-2-aarch64-apple-darwin.tar.zst",
+        sha256: "b5963354de4998f8bcbcad5ba8dfdd8843b382caa275aec7bcfe098124fb4a66",
+        size: 40463033,
+        installed_size: 155897713,
+    },
+    Release {
+        target: "aarch64-unknown-linux-gnu",
+        file: "magnitide-plugin-runtime-2-aarch64-unknown-linux-gnu.tar.zst",
+        sha256: "3673534473220770e5d38782f71d67a9aea3f063620c7b2ffc213a8e52b2f602",
+        size: 61513755,
+        installed_size: 246102062,
+    },
+    Release {
+        target: "x86_64-apple-darwin",
+        file: "magnitide-plugin-runtime-2-x86_64-apple-darwin.tar.zst",
+        sha256: "189a8d2664afd913b4ffeee67527e48001fbab98cf8ca9ff7463bbe5863440c0",
+        size: 43108178,
+        installed_size: 155932394,
+    },
+    Release {
+        target: "x86_64-pc-windows-msvc",
+        file: "magnitide-plugin-runtime-2-x86_64-pc-windows-msvc.tar.zst",
+        sha256: "41cdc69faf6c200d291776e051b665d160d286b6acaad1af1afa398fa65ad4c1",
+        size: 34489796,
+        installed_size: 130779676,
+    },
+    Release {
+        target: "x86_64-unknown-linux-gnu",
+        file: "magnitide-plugin-runtime-2-x86_64-unknown-linux-gnu.tar.zst",
+        sha256: "2c3f1d3264dbe3887ba156a98009da16d5a5f7905cb5d059d00eeec781717d34",
+        size: 67491562,
+        installed_size: 249207746,
+    },
+];
 
 /// This build's target triple, as the archives are named.
 pub const fn this_target() -> &'static str {
