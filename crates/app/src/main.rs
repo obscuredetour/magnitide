@@ -2,6 +2,7 @@
 
 mod commands;
 mod covers;
+mod custom;
 mod devices;
 mod lookup;
 #[cfg(target_os = "macos")]
@@ -110,6 +111,10 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::open_library,
             commands::list_books,
+            custom::custom_fields,
+            custom::add_custom_field,
+            custom::update_custom_field,
+            custom::delete_custom_field,
             commands::book_rows,
             commands::book_details,
             commands::open_book,

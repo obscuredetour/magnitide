@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -5,7 +6,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use calibre_compat::locate;
-use magnitide_catalog::{Book, Query, SortDir, SortKey, sort_books};
+use magnitide_catalog::{Book, CustomValue, Datatype, Query, SortDir, SortKey, sort_books, sort_books_by_field};
+use magnitide_core::{CustomField, FieldKind};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use ts_rs::TS;
@@ -487,6 +489,10 @@ pub struct BookRow {
     formats: Vec<String>,
     /// Bytes of the largest format.
     size: Option<u64>,
+    /// Custom fields with a value, by key ("pages"), as text the UI formats by
+    /// the field's kind: numbers, "true"/"false", ISO dates, "Name [2]" for
+    /// series, comma-separated lists.
+    custom: BTreeMap<String, String>,
 }
 
 impl From<&Book> for BookRow {
@@ -506,25 +512,51 @@ impl From<&Book> for BookRow {
             tags: b.tags.join(", "),
             formats: b.formats.iter().map(|f| f.format.clone()).collect(),
             size: b.formats.iter().map(|f| f.size).max(),
+            custom: b.custom.iter().map(|(k, v)| (k.trim_start_matches('#').to_owned(), raw_value(v))).collect(),
         }
     }
 }
 
+/// A custom value as plain text (see `BookRow::custom`).
+fn raw_value(v: &CustomValue) -> String {
+    match v {
+        CustomValue::Text(s) => s.clone(),
+        CustomValue::TextList(l) => l.join(", "),
+        CustomValue::Series { name, index } => format!("{name} [{}]", magnitide_catalog::format_number(*index, None)),
+        CustomValue::Int(i) => i.to_string(),
+        CustomValue::Float(x) => x.to_string(),
+        CustomValue::Bool(b) => b.to_string(),
+        CustomValue::Rating(r) => r.to_string(),
+        CustomValue::Datetime(d) => d.format("%Y-%m-%d").to_string(),
+    }
+}
+
 /// Books matching `query`, sorted by `sort` (in `dir`, or the key's natural
-/// direction when omitted).
+/// direction when omitted), or by the custom field `field` ("pages") if given.
 #[tauri::command]
 pub async fn list_books(
     state: State<'_, AppState>,
     query: String,
     sort: SortKey,
     dir: Option<SortDir>,
+    field: Option<String>,
 ) -> CmdResult<Vec<BookRow>> {
     let lib = state.current().ok_or("No library is open")?;
     let query = query.trim();
     let query = (!query.is_empty()).then(|| Query::parse(query)).transpose().map_err(|e| e.to_string())?;
     let mut books: Vec<&Book> =
         lib.catalog.books.iter().filter(|b| query.as_ref().is_none_or(|q| q.matches(b))).collect();
-    sort_books(&mut books, sort, dir.unwrap_or(sort.natural_dir()));
+    let column = field.as_deref().and_then(|f| lib.catalog.custom_columns.iter().find(|c| c.label == f));
+    match column {
+        Some(c) => {
+            // Text A→Z; numbers, dates, ratings and yes first, highest first.
+            let text =
+                matches!(c.datatype, Datatype::Text | Datatype::Comments | Datatype::Enumeration | Datatype::Series);
+            let natural = if text { SortDir::Asc } else { SortDir::Desc };
+            sort_books_by_field(&mut books, &c.lookup_name(), dir.unwrap_or(natural));
+        }
+        None => sort_books(&mut books, sort, dir.unwrap_or(sort.natural_dir())),
+    }
     Ok(books.into_iter().map(BookRow::from).collect())
 }
 
@@ -562,6 +594,20 @@ pub struct BookDetails {
     comments_html: Option<String>,
     has_cover: bool,
     folder: String,
+    /// Custom fields with a value, in the library's field order.
+    custom: Vec<CustomDetail>,
+}
+
+/// A custom field's value for the details panel.
+#[derive(Serialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomDetail {
+    key: String,
+    name: String,
+    kind: FieldKind,
+    /// As in `BookRow::custom`; long text is sanitized HTML.
+    value: String,
 }
 
 /// "Book 3 of Mistborn", or "Books 1–3 of …" for an omnibus.
@@ -632,6 +678,20 @@ pub async fn book_details(state: State<'_, AppState>, id: i64) -> CmdResult<Book
         comments_html: b.comments.as_deref().map(sanitize),
         has_cover: b.has_cover,
         folder: b.dir(&lib.root).display().to_string(),
+        custom: lib
+            .catalog
+            .custom_columns
+            .iter()
+            .filter_map(CustomField::from_column)
+            .filter_map(|f| {
+                let v = b.custom.get(&format!("#{}", f.key))?;
+                let value = match f.kind {
+                    FieldKind::LongText => sanitize(&raw_value(v)),
+                    _ => raw_value(v),
+                };
+                Some(CustomDetail { key: f.key, name: f.name, kind: f.kind, value })
+            })
+            .collect(),
     })
 }
 

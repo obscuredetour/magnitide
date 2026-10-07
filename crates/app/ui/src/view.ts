@@ -4,6 +4,7 @@ import { createSignal } from 'solid-js';
 
 import { devices } from './devices';
 import { storage } from './storage';
+import { customFields } from './fields';
 
 /** Target cover width in CSS px; the grid stretches tiles to fill each row. */
 export const COVER_SIZE = { min: 100, max: 240, step: 10, initial: 150 } as const;
@@ -66,6 +67,8 @@ const DEFAULT_HIDDEN: Record<string, boolean> = { publisher: false, tags: false,
 /** Visibility of every table column that differs from "shown". "On Device" only shows while a device is connected. */
 export const effectiveColumnVisibility = (): Record<string, boolean> => ({
   ...DEFAULT_HIDDEN,
+  // Custom fields' columns are hidden until turned on.
+  ...Object.fromEntries(customFields().map((f) => [`custom:${f.key}`, false])),
   ...columnVisibility(),
   ...(devices().length ? {} : { device: false }),
 });

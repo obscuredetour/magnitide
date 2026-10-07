@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::custom::FieldValue;
 use crate::error::Result;
 use crate::library::{BookId, Library};
 
@@ -51,6 +52,8 @@ pub struct BulkValues {
     pub series: Shared<String>,
     /// Every tag any of them has, most common first.
     pub tags: Vec<TagCount>,
+    /// Custom fields, by key.
+    pub custom: BTreeMap<String, Shared<FieldValue>>,
 }
 
 /// Changes for every selected book. Null (None) leaves a field as each
@@ -75,6 +78,9 @@ pub struct BulkEdit {
     pub add_tags: Vec<String>,
     /// Matched without regard to case.
     pub remove_tags: Vec<String>,
+    /// Custom fields to set on every book, by key; null clears one.
+    #[serde(default)]
+    pub custom: BTreeMap<String, Option<FieldValue>>,
 }
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -110,6 +116,16 @@ impl Library {
             languages: Shared::of(books.iter().map(|b| Some(b.languages.clone()).filter(|l| !l.is_empty()))),
             series: Shared::of(books.iter().map(|b| nonempty(&b.series))),
             tags,
+            custom: books
+                .first()
+                .map(|b| b.custom.keys().cloned().collect::<Vec<_>>())
+                .unwrap_or_default()
+                .into_iter()
+                .map(|key| {
+                    let shared = Shared::of(books.iter().map(|b| b.custom.get(&key).cloned().flatten()));
+                    (key, shared)
+                })
+                .collect(),
         })
     }
 
@@ -155,6 +171,9 @@ impl Library {
                 // An omnibus keeps its span: 1–3 renumbered from 4 becomes 4–6.
                 e.series_end = e.series_end.map(|end| new + (end - e.series_index));
                 e.series_index = new;
+            }
+            for (key, value) in &change.custom {
+                e.custom.insert(key.clone(), value.clone());
             }
             e.tags.retain(|t| !change.remove_tags.iter().any(|r| r.trim().eq_ignore_ascii_case(t.trim())));
             for t in &change.add_tags {
@@ -256,5 +275,32 @@ mod tests {
         let b = cat.get(ids[0]).unwrap();
         assert_eq!((b.series.as_deref(), b.rating, b.authors[0].as_str()), (None, None, "S. Collins"));
         assert!(b.path.starts_with("S. Collins/"), "{}", b.path);
+    }
+
+    #[test]
+    fn custom_fields_in_bulk() {
+        use crate::custom::{FieldKind, NewField};
+        let (_tmp, mut lib, ids) = library();
+        lib.add_custom_field(&NewField { name: "Pages".into(), kind: Some(FieldKind::Integer), ..Default::default() })
+            .unwrap();
+        lib.add_custom_field(&NewField { name: "Read".into(), kind: Some(FieldKind::Bool), ..Default::default() })
+            .unwrap();
+        let mut e = lib.book_edit(ids[0]).unwrap();
+        e.custom.insert("pages".into(), Some(FieldValue::Number(374.0)));
+        lib.update_book(ids[0], &e).unwrap();
+
+        let v = lib.bulk_values(&ids).unwrap();
+        assert!(v.custom["pages"].mixed);
+        assert_eq!(v.custom["read"], Shared { value: None, mixed: false });
+
+        let change = BulkEdit {
+            custom: BTreeMap::from([("read".into(), Some(FieldValue::Bool(true))), ("pages".into(), None)]),
+            ..Default::default()
+        };
+        let report = lib.bulk_edit(&ids, &change, |_, _| {}).unwrap();
+        assert_eq!(report.edited, 3);
+        let v = lib.bulk_values(&ids).unwrap();
+        assert_eq!(v.custom["read"], Shared { value: Some(FieldValue::Bool(true)), mixed: false });
+        assert_eq!(v.custom["pages"], Shared { value: None, mixed: false }, "cleared on all");
     }
 }

@@ -4,7 +4,9 @@ import X from 'lucide-solid/icons/x';
 
 import {
   api,
+  type CustomField,
   type DeviceKind,
+  type FieldKind,
   errorMessage,
   fileManagerName,
   type ServerStatus,
@@ -22,9 +24,11 @@ import {
   setEditRevision,
 } from '../library';
 import { startImport } from '../importer';
+import { customFields, FIELD_KINDS, loadCustomFields } from '../fields';
 import { addonReport, addThemeFile, loadThemeAddons, setTheme, themeAttrs, themeChoice, themes } from '../theme';
 import { AccentPicker } from './AccentPicker';
 import { toast } from '../toast';
+import { confirm } from '../confirm';
 import {
   columnOrder,
   isColumnVisible,
@@ -38,7 +42,7 @@ import {
 } from '../view';
 import { DEVICE_FORMATS, DEVICE_KIND_NAMES, preferredFormat, setPreferredFormat } from '../devices';
 import { describeWrite, plural, setWriteOnSave, writeOnSave } from '../writeback';
-import { TABLE_COLUMNS } from './BookTable';
+import { tableColumns } from './BookTable';
 import { CoverSizeSlider } from './CoverSizeSlider';
 import { resetZoom, tryZoom, ZOOM_STEPS, zoom, zoomLabel } from '../zoom';
 import { Icon } from './Icon';
@@ -352,6 +356,222 @@ function formatBytes(n: number): string {
   return `${n} B`;
 }
 
+/** "Date Read" → "date_read", as Rust makes lookup names (a preview only). */
+function keyFrom(name: string): string {
+  const key = name
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return /^[0-9]/.test(key) ? `f_${key}` : key;
+}
+
+/** Custom fields: listed for any library; made, renamed and deleted in Magnitide ones. */
+function CustomFieldsSettings(props: { editable: boolean }) {
+  const [adding, setAdding] = createSignal(false);
+  const [editing, setEditing] = createSignal<number | null>(null);
+
+  const changed = async () => {
+    await loadCustomFields();
+    setEditRevision((n) => n + 1);
+    await refresh();
+  };
+
+  const remove = async (f: CustomField) => {
+    const ok = await confirm({
+      title: `Delete “${f.name}”?`,
+      message: () => `Every book’s ${f.name} goes with it. This can’t be undone.`,
+      confirm: 'Delete Field',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.deleteCustomField(f.id);
+      await changed();
+      toast(`Deleted the field “${f.name}”`);
+    } catch (err) {
+      toast(errorMessage(err), { error: true });
+    }
+  };
+
+  const describe = (f: CustomField) =>
+    [
+      `#${f.key}`,
+      FIELD_KINDS[f.kind] + (f.multiple ? ', several values' : ''),
+      f.kind === 'choice' && f.choices.length ? f.choices.join(', ') : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+  return (
+    <>
+      <div class="mt-6 mb-1 font-medium">Custom fields</div>
+      <p class="mb-1 text-xs text-muted">
+        Fields of your own, like Pages or Read. They show in the details panel and as columns in the list (pick them in
+        the column menu), are edited with the rest of a book, and are searched with{' '}
+        <code class="text-fg">#key:value</code> (<code class="text-fg">#pages:300</code>). calibre’s custom columns come
+        across when you import a calibre library.
+      </p>
+      <For each={customFields()}>
+        {(f) => (
+          <Show
+            when={editing() === f.id}
+            fallback={
+              <Row label={f.name} description={describe(f)}>
+                <Show when={props.editable}>
+                  <button class={button} onClick={() => setEditing(f.id)}>
+                    {f.kind === 'choice' ? 'Edit…' : 'Rename…'}
+                  </button>
+                  <button class={button} onClick={() => void remove(f)}>
+                    Delete
+                  </button>
+                </Show>
+              </Row>
+            }
+          >
+            <FieldForm field={f} onDone={() => setEditing(null)} onSaved={changed} />
+          </Show>
+        )}
+      </For>
+      <Show when={props.editable}>
+        <Show
+          when={adding()}
+          fallback={
+            <div class="mt-2">
+              <button class={button} onClick={() => setAdding(true)}>
+                Add Field…
+              </button>
+            </div>
+          }
+        >
+          <FieldForm onDone={() => setAdding(false)} onSaved={changed} />
+        </Show>
+      </Show>
+    </>
+  );
+}
+
+/** Make a field, or (with `field`) rename it and edit its choices. Its kind is fixed once made. */
+function FieldForm(props: { field?: CustomField; onDone(): void; onSaved(): Promise<void> }) {
+  const [name, setName] = createSignal(props.field?.name ?? '');
+  const [key, setKey] = createSignal('');
+  const [kind, setKind] = createSignal<FieldKind>(props.field?.kind ?? 'text');
+  const [multiple, setMultiple] = createSignal(false);
+  const [choices, setChoices] = createSignal(props.field?.choices.join(', ') ?? '');
+  const [error, setError] = createSignal<string | null>(null);
+  const [saving, setSaving] = createSignal(false);
+  const field =
+    'h-7 w-full rounded-control border border-line bg-field px-2 text-xs outline-none select-text focus:border-focus';
+  const choiceList = () =>
+    choices()
+      .split(',')
+      .map((c) => c.trim())
+      .filter(Boolean);
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      if (props.field) {
+        await api.updateCustomField(props.field.id, name(), kind() === 'choice' ? choiceList() : null);
+      } else {
+        await api.addCustomField({
+          name: name(),
+          key: key(),
+          kind: kind(),
+          multiple: multiple(),
+          choices: choiceList(),
+        });
+      }
+      await props.onSaved();
+      props.onDone();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form
+      class="my-2 grid grid-cols-[7rem_1fr] items-center gap-x-3 gap-y-2 rounded-control border border-line p-3 text-xs"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void save();
+      }}
+    >
+      <label for="field-name" class="text-muted">
+        Name
+      </label>
+      <input id="field-name" class={field} value={name()} autofocus onInput={(e) => setName(e.currentTarget.value)} />
+      <Show when={!props.field}>
+        <label for="field-key" class="text-muted">
+          Lookup name
+        </label>
+        <input
+          id="field-key"
+          class={field}
+          placeholder={keyFrom(name()) || 'pages'}
+          value={key()}
+          onInput={(e) => setKey(e.currentTarget.value)}
+        />
+        <label for="field-kind" class="text-muted">
+          Kind
+        </label>
+        <Select
+          wide
+          id="field-kind"
+          class="h-7 pl-2 text-xs outline-none focus:border-focus"
+          value={kind()}
+          onChange={(e) => setKind(e.currentTarget.value as FieldKind)}
+        >
+          <For each={Object.entries(FIELD_KINDS)}>{([k, label]) => <option value={k}>{label}</option>}</For>
+        </Select>
+        <Show when={kind() === 'text'}>
+          <span />
+          <label class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              class="size-4 accent-accent"
+              checked={multiple()}
+              onChange={(e) => setMultiple(e.currentTarget.checked)}
+            />
+            Several values per book, like tags
+          </label>
+        </Show>
+      </Show>
+      <Show when={kind() === 'choice'}>
+        <label for="field-choices" class="text-muted">
+          Choices
+        </label>
+        <input
+          id="field-choices"
+          class={field}
+          placeholder="To Read, Reading, Read"
+          value={choices()}
+          onInput={(e) => setChoices(e.currentTarget.value)}
+        />
+      </Show>
+      <Show when={error()}>
+        {(e) => (
+          <p class="col-span-2 text-danger select-text" role="alert">
+            {e()}
+          </p>
+        )}
+      </Show>
+      <div class="col-span-2 flex justify-end gap-2">
+        <button type="button" class={button} onClick={() => props.onDone()}>
+          Cancel
+        </button>
+        <button type="submit" class={button} disabled={saving() || !name().trim()}>
+          {saving() ? 'Saving…' : props.field ? 'Save' : 'Add Field'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function LibrarySettings() {
   const [cache, { refetch }] = createResource(() => api.thumbnailCacheInfo());
   const others = () => recentLibraries().filter((r) => r.path !== library()?.path);
@@ -391,6 +611,9 @@ function LibrarySettings() {
         <LibraryName />
         <TidyNames />
         <WriteBack />
+      </Show>
+      <Show when={library()}>
+        <CustomFieldsSettings editable={library()?.kind === 'magnitide'} />
       </Show>
       <Show when={library()?.kind === 'calibre'}>
         <Row
@@ -460,11 +683,9 @@ function ListSettings() {
   // In display order: saved ones first, the rest in their default places.
   const ordered = () => {
     const order = columnOrder();
-    const known = order.filter((id) => TABLE_COLUMNS.some((c) => c.id === id));
-    return [
-      ...known.map((id) => TABLE_COLUMNS.find((c) => c.id === id)!),
-      ...TABLE_COLUMNS.filter((c) => !known.includes(c.id)),
-    ];
+    const all = tableColumns();
+    const known = order.filter((id) => all.some((c) => c.id === id));
+    return [...known.map((id) => all.find((c) => c.id === id)!), ...all.filter((c) => !known.includes(c.id))];
   };
   return (
     <>

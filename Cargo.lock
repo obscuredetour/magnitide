@@ -2360,6 +2360,7 @@ dependencies = [
  "ammonia",
  "calibre-compat",
  "chrono",
+ "deunicode",
  "flate2",
  "image",
  "libc",
