@@ -36,6 +36,9 @@ pub struct ApplyReport {
     /// Books removed there, still here: the app asks before deleting them.
     pub removed: Vec<BookId>,
     pub fields_added: usize,
+    /// What was done, a line per book or field: "“Dune”: title, tags, EPUB
+    /// file replaced", "Added “Dune Omnibus” (EPUB)".
+    pub details: Vec<String>,
     /// "Title: reason" for each book whose changes couldn't be applied.
     pub failed: Vec<String>,
     pub warnings: Vec<String>,
@@ -55,19 +58,31 @@ impl Library {
             import_custom_fields(self, &changes.new_columns, &mut import)?;
             report.fields_added = import.custom_fields;
             report.warnings.extend(import.warnings);
+            for col in &changes.new_columns {
+                report.details.push(format!("New field: {} (#{})", col.name, col.label));
+            }
         }
         let fields = self.custom_field_map()?;
 
         for change in &changes.books {
             let title = self.book(change.id).map(|b| b.title).unwrap_or_else(|_| format!("Book {}", change.id));
             match self.apply_book_changes(change, &fields, &mut discard) {
-                Ok(()) => report.updated.push(change.id),
+                Ok(()) => {
+                    report.updated.push(change.id);
+                    let now = self.book(change.id).map(|b| b.title).unwrap_or(title);
+                    report.details.push(format!("“{now}”: {}", describe(change)));
+                }
                 Err(e) => report.failed.push(format!("{title}: {e}")),
             }
         }
         for added in &changes.added {
             match self.add_external_book(added, &fields) {
-                Ok(id) => report.added.push(id),
+                Ok(id) => {
+                    report.added.push(id);
+                    let formats: Vec<&str> = added.files.iter().map(|(f, _)| f.as_str()).collect();
+                    let with = if formats.is_empty() { String::new() } else { format!(" ({})", formats.join(", ")) };
+                    report.details.push(format!("Added “{}”{with}", added.book.title));
+                }
                 Err(e) => report.failed.push(format!("{}: {e}", added.book.title)),
             }
         }
@@ -234,6 +249,24 @@ impl Library {
     }
 }
 
+/// What changed in a book, for the report: "title, tags, EPUB file replaced, new cover".
+fn describe(change: &ChangedBook) -> String {
+    let mut parts = change.fields.fields();
+    for f in &change.files {
+        parts.push(match f {
+            FileChange::Added { format, .. } => format!("{format} file added"),
+            FileChange::Replaced { format, .. } => format!("{format} file replaced"),
+            FileChange::Removed { format } => format!("{format} file removed"),
+        });
+    }
+    match change.cover {
+        Some(CoverChange::Set(_)) => parts.push("new cover".into()),
+        Some(CoverChange::Removed) => parts.push("cover removed".into()),
+        None => {}
+    }
+    parts.join(", ")
+}
+
 /// Whether any field the edit form holds changed (custom fields go separately).
 fn has_book_edit(c: &BookChanges) -> bool {
     BookChanges { custom: Default::default(), ..c.clone() } != BookChanges::default()
@@ -323,6 +356,13 @@ mod tests {
         };
         let report = lib.apply_changes(&changes, |_| Ok(())).unwrap();
         assert_eq!((report.updated.as_slice(), report.fields_added), (&[id][..], 1), "{report:?}");
+        assert_eq!(
+            report.details,
+            [
+                "New field: Pages (#pages)",
+                "“Dune Messiah”: title, series, tags, description, published, #pages, EPUB file replaced, TXT file added, new cover"
+            ]
+        );
         assert!(report.failed.is_empty(), "{report:?}");
 
         let b = lib.book(id).unwrap();
@@ -403,6 +443,7 @@ mod tests {
         };
         let report = lib.apply_changes(&changes, |_| Ok(())).unwrap();
         assert_eq!(report.added.len(), 1, "{report:?}");
+        assert_eq!(report.details.last().unwrap(), "Added “Dune Omnibus” (EPUB)");
         assert_eq!(report.removed, [id], "only books still here; and not deleted");
         assert!(lib.book(id).is_ok());
         let cat = lib.load_catalog().unwrap();

@@ -59,8 +59,8 @@ export function loadPluginMenus(): Promise<void> {
   return loading;
 }
 
-/** Runs waiting for their plugin to finish, by plugin. */
-const running = new Map<string, JobHandle>();
+/** Runs waiting for their plugin to finish, by plugin, with what the plugin said meanwhile. */
+const running = new Map<string, { job: JobHandle; messages: string[]; errors: string[] }>();
 
 /**
  * Run a plugin's menu item (`item` at `texts`, its path of names), or with no
@@ -68,8 +68,8 @@ const running = new Map<string, JobHandle>();
  */
 export async function runPlugin(menu: PluginMenu, item: PluginMenuItem | null, texts: string[], ids: number[]) {
   const job = startJob(menu.plugin, `${item ? texts.join(' › ') : menu.text}…`);
-  running.get(menu.plugin)?.finish('Still running when it was started again');
-  running.set(menu.plugin, job);
+  running.get(menu.plugin)?.job.finish('Still running when it was started again');
+  running.set(menu.plugin, { job, messages: [], errors: [] });
   try {
     await api.runPlugin(menu.plugin, item ? item.path : [], texts, ids);
   } catch (err) {
@@ -82,8 +82,9 @@ function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-function summary(r: ApplyReport | null): string {
-  if (!r) return 'Done; nothing changed';
+function summary(r: ApplyReport | null, said: string[]): string {
+  // A plugin that changed nothing often said why ("Create a #pages column first").
+  if (!r) return said.at(-1) ?? 'Done; nothing changed';
   const parts = [
     r.updated.length && `updated ${plural(r.updated.length, 'book')}`,
     r.added.length && `added ${plural(r.added.length, 'book')}`,
@@ -98,7 +99,7 @@ function summary(r: ApplyReport | null): string {
 export function initPlugins(): void {
   void refreshGuiPlugins();
   void onPluginDone(async (d) => {
-    const job = running.get(d.plugin);
+    const run = running.get(d.plugin);
     running.delete(d.plugin);
     const r = d.report;
     if (r) {
@@ -106,10 +107,22 @@ export function initPlugins(): void {
       setEditRevision((n) => n + 1);
       await refresh();
     }
-    const text = d.error ? `Its changes couldn't be applied: ${d.error}` : summary(r);
-    const details = [...(r?.failed ?? []), ...(r?.warnings ?? [])];
-    const error = !!d.error || !!r?.failed.length;
-    if (job) job.finish(text, { error, details });
+    const said = run?.messages ?? [];
+    const errors = run?.errors ?? [];
+    const text = d.error
+      ? `Its changes couldn't be applied: ${d.error}`
+      : errors.length && !r
+        ? `It stopped with an error: ${errors.at(-1)}`
+        : summary(r, said);
+    const details = [
+      ...(r?.details ?? []),
+      ...(r?.failed ?? []),
+      ...(r?.warnings ?? []),
+      ...(r ? said.map((m) => `It said: ${m}`) : said.slice(0, -1).map((m) => `It said: ${m}`)),
+      ...errors.map((e) => `Error: ${e}`),
+    ];
+    const error = !!d.error || !!r?.failed.length || (!!errors.length && !r);
+    if (run) run.job.finish(text, { error, details });
     // A plugin can also change things on its own (a job it started, a window left open).
     else if (r || d.error) recordJob(d.plugin, text, { error, details });
     if (r?.removed.length) {
@@ -117,8 +130,16 @@ export function initPlugins(): void {
       await deleteBooks(r.removed);
     }
   });
-  void onPluginMessage((m) =>
-    toast(m.plugin ? `${m.plugin}: ${m.message}` : m.message, { error: m.error, duration: m.error ? 7000 : 4000 }),
-  );
+  void onPluginMessage((m) => {
+    const run = m.plugin ? running.get(m.plugin) : undefined;
+    if (run) {
+      // Kept for the run's history entry; shown meanwhile as its progress.
+      (m.error ? run.errors : run.messages).push(m.message);
+      if (!m.error) run.job.progress(m.message);
+    }
+    if (!run || m.error) {
+      toast(m.plugin ? `${m.plugin}: ${m.message}` : m.message, { error: m.error, duration: m.error ? 7000 : 4000 });
+    }
+  });
   void onPluginSelect((ids) => selectBooks(ids));
 }

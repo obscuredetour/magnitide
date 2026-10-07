@@ -17,6 +17,11 @@ added: Array<number>,
  */
 removed: Array<number>, fieldsAdded: number, 
 /**
+ * What was done, a line per book or field: "“Dune”: title, tags, EPUB
+ * file replaced", "Added “Dune Omnibus” (EPUB)".
+ */
+details: Array<string>, 
+/**
  * "Title: reason" for each book whose changes couldn't be applied.
  */
 failed: Array<string>, warnings: Array<string>, };
