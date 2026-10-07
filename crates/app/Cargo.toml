@@ -1,8 +1,8 @@
 [package]
 name = "magnitide"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2024"
-description = "An AI-free ebook library manager for calibre libraries"
+description = "A fast ebook library manager that works with your calibre library"
 license = "GPL-3.0-or-later"
 
 [dependencies]

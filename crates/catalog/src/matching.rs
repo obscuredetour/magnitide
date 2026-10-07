@@ -1,7 +1,7 @@
 //! Deciding whether two descriptions are the same book: a metadata lookup
 //! result and a library book, or a file on an e-reader and a library book.
 //!
-//! Plain string comparison after normalizing: no learned or AI ranking, so a
+//! Plain string comparison after normalizing: no learned ranking, so a
 //! score is always explainable ("same ISBN", "title and author match").
 
 /// A title reduced to what identifies it: ASCII, lower case, no subtitle,
