@@ -519,14 +519,15 @@ function FieldForm(props: { field?: CustomField; onDone(): void; onSaved(): Prom
         <label for="field-kind" class="text-muted">
           Kind
         </label>
-        <select
+        <Select
+          wide
           id="field-kind"
-          class={field}
+          class="h-7 pl-2 text-xs outline-none focus:border-focus"
           value={kind()}
           onChange={(e) => setKind(e.currentTarget.value as FieldKind)}
         >
           <For each={Object.entries(FIELD_KINDS)}>{([k, label]) => <option value={k}>{label}</option>}</For>
-        </select>
+        </Select>
         <Show when={kind() === 'text'}>
           <span />
           <label class="flex items-center gap-2">

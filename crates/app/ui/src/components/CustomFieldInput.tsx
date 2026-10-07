@@ -4,6 +4,10 @@
 import { For, onMount, Show } from 'solid-js';
 
 import type { CustomField, FieldValue } from '../api';
+import { Select } from './Select';
+
+/** Selects are drawn by `Select`, which brings the border and arrow. */
+const SELECT = 'h-8 pl-2.5 outline-none focus:border-focus focus:ring-3 focus:ring-focus/20';
 
 const asText = (v: FieldValue | null): string =>
   typeof v === 'string' ? v : typeof v === 'number' ? String(v) : Array.isArray(v) ? v.join(', ') : '';
@@ -61,9 +65,10 @@ export function CustomFieldInput(props: {
       );
     case 'bool':
       return (
-        <select
+        <Select
+          wide
           id={id()}
-          class={props.inputClass}
+          class={SELECT}
           value={props.value === true ? 'yes' : props.value === false ? 'no' : ''}
           onChange={(e) => {
             const v = e.currentTarget.value;
@@ -73,7 +78,7 @@ export function CustomFieldInput(props: {
           <option value="">{props.mixed ? 'Mixed' : '—'}</option>
           <option value="yes">Yes</option>
           <option value="no">No</option>
-        </select>
+        </Select>
       );
     case 'date':
       return (
@@ -126,15 +131,16 @@ export function CustomFieldInput(props: {
         return v && !f().choices.includes(v) ? [...f().choices, v] : f().choices;
       };
       return (
-        <select
+        <Select
+          wide
           id={id()}
-          class={props.inputClass}
+          class={SELECT}
           value={asText(props.value)}
           onChange={(e) => props.onChange(orNull(e.currentTarget.value))}
         >
           <option value="">{props.mixed ? 'Mixed' : '—'}</option>
           <For each={options()}>{(c) => <option value={c}>{c}</option>}</For>
-        </select>
+        </Select>
       );
     }
     case 'series': {
