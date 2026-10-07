@@ -46,6 +46,7 @@ import { tableColumns } from './BookTable';
 import { CoverSizeSlider } from './CoverSizeSlider';
 import { resetZoom, tryZoom, ZOOM_STEPS, zoom, zoomLabel } from '../zoom';
 import { Icon } from './Icon';
+import { Select } from './Select';
 import { smallButton } from '../buttons';
 import { backdropDismiss } from '../backdrop';
 import { keys, SHORTCUTS } from '../keys';
@@ -1005,15 +1006,15 @@ function DeviceSettings() {
             label={DEVICE_KIND_NAMES[kind]}
             description={`Reads ${DEVICE_FORMATS[kind].slice(0, 4).join(', ')}${kind === 'kindle' ? ' (not EPUB over USB)' : ''}…`}
           >
-            <select
-              class="h-7 rounded-control border border-line bg-field px-2 text-xs"
+            <Select
+              class="h-7 pl-2 text-xs"
               aria-label={`Format to send to ${DEVICE_KIND_NAMES[kind]}`}
               value={preferredFormat(kind) ?? ''}
               onChange={(e) => setPreferredFormat(kind, e.currentTarget.value || null)}
             >
               <option value="">Ask each time</option>
               <For each={DEVICE_FORMATS[kind]}>{(f) => <option value={f}>{f}</option>}</For>
-            </select>
+            </Select>
           </Row>
         )}
       </For>
