@@ -9,6 +9,18 @@ from http.cookiejar import Cookie
 import mechanize
 
 
+def copy_cookiejar(jar):
+    """A deep copy of a cookie jar. mechanize's jar leaves its lock out of
+    its pickled state and doesn't put one back, so a copy would fail on
+    first use."""
+    import threading
+
+    ans = copy.deepcopy(jar) if jar is not None else mechanize.CookieJar()
+    if not hasattr(ans, '_cookies_lock'):
+        ans._cookies_lock = threading.RLock()
+    return ans
+
+
 class ModernBrowser(mechanize.Browser):
     pass
 
