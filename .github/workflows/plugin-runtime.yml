@@ -8,11 +8,20 @@
 # paste the table into runtime.rs, commit sha256sums.txt, and ship Magnitide.
 #
 # Run by hand (workflow_dispatch) or by pushing a tag `plugin-runtime-v<N>`,
-# where N is scripts/plugin-runtime/VERSION.
+# where N is scripts/plugin-runtime/VERSION. A manual run can build only
+# some targets and take the others' archives from an earlier run's
+# artifacts, so one failed platform doesn't mean rebuilding them all.
 name: Plugin runtime
 
 on:
   workflow_dispatch:
+    inputs:
+      targets:
+        description: "Targets to build, comma-separated (empty: all)"
+        default: ""
+      artifacts_from:
+        description: "Run id whose plugin-runtime-* artifacts supply the targets not built here"
+        default: ""
   push:
     tags: ["plugin-runtime-v*"]
 
@@ -20,19 +29,42 @@ permissions:
   contents: write
 
 jobs:
+  plan:
+    name: Which targets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - id: plan
+        env:
+          TARGETS: ${{ inputs.targets }}
+        run: |
+          python3 - <<'EOF' >> "$GITHUB_OUTPUT"
+          import json, os
+          all = [
+              {"os": "macos-14", "target": "aarch64-apple-darwin"},
+              {"os": "macos-15-intel", "target": "x86_64-apple-darwin"},
+              {"os": "windows-2022", "target": "x86_64-pc-windows-msvc"},
+              {"os": "ubuntu-24.04", "target": "x86_64-unknown-linux-gnu"},
+              {"os": "ubuntu-24.04-arm", "target": "aarch64-unknown-linux-gnu"},
+          ]
+          wanted = {t.strip() for t in os.environ.get("TARGETS", "").split(",") if t.strip()}
+          unknown = wanted - {m["target"] for m in all}
+          if unknown:
+              raise SystemExit(f"unknown targets: {', '.join(sorted(unknown))}")
+          chosen = [m for m in all if not wanted or m["target"] in wanted]
+          print("matrix=" + json.dumps({"include": chosen}))
+          EOF
+
   build:
     name: Build (${{ matrix.target }})
+    needs: plan
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { os: macos-14, target: aarch64-apple-darwin }
-          - { os: macos-15-intel, target: x86_64-apple-darwin }
-          - { os: windows-2022, target: x86_64-pc-windows-msvc }
-          - { os: ubuntu-24.04, target: x86_64-unknown-linux-gnu }
-          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
@@ -73,6 +105,24 @@ jobs:
           pattern: plugin-runtime-*
           path: dist
           merge-multiple: true
+      - name: Archives from an earlier run, for the targets not built here
+        if: inputs.artifacts_from != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p earlier
+          gh run download "${{ inputs.artifacts_from }}" --pattern 'plugin-runtime-*' --dir earlier
+          # Only targets this run didn't build; a target's files share its name.
+          for f in earlier/*/*; do
+            name="$(basename "$f")"
+            [ -e "dist/$name" ] || cp "$f" "dist/$name"
+          done
+          ls -la dist
+      - name: Every target is present
+        run: |
+          for t in aarch64-apple-darwin x86_64-apple-darwin x86_64-pc-windows-msvc x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
+            ls dist/*-"$t".tar.zst >/dev/null 2>&1 || { echo "missing: $t"; exit 1; }
+          done
       - name: Manifest and checksums
         run: |
           python3 scripts/plugin-runtime/build.py --manifest dist --sha256sums dist/sha256sums.txt
