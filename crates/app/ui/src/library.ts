@@ -3,7 +3,15 @@
 
 import { batch, createSignal } from 'solid-js';
 
-import { api, type BookRow, errorMessage, type LibraryInfo, type SortDir, type SortKey } from './api';
+import {
+  api,
+  type BookRow,
+  coverLibraryChanged,
+  errorMessage,
+  type LibraryInfo,
+  type SortDir,
+  type SortKey,
+} from './api';
 import { storage } from './storage';
 import { toast } from './toast';
 
@@ -173,6 +181,7 @@ export async function openLibrary(path: string | null): Promise<boolean> {
     storage.set('libraryPath', info.path);
     rememberLibrary(info);
     batch(() => {
+      coverLibraryChanged(info.cacheKey);
       setLibrary(info);
       setSelectedId(null);
       setDetailsOpen(false);
