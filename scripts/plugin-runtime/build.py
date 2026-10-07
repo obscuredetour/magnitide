@@ -53,7 +53,7 @@ QT_PLATFORM_PLUGINS_KEEP = ('cocoa', 'windows', 'xcb', 'wayland', 'wayland-egl',
 # their integration plugins) link Qt's private platform libraries.
 QT_LIB_EXTRA_KEEP = ('Concurrent', 'XcbQpa', 'WaylandClient', 'WlShellIntegration', 'WaylandEglClientHwIntegration')
 
-MAX_INSTALLED_MB = 240
+MAX_INSTALLED_MB = 260  # x86_64 Linux is 243 MB (Qt's ICU data); the others 160–200
 MAX_ARCHIVE_MB = 90
 
 
