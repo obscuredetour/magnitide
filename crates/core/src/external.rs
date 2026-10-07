@@ -46,19 +46,65 @@ pub struct ApplyReport {
     #[serde(skip)]
     #[cfg_attr(feature = "ts", ts(skip))]
     pub added_from: Vec<(BookId, BookId)>,
+    /// What `details` is written from: new fields, then a line per book.
+    #[serde(skip)]
+    #[cfg_attr(feature = "ts", ts(skip))]
+    lines: Vec<Line>,
+}
+
+/// One line of an [`ApplyReport`]'s details, kept apart so reports from the
+/// same run can be combined book by book.
+#[derive(Debug, Clone, PartialEq)]
+enum Line {
+    Field(String),
+    Added { id: BookId, title: String, formats: Vec<String> },
+    Updated { id: BookId, title: String, parts: Vec<String>, added_formats: Vec<String>, removed_formats: Vec<String> },
 }
 
 impl ApplyReport {
-    /// Add `other` (a later apply in the same run) to this report.
+    /// Add `other` (a later apply in the same run) to this report. A book
+    /// added earlier in the run and changed since stays one added book, with
+    /// its latest title and formats; a book updated twice is one update.
     pub fn absorb(&mut self, other: ApplyReport) {
-        self.updated.extend(other.updated.into_iter().filter(|id| !self.updated.contains(id)).collect::<Vec<_>>());
+        for id in other.updated {
+            if !self.updated.contains(&id) && !self.added.contains(&id) {
+                self.updated.push(id);
+            }
+        }
         self.added.extend(other.added);
         self.removed.extend(other.removed);
         self.fields_added += other.fields_added;
-        self.details.extend(other.details);
         self.failed.extend(other.failed);
         self.warnings.extend(other.warnings);
         self.added_from.extend(other.added_from);
+        for line in other.lines {
+            self.add_line(line);
+        }
+        self.details = self.lines.iter().map(Line::text).collect();
+    }
+
+    fn add_line(&mut self, line: Line) {
+        let Line::Updated { id, title, parts, added_formats, removed_formats } = line else {
+            self.lines.push(line);
+            return;
+        };
+        match self
+            .lines
+            .iter_mut()
+            .find(|l| matches!(l, Line::Added { id: i, .. } | Line::Updated { id: i, .. } if *i == id))
+        {
+            Some(Line::Added { title: t, formats, .. }) => {
+                // New this run: its metadata isn't a change; its files are its formats.
+                *t = title;
+                formats.retain(|f| !removed_formats.contains(f));
+                formats.extend(added_formats.into_iter().filter(|f| !formats.contains(f)).collect::<Vec<_>>());
+            }
+            Some(Line::Updated { title: t, parts: p, .. }) => {
+                *t = title;
+                p.extend(parts.into_iter().filter(|x| !p.contains(x)).collect::<Vec<_>>());
+            }
+            _ => self.lines.push(Line::Updated { id, title, parts, added_formats, removed_formats }),
+        }
     }
 
     /// Nothing was changed, or found to need asking about.
@@ -86,7 +132,7 @@ impl Library {
             report.fields_added = import.custom_fields;
             report.warnings.extend(import.warnings);
             for col in &changes.new_columns {
-                report.details.push(format!("New field: {} (#{})", col.name, col.label));
+                report.lines.push(Line::Field(format!("New field: {} (#{})", col.name, col.label)));
             }
         }
         let fields = self.custom_field_map()?;
@@ -96,8 +142,23 @@ impl Library {
             match self.apply_book_changes(change, &fields, &mut discard) {
                 Ok(()) => {
                     report.updated.push(change.id);
-                    let now = self.book(change.id).map(|b| b.title).unwrap_or(title);
-                    report.details.push(format!("“{now}”: {}", describe(change)));
+                    let title = self.book(change.id).map(|b| b.title).unwrap_or(title);
+                    let formats = |want: fn(&FileChange) -> Option<&String>| {
+                        change.files.iter().filter_map(want).cloned().collect::<Vec<_>>()
+                    };
+                    report.lines.push(Line::Updated {
+                        id: change.id,
+                        title,
+                        parts: describe(change),
+                        added_formats: formats(|f| match f {
+                            FileChange::Added { format, .. } => Some(format),
+                            _ => None,
+                        }),
+                        removed_formats: formats(|f| match f {
+                            FileChange::Removed { format } => Some(format),
+                            _ => None,
+                        }),
+                    });
                 }
                 Err(e) => report.failed.push(format!("{title}: {e}")),
             }
@@ -107,14 +168,14 @@ impl Library {
                 Ok(id) => {
                     report.added.push(id);
                     report.added_from.push((added.book.id, id));
-                    let formats: Vec<&str> = added.files.iter().map(|(f, _)| f.as_str()).collect();
-                    let with = if formats.is_empty() { String::new() } else { format!(" ({})", formats.join(", ")) };
-                    report.details.push(format!("Added “{}”{with}", added.book.title));
+                    let formats = added.files.iter().map(|(f, _)| f.to_uppercase()).collect();
+                    report.lines.push(Line::Added { id, title: added.book.title.clone(), formats });
                 }
                 Err(e) => report.failed.push(format!("{}: {e}", added.book.title)),
             }
         }
         report.removed = changes.removed.iter().copied().filter(|&id| self.book(id).is_ok()).collect();
+        report.details = report.lines.iter().map(Line::text).collect();
         Ok(report)
     }
 
@@ -277,8 +338,19 @@ impl Library {
     }
 }
 
-/// What changed in a book, for the report: "title, tags, EPUB file replaced, new cover".
-fn describe(change: &ChangedBook) -> String {
+impl Line {
+    fn text(&self) -> String {
+        match self {
+            Line::Field(text) => text.clone(),
+            Line::Added { title, formats, .. } if formats.is_empty() => format!("Added “{title}”"),
+            Line::Added { title, formats, .. } => format!("Added “{title}” ({})", formats.join(", ")),
+            Line::Updated { title, parts, .. } => format!("“{title}”: {}", parts.join(", ")),
+        }
+    }
+}
+
+/// What changed in a book, for the report: "title", "tags", "EPUB file replaced", "new cover".
+fn describe(change: &ChangedBook) -> Vec<String> {
     let mut parts = change.fields.fields();
     for f in &change.files {
         parts.push(match f {
@@ -292,7 +364,7 @@ fn describe(change: &ChangedBook) -> String {
         Some(CoverChange::Removed) => parts.push("cover removed".into()),
         None => {}
     }
-    parts.join(", ")
+    parts
 }
 
 /// Whether any field the edit form holds changed (custom fields go separately).
@@ -481,6 +553,58 @@ mod tests {
         assert_eq!(new.custom.get("#pages"), Some(&CustomValue::Int(900)));
         assert_eq!(new.formats.len(), 1);
         let _: PathBuf = new.format_path(lib.root(), &new.formats[0]);
+    }
+
+    #[test]
+    fn a_run_reports_each_book_once() {
+        let (dir, mut lib, id) = library();
+        let epub = dir.path().join("merged.epub");
+        fs::write(&epub, "merged").unwrap();
+        let mut new = lib.load_catalog().unwrap().get(id).unwrap().clone();
+        (new.id, new.title, new.formats) = (500, "Untitled Merge".into(), vec![]);
+        // First sync point: the plugin made a book and edited Dune.
+        let mut run = lib
+            .apply_changes(
+                &Changes {
+                    added: vec![AddedBook { book: new, files: vec![], cover: None }],
+                    books: vec![ChangedBook {
+                        id,
+                        fields: BookChanges { tags: Some(vec!["Classic".into()]), ..Default::default() },
+                        files: vec![],
+                        cover: None,
+                    }],
+                    ..Default::default()
+                },
+                |_| Ok(()),
+            )
+            .unwrap();
+        let added = run.added[0];
+        // Then, after the user named it, a file for it, and Dune again.
+        let later = lib
+            .apply_changes(
+                &Changes {
+                    books: vec![
+                        ChangedBook {
+                            id: added,
+                            fields: BookChanges { title: Some("The Collected Dune".into()), ..Default::default() },
+                            files: vec![FileChange::Added { format: "EPUB".into(), path: epub }],
+                            cover: None,
+                        },
+                        ChangedBook {
+                            id,
+                            fields: BookChanges { publisher: Some(Some("Ace".into())), ..Default::default() },
+                            files: vec![],
+                            cover: None,
+                        },
+                    ],
+                    ..Default::default()
+                },
+                |_| Ok(()),
+            )
+            .unwrap();
+        run.absorb(later);
+        assert_eq!((run.updated.as_slice(), run.added.as_slice()), (&[id][..], &[added][..]));
+        assert_eq!(run.details, ["“Dune”: tags, publisher", "Added “The Collected Dune” (EPUB)"]);
     }
 
     #[test]
