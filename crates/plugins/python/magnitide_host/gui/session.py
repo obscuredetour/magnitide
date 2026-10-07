@@ -224,7 +224,7 @@ def _watch_jobs(gui):
 def load_plugins():
     """Load the GUI plugins that are on (calibre's own actions first), as
     calibre does at start-up."""
-    from calibre.customize import InterfaceActionBase, PluginInstallationType
+    from calibre.customize import InterfaceActionBase
     from calibre.customize.ui import interface_actions
 
     gui = main_window()
@@ -236,14 +236,7 @@ def load_plugins():
         try:
             if not isinstance(base, InterfaceActionBase):
                 raise ValueError(f'{base.name} is not a GUI plugin')
-            ac = base.load_actual_plugin(gui)
-            ac.plugin_path = base.plugin_path
-            ac.interface_action_base_plugin = base
-            ac.installation_type = base.installation_type or PluginInstallationType.EXTERNAL
-            ac.do_genesis()
-            gui.iactions[ac.name] = ac
-            _loaded[path] = ac
-            new.append(ac)
+            new.append(load_plugin(base, gui))
         except Exception as e:
             traceback.print_exc()
             errors[base.plugin_path or base.name] = f'{type(e).__name__}: {e}'.strip()
@@ -258,6 +251,21 @@ def load_plugins():
             except Exception:
                 traceback.print_exc()
     return errors
+
+
+def load_plugin(base, gui):
+    """Load one GUI plugin's action into the window (genesis included) and
+    remember it; the base's `actual_plugin_` is set."""
+    from calibre.customize import PluginInstallationType
+
+    ac = base.load_actual_plugin(gui)
+    ac.plugin_path = base.plugin_path
+    ac.interface_action_base_plugin = base
+    ac.installation_type = base.installation_type or PluginInstallationType.EXTERNAL
+    ac.do_genesis()
+    gui.iactions[ac.name] = ac
+    _loaded[base.plugin_path or f'builtin:{base.name}'] = ac
+    return ac
 
 
 def external_loaded():

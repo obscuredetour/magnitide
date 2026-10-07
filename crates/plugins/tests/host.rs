@@ -542,6 +542,21 @@ fn plugins_own_settings_dialogs() {
     let saved = dir.path().join("calibre-plugins/config/plugins/magnitide_test_preferences.json");
     assert!(std::fs::read_to_string(saved).unwrap().contains("good evening"));
 
+    // A GUI plugin's settings, before any library was opened in the host:
+    // its action is loaded into the window first (it reads gui.keyboard).
+    let (tx, events) = mpsc::channel();
+    plugins.set_event_handler(Arc::new(move |e| {
+        let _ = tx.send(e);
+    }));
+    let action = plugins.install(&fixture_zip(dir.path(), "test_action")).unwrap();
+    assert!(action.customizable);
+    accept_next_dialog(&plugins, "hello from settings");
+    let done = plugins.configure("Magnitide Test Action").unwrap();
+    assert!(done.changed && !done.restart);
+    let saved = dir.path().join("calibre-plugins/config/plugins/magnitide_test_action.json");
+    assert!(std::fs::read_to_string(saved).unwrap().contains("hello from settings"));
+    assert_eq!(next_event(&plugins, &events, "gui-status")["message"], "Settings: hello from settings");
+
     // Cancelled: nothing saved.
     plugins
         .host()

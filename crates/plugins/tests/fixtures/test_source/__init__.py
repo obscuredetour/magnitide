@@ -22,7 +22,18 @@ class TestSource(Source):
     supported_platforms = ['windows', 'osx', 'linux']
     capabilities = frozenset(['identify', 'cover'])
     touched_fields = frozenset(
-        ['title', 'authors', 'identifier:test', 'identifier:isbn', 'publisher', 'pubdate', 'comments', 'tags', 'series', 'languages']
+        [
+            'title',
+            'authors',
+            'identifier:test',
+            'identifier:isbn',
+            'publisher',
+            'pubdate',
+            'comments',
+            'tags',
+            'series',
+            'languages',
+        ]
     )
 
     def get_book_url(self, identifiers):
@@ -58,6 +69,8 @@ class TestSource(Source):
         self.cache_identifier_to_cover_url('42', 'https://example.invalid/cover.png')
         result_queue.put(mi)
 
-    def download_cover(self, log, result_queue, abort, title=None, authors=None, identifiers={}, timeout=30, get_best_cover=False):
+    def download_cover(
+        self, log, result_queue, abort, title=None, authors=None, identifiers={}, timeout=30, get_best_cover=False
+    ):
         if self.get_cached_cover_url(identifiers):
             result_queue.put((self, PNG))

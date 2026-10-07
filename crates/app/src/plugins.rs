@@ -654,7 +654,15 @@ pub async fn plugins_status(app: AppHandle) -> CmdResult<PluginsStatus> {
 /// to close.
 #[tauri::command]
 pub async fn configure_plugin(app: AppHandle, name: String) -> CmdResult<Configured> {
-    blocking(app, move |p| p.configure(&name)).await
+    tauri::async_runtime::spawn_blocking(move || {
+        // A GUI plugin's settings want the plugin loaded in the host's
+        // window with the library open, as in calibre; without a Magnitide
+        // library the host makes do with its window alone.
+        let _ = prepare(&app, true);
+        app.state::<Plugins>().configure(&name)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Progress of the runtime's install. Matches `onPluginRuntimeProgress` in ui/src/api.ts.

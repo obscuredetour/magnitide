@@ -252,10 +252,15 @@ def m_plugin_configure(params):
 
     def go():
         from calibre.customize import InterfaceActionBase, PreferencesPlugin
+        from magnitide_host.gui import session
         from magnitide_host.gui.macos import return_focus
+        from magnitide_host.gui.window import build_gui
         from qt.core import QDialog, QDialogButtonBox, QScrollArea, QVBoxLayout
 
-        parent = main_window()
+        # A GUI plugin's settings live in its action, which wants the main
+        # window (`self.gui`): the stand-in exists even before a library is
+        # opened in the host.
+        parent = main_window() or build_gui()
         changed = restart = False
         if isinstance(p, PreferencesPlugin):
             d = QDialog(parent)
@@ -283,14 +288,20 @@ def m_plugin_configure(params):
                     traceback.print_exc()
         else:
             if isinstance(p, InterfaceActionBase) and p.actual_plugin_ is None and p.actual_plugin:
-                # Its settings live in the actual plugin: load it first (as
-                # calibre has by now), and say why when that fails.
-                try:
-                    p.load_actual_plugin(parent)
-                except Exception as e:
+                # Load it as calibre has by now (genesis included), and say
+                # why when that fails. Enabled plugins load together, as at
+                # start-up; a disabled one is loaded on its own.
+                errors = session.load_plugins()
+                if p.actual_plugin_ is None:
+                    try:
+                        session.load_plugin(p, parent)
+                    except Exception as e:
+                        errors[p.plugin_path or p.name] = f'{type(e).__name__}: {e}'.strip()
+                err = errors.get(p.plugin_path) or errors.get(p.name)
+                if err or p.actual_plugin_ is None:
                     raise ValueError(
-                        f"{p.name} couldn't be loaded, so its settings can't be opened: {type(e).__name__}: {e}"
-                    ) from e
+                        f"{p.name} couldn't be loaded, so its settings can't be opened: {err or 'unknown error'}"
+                    )
             try:
                 changed = bool(p.do_user_config(parent))
             except NotImplementedError:

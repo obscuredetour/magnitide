@@ -70,6 +70,11 @@ class TestAction(InterfaceAction):
         on.setChecked(True)
         self.gui.keyboard.finalize()
 
+    def apply_settings(self):
+        from calibre.utils.config import JSONConfig
+
+        self.gui.status_bar.show_message('Settings: ' + JSONConfig('plugins/magnitide_test_action')['greeting'], 3000)
+
     def selected(self):
         return self.gui.library_view.get_selected_ids()
 
