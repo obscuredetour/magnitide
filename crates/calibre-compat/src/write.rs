@@ -49,8 +49,7 @@ pub fn write_library(dir: &Path, catalog: &Catalog, opts: &WriteOptions) -> Resu
     let columns: Vec<(&CustomColumn, &'static str)> =
         catalog.custom_columns.iter().filter_map(|c| datatype_name(&c.datatype).map(|d| (c, d))).collect();
     for (col, datatype) in &columns {
-        let display = if col.display.is_object() { col.display.to_string() } else { "{}".to_owned() };
-        create_custom_column(&tx, Some(col.id), &col.label, &col.name, datatype, col.is_multiple, &display)?;
+        create_custom_column(&tx, Some(col.id), &col.label, &col.name, datatype, col.is_multiple, &display(col))?;
     }
 
     let mut names = Names::default();
@@ -212,6 +211,21 @@ fn insert_custom_value(
 fn one(tx: &Transaction<'_>, table: &str, book: i64, value: impl rusqlite::ToSql) -> Result<()> {
     tx.prepare_cached(&format!("INSERT INTO {table} (book, value) VALUES (?, ?)"))?.execute(params![book, value])?;
     Ok(())
+}
+
+/// A column's display settings as calibre keeps them. A choice column lists
+/// its values in `enum_values` (Magnitide's own fields keep them in `choices`).
+fn display(col: &CustomColumn) -> String {
+    let mut display = if col.display.is_object() { col.display.clone() } else { serde_json::json!({}) };
+    if col.datatype == Datatype::Enumeration {
+        if display.get("enum_values").is_none() {
+            display["enum_values"] = display.get("choices").cloned().unwrap_or_else(|| serde_json::json!([]));
+        }
+        if display.get("enum_colors").is_none() {
+            display["enum_colors"] = serde_json::json!([]);
+        }
+    }
+    display.to_string()
 }
 
 /// calibre's name for a column type; None for ones that can't be written.
@@ -431,6 +445,18 @@ mod tests {
         assert_eq!(other.tags, ["Classics"], "name tables are case-insensitive, first spelling wins");
         assert_eq!(other.pubdate, None, "undefined date reads back as none");
         assert_eq!(other.custom, b.custom);
+    }
+
+    #[test]
+    fn choice_columns_list_their_values_for_calibre() {
+        let mut shelf = column(2, "shelf", Datatype::Enumeration, false);
+        shelf.display = serde_json::json!({ "choices": ["To Read", "Read"] });
+        let catalog = Catalog::new(None, vec![shelf], vec![], vec![]);
+        let dir = tempfile::tempdir().unwrap();
+        write_library(dir.path(), &catalog, &WriteOptions::default()).unwrap();
+        let back = Library::open(dir.path()).unwrap().custom_columns().unwrap();
+        assert_eq!(back[0].display["enum_values"], serde_json::json!(["To Read", "Read"]));
+        assert_eq!(back[0].display["enum_colors"], serde_json::json!([]));
     }
 
     #[test]
