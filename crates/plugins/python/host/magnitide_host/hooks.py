@@ -266,7 +266,14 @@ def m_plugin_configure(params):
             d = QDialog(parent)
             d.setWindowTitle(p.gui_name or p.name)
             l = QVBoxLayout(d)
+            # As calibre's Preferences dialog does: the plugin knows the
+            # window, the page is made, then its genesis runs with it.
+            p.gui = parent
             w = p.create_widget(d)
+            try:
+                w.genesis(parent)
+            except Exception:
+                traceback.print_exc()
             sa = QScrollArea(d)
             sa.setWidget(w)
             sa.setWidgetResizable(True)

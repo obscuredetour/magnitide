@@ -105,8 +105,8 @@ class JobManager(QAbstractTableModel):
             if job.is_finished and not getattr(job, '_reported', False):
                 job._reported = True
                 rows_done.append(row)
-        for row in rows_done:
-            self.job_done.emit(row)
+        for _row in rows_done:
+            self.job_done.emit(len(self.unfinished_jobs()))
         if self.jobs:
             self.dataChanged.emit(self.index(0, 0), self.index(len(self.jobs) - 1, 4))
         self.has_jobs.emit(bool(self.unfinished_jobs()))
@@ -116,7 +116,7 @@ class JobManager(QAbstractTableModel):
         self.beginInsertRows(QModelIndex(), 0, 0)
         self.jobs.insert(0, job)
         self.endInsertRows()
-        self.job_added.emit(0)
+        self.job_added.emit(len(self.jobs))
         if isinstance(job, ParallelJob):
             self.server.add_job(job)
         else:

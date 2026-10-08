@@ -11,6 +11,7 @@
 //! library ([`shadow`]). Other kinds of plugin can be installed and are
 //! kept, marked as not supported yet. See docs/calibre-plugins.md for the plan.
 
+pub mod calibre;
 pub mod filetype;
 pub mod gui;
 pub mod host;
@@ -30,6 +31,7 @@ use include_dir::{Dir, include_dir};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+pub use calibre::{CalibreInstall, HostChoice};
 pub use filetype::Hook;
 pub use gui::{DEFAULT_OUTPUT_FORMAT, MenuItem, PluginMenu, PluginMenus};
 pub use host::{EventHandler, Host, Transport};
@@ -177,11 +179,31 @@ pub struct Plugins {
     hook_failure: filetype::HookFailure,
 }
 
-/// The runtime, for Settings.
+/// Where the host runs.
+#[derive(Debug, Clone)]
+pub enum Launcher {
+    Calibre(CalibreInstall),
+    Runtime(Runtime),
+}
+
+pub const CALIBRE_MISSING: &str =
+    "No installed calibre was found. Install calibre, or choose Magnitide's plugin runtime in Settings › Plugins.";
+pub const RUNTIME_OR_CALIBRE_MISSING: &str =
+    "calibre plugins need an installed calibre or Magnitide's plugin runtime. Install either in Settings › Plugins.";
+
+/// The runtime (and the host choice), for Settings.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeStatus {
+    /// Settings' choice of host.
+    pub host_choice: HostChoice,
+    /// What that choice comes to now: "calibre", "runtime", or None when
+    /// neither is available (then `host_problem` says why).
+    pub host: Option<String>,
+    pub host_problem: Option<String>,
+    /// The installed calibre, when one was found.
+    pub calibre: Option<CalibreInstall>,
     pub installed: bool,
     pub installing: bool,
     /// Whether a runtime is published for this computer.
@@ -259,7 +281,7 @@ impl Plugins {
     fn compat_dir(&self) -> Result<PathBuf, String> {
         if let Some(dir) = std::env::var_os(COMPAT_ENV_OVERRIDE).filter(|v| !v.is_empty()) {
             let dir = PathBuf::from(dir);
-            if !dir.join("magnitide_host").is_dir() {
+            if !dir.join("host").join("magnitide_host").is_dir() {
                 return Err(format!("{COMPAT_ENV_OVERRIDE} ({}) holds no magnitide_host package", dir.display()));
             }
             return Ok(dir);
@@ -291,16 +313,41 @@ impl Plugins {
         if let Some(h) = slot.as_ref().filter(|h| h.is_alive()) {
             return Ok(h.clone());
         }
-        let runtime = self.runtime().ok_or(RUNTIME_MISSING)?;
         let compat = self.compat_dir()?;
         std::fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
         let on_event = self.on_event.lock().unwrap_or_else(|e| e.into_inner()).clone();
-        let h: Arc<dyn Transport> = Arc::new(Host::start(&runtime, &compat, &self.dir.join("config"), on_event)?);
+        let config = self.dir.join("config");
+        let h: Arc<dyn Transport> = match self.launcher()? {
+            Launcher::Calibre(install) => {
+                Arc::new(Host::start_calibre(Path::new(&install.calibre_debug), &compat, &config, on_event)?)
+            }
+            Launcher::Runtime(runtime) => Arc::new(Host::start(&runtime, &compat, &config, on_event)?),
+        };
         *slot = Some(h.clone());
         drop(slot);
         // The host's own registry (what calibre's `find_plugin` and friends see).
         self.sync_registry(&h);
         Ok(h)
+    }
+
+    /// The host to start, by Settings' choice: an installed calibre (found
+    /// now, so a calibre installed since is picked up), or the runtime.
+    pub fn launcher(&self) -> Result<Launcher, String> {
+        let choice = self.host_choice();
+        let calibre = if choice == HostChoice::Runtime { None } else { calibre::find_installed() };
+        match (choice, calibre) {
+            (HostChoice::Runtime, _) | (HostChoice::Auto, None) => {
+                self.runtime().map(Launcher::Runtime).ok_or_else(|| {
+                    if choice == HostChoice::Auto { RUNTIME_OR_CALIBRE_MISSING } else { RUNTIME_MISSING }.to_owned()
+                })
+            }
+            (HostChoice::Calibre, None) => Err(CALIBRE_MISSING.to_owned()),
+            (_, Some(install)) => match &install.problem {
+                Some(problem) if choice == HostChoice::Calibre => Err(problem.clone()),
+                Some(_) => self.runtime().map(Launcher::Runtime).ok_or_else(|| RUNTIME_OR_CALIBRE_MISSING.to_owned()),
+                None => Ok(Launcher::Calibre(install)),
+            },
+        }
     }
 
     /// The installed plugins as the host's registry wants them.
@@ -350,8 +397,19 @@ impl Plugins {
     pub fn runtime_status(&self) -> RuntimeStatus {
         let release = runtime::release();
         let installing = self.installing.load(Ordering::SeqCst);
+        let host_choice = self.host_choice();
+        let calibre = calibre::find_installed();
+        let (host, host_problem) = match self.launcher() {
+            Ok(Launcher::Calibre(_)) => (Some("calibre".to_owned()), None),
+            Ok(Launcher::Runtime(_)) => (Some("runtime".to_owned()), None),
+            Err(e) => (None, Some(e)),
+        };
         match self.runtime() {
             Some(rt) => RuntimeStatus {
+                host_choice,
+                host,
+                host_problem,
+                calibre,
                 installed: true,
                 installing,
                 available: release.is_some(),
@@ -367,6 +425,10 @@ impl Plugins {
                 problem: None,
             },
             None => RuntimeStatus {
+                host_choice,
+                host,
+                host_problem,
+                calibre,
                 installed: false,
                 installing,
                 available: release.is_some(),
@@ -629,14 +691,15 @@ mod tests {
 
     #[test]
     fn the_compat_package_is_embedded() {
-        assert!(COMPAT.get_file("magnitide_host/__init__.py").is_some());
+        assert!(COMPAT.get_file("host/magnitide_host/__init__.py").is_some());
+        assert!(COMPAT.get_file("compat/calibre/__init__.py").is_some());
         assert_eq!(COMPAT_HASH.len(), 16);
         let dir = tempfile::tempdir().unwrap();
         let plugins = Plugins::new(dir.path().into(), dir.path().join("runtime"));
         let compat = plugins.compat_dir().unwrap();
-        assert!(compat.join("magnitide_host/__init__.py").is_file());
+        assert!(compat.join("host/magnitide_host/__init__.py").is_file());
         assert!(compat.ends_with(COMPAT_HASH));
-        let text = std::fs::read_to_string(compat.join("magnitide_host/__init__.py")).unwrap();
+        let text = std::fs::read_to_string(compat.join("host/magnitide_host/__init__.py")).unwrap();
         assert!(text.contains(&format!("COMPAT_VERSION = '{CALIBRE_API_VERSION}'")));
     }
 

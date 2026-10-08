@@ -13,6 +13,7 @@ import {
   onPluginRuntimeProgress,
   type PluginKind,
   type RuntimeStatus,
+  type PluginHostChoice,
   type ServerStatus,
   type SourceId,
   type SourceStatus,
@@ -1439,13 +1440,56 @@ function PluginSettings() {
         {(s) => (
           <>
             <Row
-              label="Plugin runtime"
-              description={<PluginRuntime status={s().runtime} onChange={(runtime) => mutate({ ...s(), runtime })} />}
+              label="Plugins run in"
+              description={
+                <>
+                  <Switch>
+                    <Match when={s().runtime.host === 'calibre'}>
+                      Your installed calibre {s().runtime.calibre?.version}: plugins run on calibre's own code.
+                    </Match>
+                    <Match when={s().runtime.host === 'runtime'}>
+                      Magnitide's plugin runtime (a copy of Python, Qt and the parts of calibre that plugins use,
+                      downloaded once); calibre needn't be installed.
+                    </Match>
+                    <Match when={true}>
+                      <span class="text-warning">{s().runtime.hostProblem ?? 'Nothing to run plugins in.'}</span>
+                    </Match>
+                  </Switch>
+                  <Show when={s().runtime.calibre?.problem}>
+                    {(problem) => <span class="mt-0.5 block text-warning">{problem()}</span>}
+                  </Show>
+                </>
+              }
             >
-              <button class={button} disabled={!s().runtime.installed || busy()} onClick={() => void add()}>
+              <Select
+                class="h-7 pl-2 text-xs"
+                aria-label="Where plugins run"
+                value={s().runtime.hostChoice}
+                onChange={(e) => {
+                  const choice = e.currentTarget.value as PluginHostChoice;
+                  api.setPluginHost(choice).then(
+                    (runtime) => {
+                      mutate({ ...s(), runtime });
+                      void refreshGuiPlugins();
+                    },
+                    (err) => toast(errorMessage(err), { error: true }),
+                  );
+                }}
+              >
+                <option value="auto">Installed calibre, else the runtime</option>
+                <option value="calibre">Installed calibre</option>
+                <option value="runtime">Magnitide's runtime</option>
+              </Select>
+              <button class={button} disabled={!s().runtime.host || busy()} onClick={() => void add()}>
                 {busy() ? 'Adding…' : 'Add Plugin…'}
               </button>
             </Row>
+            <Show when={s().runtime.hostChoice !== 'calibre'}>
+              <Row
+                label="Plugin runtime"
+                description={<PluginRuntime status={s().runtime} onChange={(runtime) => mutate({ ...s(), runtime })} />}
+              />
+            </Show>
             <Row
               label="Plugin conversions"
               description="When a plugin converts books (FanFicFare after downloading, say), they're converted to this. Plugins see it as calibre's output format."
@@ -1513,7 +1557,7 @@ function PluginSettings() {
                     <Show when={p.customizable && SUPPORTED_PLUGIN_KINDS.includes(p.kind)}>
                       <button
                         class={button}
-                        disabled={!s().runtime.installed || configuring() !== null}
+                        disabled={!s().runtime.host || configuring() !== null}
                         onClick={() => void configure(p)}
                       >
                         {configuring() === p.name ? 'Configuring…' : 'Configure…'}
@@ -1526,7 +1570,7 @@ function PluginSettings() {
                 )}
               </For>
             </Show>
-            <Show when={s().runtime.installed && s().plugins.length}>
+            <Show when={s().runtime.host && s().plugins.length}>
               <div class="mt-4">
                 <button
                   class="cursor-pointer text-xs text-link hover:underline"

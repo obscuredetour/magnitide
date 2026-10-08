@@ -26,7 +26,7 @@ use magnitide_core::external::ApplyReport;
 use magnitide_core::hooks::{ImportHooks, ImportOutcome, MetadataPlugins, Precedence};
 use magnitide_core::metadata::BookMetadata;
 use magnitide_plugins::shadow::{Shadow, baseline};
-use magnitide_plugins::{Configured, Hook, Installed, PluginMenus, Plugins, Progress, RuntimeStatus};
+use magnitide_plugins::{Configured, Hook, HostChoice, Installed, PluginMenus, Plugins, Progress, RuntimeStatus};
 use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -734,6 +734,13 @@ pub async fn cancel_plugin_runtime_install(state: State<'_, RuntimeInstall>) -> 
 #[tauri::command]
 pub async fn remove_plugin_runtime(app: AppHandle) -> CmdResult<RuntimeStatus> {
     blocking(app, |p| p.remove_runtime().map(|()| p.runtime_status())).await
+}
+
+/// Choose where plugins run: an installed calibre, Magnitide's runtime, or
+/// whichever is there (`auto`).
+#[tauri::command]
+pub async fn set_plugin_host(app: AppHandle, choice: HostChoice) -> CmdResult<RuntimeStatus> {
+    blocking(app, move |p| p.set_host_choice(choice).map(|()| p.runtime_status())).await
 }
 
 /// Set what books are converted to when a plugin asks.

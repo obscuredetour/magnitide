@@ -126,7 +126,7 @@ def headless_db(library):
     files.install_file_guards()
     files.shadow_roots.add(os.path.abspath(library))
     db = _headless.get(library)
-    if db is None or db.is_closed:
+    if db is None or getattr(db, 'is_closed', False):
         db = _headless[library] = LibraryDatabase(library)
     return db
 
@@ -163,6 +163,9 @@ def open_library(library):
 
 
 _jobs_watched = [False]
+# Jobs the watcher has seen start (id -> last progress) and has reported done.
+_job_seen = {}
+_job_reported = set()
 
 
 def _watch_jobs(gui):
@@ -172,31 +175,29 @@ def _watch_jobs(gui):
         return
     _jobs_watched[0] = True
     jm = gui.job_manager
-    seen = {}
+    seen, reported = _job_seen, _job_reported
 
     def describe(job):
         return {'job': id(job), 'plugin': state.get('plugin'), 'description': getattr(job, 'description', '')}
 
-    def added(row):
-        try:
-            job = jm.jobs[row]
-        except Exception:
-            return
-        seen[id(job)] = (0, '')
-        event('job-start', **describe(job))
+    def added(*args):
+        # The signal's int is a count in calibre (a row in the compat package): look for new jobs.
+        for job in list(jm.jobs):
+            if id(job) not in seen and id(job) not in reported:
+                seen[id(job)] = (0, '')
+                event('job-start', **describe(job))
 
-    def done(row):
-        try:
-            job = jm.jobs[row]
-        except Exception:
-            return
-        details = ''
-        try:
-            details = (job.details or '')[-4000:]
-        except Exception:
-            pass
-        event('job-done', failed=bool(getattr(job, 'failed', False)), details=details, **describe(job))
-        seen.pop(id(job), None)
+    def done(*args):
+        for job in list(jm.jobs):
+            if id(job) in seen and job.is_finished:
+                details = ''
+                try:
+                    details = (job.details or '')[-4000:]
+                except Exception:
+                    pass
+                event('job-done', failed=bool(getattr(job, 'failed', False)), details=details, **describe(job))
+                seen.pop(id(job), None)
+                reported.add(id(job))
 
     def progress():
         for job in list(jm.jobs):
@@ -225,11 +226,31 @@ def load_plugins():
     """Load the GUI plugins that are on (calibre's own actions first), as
     calibre does at start-up."""
     from calibre.customize import InterfaceActionBase
-    from calibre.customize.ui import interface_actions
+    from magnitide_host import IN_CALIBRE
 
+    if IN_CALIBRE:
+        # A real calibre's interface_actions() are calibre's own GUI; the
+        # window gets our stand-ins and the plugins Magnitide installed.
+        from magnitide_host.gui.actions import builtin_bases
+        from magnitide_host.plugins import enabled_entries, plugin
+
+        bases = list(builtin_bases())
+        for e in enabled_entries('interfaceAction'):
+            try:
+                bases.append(plugin(e['path']))
+            except Exception as ex:
+                traceback.print_exc()
+                bases.append(ex)
+    else:
+        from calibre.customize.ui import interface_actions
+
+        bases = list(interface_actions())
     gui = main_window()
     errors, new = {}, []
-    for base in interface_actions():
+    for base in bases:
+        if isinstance(base, Exception):
+            errors[str(base)] = f'{type(base).__name__}: {base}'.strip()
+            continue
         path = base.plugin_path or f'builtin:{base.name}'
         if path in _loaded:
             continue
@@ -284,8 +305,9 @@ def busy():
             return True
     try:
         # Until the job manager has reported a job done (its callback has
-        # run by then), not merely until its thread finished.
-        return any(not getattr(j, '_reported', False) for j in gui.job_manager.jobs)
+        # run by then), not merely until its thread finished: a job is
+        # finished when it says so and our watcher has sent job-done.
+        return any(not j.is_finished or id(j) in _job_seen for j in gui.job_manager.jobs)
     except Exception:
         return False
 

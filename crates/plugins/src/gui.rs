@@ -10,6 +10,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::calibre::HostChoice;
 use crate::{Installed, PluginKind, Plugins};
 
 /// Starting Qt and loading plugins the first time can take a while.
@@ -151,6 +152,8 @@ pub const DEFAULT_OUTPUT_FORMAT: &str = "EPUB";
 #[serde(rename_all = "camelCase")]
 struct Settings {
     output_format: Option<String>,
+    /// Which host runs plugins; None is [`HostChoice::Auto`].
+    host: Option<HostChoice>,
 }
 
 impl Plugins {
@@ -173,12 +176,34 @@ impl Plugins {
         if format.is_empty() || !format.chars().all(|c| c.is_ascii_alphanumeric()) {
             return Err(format!("“{format}” isn't a book format"));
         }
-        let settings = Settings { output_format: Some(format) };
+        let settings = Settings { output_format: Some(format), ..self.settings() };
+        self.write_settings(&settings)
+    }
+
+    fn write_settings(&self, settings: &Settings) -> Result<(), String> {
         std::fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
         let tmp = self.dir.join(".settings.json.tmp");
-        std::fs::write(&tmp, serde_json::to_vec_pretty(&settings).map_err(|e| e.to_string())?)
+        std::fs::write(&tmp, serde_json::to_vec_pretty(settings).map_err(|e| e.to_string())?)
             .and_then(|()| std::fs::rename(&tmp, self.settings_path()))
             .map_err(|e| e.to_string())
+    }
+
+    /// Which host runs plugins (Settings' choice).
+    pub fn host_choice(&self) -> HostChoice {
+        self.settings().host.unwrap_or_default()
+    }
+
+    /// Choose the host. A running host of the other kind is stopped (it
+    /// starts again when next needed); refused while a plugin is working.
+    pub fn set_host_choice(&self, choice: HostChoice) -> Result<(), String> {
+        if choice != self.host_choice() {
+            if self.gui_busy() {
+                return Err("A plugin is still working. Finish in its window first, then try again.".into());
+            }
+            *self.host.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        }
+        let settings = Settings { host: Some(choice), ..self.settings() };
+        self.write_settings(&settings)
     }
 
     /// Answer a plugin waiting on Magnitide (a `gui-ask` event, for calibre's

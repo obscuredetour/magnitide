@@ -1,4 +1,4 @@
-"""The compat package (crates/plugins/python) on the path, calibre's
+"""The compat package (crates/plugins/python/compat) and the host (python/host) on the path, calibre's
 builtins installed, settings in a temporary folder and Qt offscreen, as
 the host sets things up (magnitide_host.bootstrap)."""
 
@@ -12,11 +12,14 @@ import zipfile
 import pytest
 
 HERE = pathlib.Path(__file__).resolve().parent
-COMPAT = HERE.parent / 'python'
+PYTHON = HERE.parent / 'python'
+COMPAT = PYTHON / 'compat'
+HOST = PYTHON / 'host'
 FIXTURES = HERE.parent / 'tests' / 'fixtures'
 REPO = HERE.parents[2]
 
 sys.path.insert(0, str(COMPAT))
+sys.path.insert(0, str(HOST))
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 _TMP = tempfile.mkdtemp(prefix='magnitide-compat-tests-')
 os.environ['CALIBRE_CONFIG_DIRECTORY'] = os.path.join(_TMP, 'config')

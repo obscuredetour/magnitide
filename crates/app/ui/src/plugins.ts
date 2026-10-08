@@ -92,14 +92,9 @@ export async function runPlugin(
     await api.runPlugin(menu.plugin, item ? item.path : [], texts, ids, query);
   } catch (err) {
     running.delete(menu.plugin);
-    job.finish(
-      isRuntimeMissing(err)
-        ? 'calibre plugins need the plugin runtime: install it in Settings › Plugins'
-        : errorMessage(err),
-      {
-        error: true,
-      },
-    );
+    job.finish(isRuntimeMissing(err) ? `${errorMessage(err)}` : errorMessage(err), {
+      error: true,
+    });
   }
 }
 

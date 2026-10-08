@@ -1,5 +1,5 @@
 # What scripts/vendor-calibre.py takes from a calibre checkout, should the
-# from-scratch compat package (crates/plugins/python) ever be replaced by
+# from-scratch compat package (crates/plugins/python/compat) ever be replaced by
 # calibre's own modules (see docs/calibre-plugins.md, "The fallback").
 # Not wired in: nothing reads this at build or run time.
 
@@ -62,4 +62,4 @@ generate = ["localization/iso639.calibre_msgpack", "localization/iso3166.calibre
 
 [output]
 # Where the vendored tree goes (beside the compat package, until switched).
-dir = "crates/plugins/python-vendor"
+dir = "crates/plugins/python/vendor"

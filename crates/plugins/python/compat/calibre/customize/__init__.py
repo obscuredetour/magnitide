@@ -460,8 +460,7 @@ class PreferencesPlugin(Plugin):
 
         base = importlib.import_module(base)
         widget = getattr(base, wc)(parent)
-        widget.genesis(getattr(parent, 'gui', None) if parent is not None else None)
-        return widget
+        return widget  # calibre's Preferences dialog calls genesis(gui) and initialize() itself
 
 
 class StoreBase(Plugin):

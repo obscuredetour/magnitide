@@ -80,7 +80,15 @@ class TagsView:
 def build_gui():
     from calibre.gui2.jobs import JobManager
     from calibre.gui2.keyboard import Manager
-    from calibre.gui2.ui import set_gui
+
+    try:
+        from calibre.gui2.ui import set_gui
+    except ImportError:  # a real calibre: get_gui() reads the module global
+        import calibre.gui2.ui as _ui
+
+        def set_gui(gui):
+            _ui._gui = gui
+
     from qt.core import (
         QAbstractTableModel,
         QItemSelection,

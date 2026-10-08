@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Download the Lucide icons that calibre's built-in icon names map to
-(crates/plugins/python/resources/images/calibre-icons.json) into
+(crates/plugins/python/compat/resources/images/calibre-icons.json) into
 resources/images/lucide/, from the lucide-static package of the version
 the mapping names, with its licence. Run after changing the mapping;
 the SVGs are committed.
@@ -14,7 +14,7 @@ import sys
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-IMAGES = os.path.join(ROOT, 'crates', 'plugins', 'python', 'resources', 'images')
+IMAGES = os.path.join(ROOT, 'crates', 'plugins', 'python', 'compat', 'resources', 'images')
 MAPPING = os.path.join(IMAGES, 'calibre-icons.json')
 OUT = os.path.join(IMAGES, 'lucide')
 

@@ -11,7 +11,7 @@ from conftest import COMPAT
 MODULES = []
 for path in sorted(COMPAT.rglob('*.py')):
     rel = path.relative_to(COMPAT)
-    if rel.parts[0] in ('resources', 'magnitide_host') or rel.name.startswith('run-'):
+    if rel.parts[0] == 'resources':
         continue
     parts = list(rel.with_suffix('').parts)
     if parts[-1] == '__init__':

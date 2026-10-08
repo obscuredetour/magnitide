@@ -241,3 +241,39 @@ class ViewAction(_Mapped):
     def _view_books(self, ids):
         for i in ids:
             self._open(i)
+
+
+_BUILTIN = (
+    ('Edit Metadata', 'EditMetadataAction'),
+    ('Remove Books', 'RemoveBooksAction'),
+    ('Convert Books', 'ConvertBooksAction'),
+    ('Add Books', 'AddBooksAction'),
+    ('Choose Library', 'ChooseLibraryAction'),
+    ('View', 'ViewAction'),
+)
+_builtin_bases = None
+
+
+def builtin_bases():
+    """The stand-ins for calibre's own actions as `InterfaceActionBase`
+    plugins, for loading into the window under a real calibre (whose own
+    builtins drive calibre's GUI, not ours)."""
+    global _builtin_bases
+    if _builtin_bases is None:
+        from calibre.customize import InterfaceActionBase
+
+        _builtin_bases = []
+        for name, cls_name in _BUILTIN:
+            base = type(
+                'Magnitide' + cls_name,
+                (InterfaceActionBase,),
+                {
+                    'name': name,
+                    'author': 'Magnitide',
+                    'description': f"calibre's {name}, as Magnitide's",
+                    'actual_plugin': f'magnitide_host.gui.actions:{cls_name}',
+                    'can_be_disabled': False,
+                },
+            )
+            _builtin_bases.append(base(None))
+    return _builtin_bases

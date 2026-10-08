@@ -1,5 +1,5 @@
 # Python in this repo: the calibre compatibility package and host
-# (crates/plugins/python), its tests, the fixture plugins and the scripts.
+# (crates/plugins/python: compat/ is our calibre, host/ the host), its tests, the fixture plugins and the scripts.
 line-length = 120
 target-version = "py314"
 extend-exclude = ["target", "crates/app/ui"]
@@ -23,7 +23,6 @@ ignore = [
 # Fixture plugins look like calibre plugins, builtins and all.
 "crates/plugins/tests/fixtures/**" = ["F821", "F401"]
 "crates/plugins/python/**" = ["F821"]  # `_`, `P`, `I`… are calibre's builtins
-"crates/plugins/python/calibre/startup.py" = ["F821"]
 
 [lint.isort]
 known-first-party = ["calibre", "magnitide_host", "polyglot", "qt", "calibre_plugins"]

@@ -64,6 +64,20 @@ jobs:
           echo "MAGNITIDE_COMPAT_DIR=$PWD/crates/plugins/python" >> "$GITHUB_ENV"
           echo "MAGNITIDE_REQUIRE_PLUGIN_RUNTIME=1" >> "$GITHUB_ENV"
       - run: xvfb-run -a cargo test --workspace
+      # The same host tests inside an installed calibre (the oracle for the
+      # compat package): calibre's own Linux build, isolated in the runner.
+      - name: Install calibre
+        run: |
+          sudo apt-get install -y --no-install-recommends libegl1 libopengl0 libxcb-cursor0 libxcb-xinerama0 libxkbcommon-x11-0 xvfb xz-utils
+          mkdir -p "$HOME/calibre-bin"
+          wget -nv -O- https://download.calibre-ebook.com/linux-installer.sh | sh /dev/stdin install_dir="$HOME/calibre-bin" isolated=y
+          echo "$HOME/calibre-bin/calibre" >> "$GITHUB_PATH"
+          "$HOME/calibre-bin/calibre/calibre-debug" --version
+      - name: Host tests inside calibre
+        env:
+          MAGNITIDE_PLUGIN_HOST: calibre
+          MAGNITIDE_COMPAT_DIR: ${{ github.workspace }}/crates/plugins/python
+        run: xvfb-run -a cargo test -p magnitide-plugins --test host
       # The tests regenerate the UI's TypeScript bindings (ts-rs); they must be committed.
       - name: TypeScript bindings are up to date
         run: git diff --exit-code -- crates/app/ui/src/bindings

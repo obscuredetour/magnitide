@@ -16,7 +16,7 @@ use magnitide_core::hooks::{ImportHooks, ImportOutcome, MetadataPlugins, Precede
 use magnitide_core::metadata::{Author, BookMetadata};
 use magnitide_plugins::shadow::Shadow;
 use magnitide_plugins::sources::is_plugin_cover;
-use magnitide_plugins::{Hook, PluginKind, Plugins};
+use magnitide_plugins::{Hook, HostChoice, PluginKind, Plugins};
 use magnitide_sources::Lookup;
 use serde_json::{Value, json};
 
@@ -39,7 +39,23 @@ fn plugins_in(dir: &Path) -> Option<Plugins> {
     }
     // The host's `test.exec`, for driving dialogs as a user would.
     unsafe { std::env::set_var("MAGNITIDE_TEST_HOOKS", "1") };
+    // MAGNITIDE_PLUGIN_HOST=calibre runs the same tests inside an installed
+    // calibre (the oracle for the compat package); =runtime forces ours.
+    match std::env::var("MAGNITIDE_PLUGIN_HOST").as_deref() {
+        Ok("calibre") => {
+            let install = magnitide_plugins::calibre::find_installed();
+            assert!(install.is_some(), "MAGNITIDE_PLUGIN_HOST=calibre but no calibre is installed");
+            plugins.set_host_choice(HostChoice::Calibre).unwrap();
+        }
+        Ok("runtime") => plugins.set_host_choice(HostChoice::Runtime).unwrap(),
+        _ => {}
+    }
     Some(plugins)
+}
+
+/// Whether the tests run inside an installed calibre (MAGNITIDE_PLUGIN_HOST=calibre).
+fn in_calibre() -> bool {
+    std::env::var("MAGNITIDE_PLUGIN_HOST").as_deref() == Ok("calibre")
 }
 
 /// A fixture plugin as calibre expects it: a zip of the folder's files.
@@ -541,7 +557,9 @@ fn plugins_own_settings_dialogs() {
     assert!(done.changed && !done.restart);
     let txt = dir.path().join("story.txt");
     std::fs::write(&txt, "Once").unwrap();
-    let ImportOutcome::Replaced { path, .. } = plugins.on_import(&txt, "TXT") else { panic!("not replaced") };
+    let ImportOutcome::Replaced { path, .. } = plugins.on_import(&txt, "TXT") else {
+        panic!("not replaced; the host said:\n{}", plugins.log().join("\n"))
+    };
     assert_eq!(std::fs::read_to_string(path).unwrap(), "Once\n[configured by test]", "its new settings apply");
     let saved = dir.path().join("calibre-plugins/config/plugins/magnitide_test_filetype.json");
     assert!(std::fs::read_to_string(saved).unwrap().contains("configured by test"));
@@ -551,7 +569,9 @@ fn plugins_own_settings_dialogs() {
     let done = plugins.configure("Magnitide Test Preferences").unwrap();
     assert!(done.changed && done.restart);
     let saved = dir.path().join("calibre-plugins/config/plugins/magnitide_test_preferences.json");
-    assert!(std::fs::read_to_string(saved).unwrap().contains("good evening"));
+    let text = std::fs::read_to_string(saved)
+        .unwrap_or_else(|e| panic!("preferences not saved ({e}); the host said:\n{}", plugins.log().join("\n")));
+    assert!(text.contains("good evening"), "{text}");
 
     // A GUI plugin's settings, before any library was opened in the host:
     // its action is loaded into the window first (it reads gui.keyboard).
@@ -616,7 +636,11 @@ fn unsupported_kinds_are_kept_off_with_a_reason() {
     assert!(installed.kind.why_unsupported().unwrap().contains("catalog"));
     assert!(installed.hooks.is_none());
     // The static scan found the part of calibre it uses that Magnitide doesn't have.
-    assert!(installed.coverage.iter().any(|c| c.contains("calibre.ebooks.conversion")), "{:?}", installed.coverage);
+    if in_calibre() {
+        assert!(installed.coverage.is_empty(), "a real calibre has it all: {:?}", installed.coverage);
+    } else {
+        assert!(installed.coverage.iter().any(|c| c.contains("calibre.ebooks.conversion")), "{:?}", installed.coverage);
+    }
     assert!(plugins.install(&fixture_zip(dir.path(), "test_filetype")).unwrap().coverage.is_empty());
 }
 

@@ -27,7 +27,10 @@ const LOG_LINES: usize = 400;
 /// argument. The directory goes on `sys.path` this way, not through
 /// PYTHONPATH, because the interpreter runs with `-I` (isolated: the user's
 /// PYTHON* variables and site-packages are ignored).
-const BOOTSTRAP: &str = "import sys, runpy; sys.path.insert(0, sys.argv.pop(1)); \
+/// Run in the plugin runtime: `<python dir>/host` and `<python dir>/compat`
+/// on the path (the host package, then our `calibre`), then the host.
+const BOOTSTRAP: &str = "import sys, runpy, os; d = sys.argv.pop(1); \
+sys.path[0:0] = [os.path.join(d, 'host'), os.path.join(d, 'compat')]; \
 runpy.run_module('magnitide_host', run_name='__main__', alter_sys=True)";
 
 type Pending = Arc<Mutex<HashMap<u64, Sender<Result<Value, String>>>>>;
@@ -51,6 +54,12 @@ pub struct Host {
     log: Arc<Mutex<VecDeque<String>>>,
 }
 
+/// Run inside an installed calibre (`calibre-debug -c`): only the host
+/// package goes on the path; `calibre`, `qt` and the rest are calibre's.
+const BOOTSTRAP_CALIBRE: &str = "import sys, runpy, os; d = sys.argv.pop(1); \
+sys.path.insert(0, os.path.join(d, 'host')); \
+runpy.run_module('magnitide_host', run_name='__main__', alter_sys=True)";
+
 impl Host {
     /// Start the host in `runtime`, with the compat package at `compat_dir`
     /// and plugin settings kept in `config_dir` (never calibre's own).
@@ -60,18 +69,38 @@ impl Host {
         config_dir: &Path,
         on_event: Option<EventHandler>,
     ) -> Result<Self, String> {
-        std::fs::create_dir_all(config_dir).map_err(|e| e.to_string())?;
-        let cache_dir = config_dir.join("caches");
         let mut cmd = Command::new(&runtime.python);
         cmd.args(["-I", "-X", "utf8", "-u", "-c", BOOTSTRAP])
             .arg(compat_dir)
-            .env("CALIBRE_CONFIG_DIRECTORY", config_dir)
+            .env("MAGNITIDE_HOST_MODE", "runtime")
+            // A system Qt must not leak into the runtime's.
+            .env_remove("QT_PLUGIN_PATH")
+            .env_remove("QT_QPA_PLATFORMTHEME");
+        Self::spawn(cmd, config_dir, on_event, &format!("the plugin runtime ({})", runtime.python.display()))
+    }
+
+    /// Start the host inside an installed calibre, through its
+    /// `calibre-debug`: plugins run on calibre's own code, with the host
+    /// package from `compat_dir`. Settings stay in `config_dir`, never in
+    /// the user's calibre configuration.
+    pub fn start_calibre(
+        calibre_debug: &Path,
+        compat_dir: &Path,
+        config_dir: &Path,
+        on_event: Option<EventHandler>,
+    ) -> Result<Self, String> {
+        let mut cmd = Command::new(calibre_debug);
+        cmd.args(["-c", BOOTSTRAP_CALIBRE]).arg(compat_dir).env("MAGNITIDE_HOST_MODE", "calibre");
+        Self::spawn(cmd, config_dir, on_event, &format!("calibre ({})", calibre_debug.display()))
+    }
+
+    fn spawn(mut cmd: Command, config_dir: &Path, on_event: Option<EventHandler>, what: &str) -> Result<Self, String> {
+        std::fs::create_dir_all(config_dir).map_err(|e| e.to_string())?;
+        let cache_dir = config_dir.join("caches");
+        cmd.env("CALIBRE_CONFIG_DIRECTORY", config_dir)
             .env("CALIBRE_CACHE_DIRECTORY", &cache_dir)
             // So the host can give the focus back when a plugin's windows close.
             .env("MAGNITIDE_PID", std::process::id().to_string())
-            // A system Qt must not leak into the runtime's.
-            .env_remove("QT_PLUGIN_PATH")
-            .env_remove("QT_QPA_PLATFORMTHEME")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -81,9 +110,7 @@ impl Host {
             const CREATE_NO_WINDOW: u32 = 0x0800_0000;
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| format!("couldn't start the plugin runtime ({}): {e}", runtime.python.display()))?;
+        let mut child = cmd.spawn().map_err(|e| format!("couldn't start {what}: {e}"))?;
         let stdin = child.stdin.take().ok_or("no stdin")?;
         let stdout = child.stdout.take().ok_or("no stdout")?;
         let stderr = child.stderr.take().ok_or("no stderr")?;

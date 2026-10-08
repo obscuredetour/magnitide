@@ -44,6 +44,8 @@ import type { PluginJob } from './bindings/PluginJob';
 import type { Configured as PluginConfigured } from './bindings/Configured';
 import type { Hooks as PluginHooks } from './bindings/Hooks';
 import type { RuntimeStatus } from './bindings/RuntimeStatus';
+import type { HostChoice as PluginHostChoice } from './bindings/HostChoice';
+import type { CalibreInstall } from './bindings/CalibreInstall';
 import type { RuntimeProgress } from './bindings/RuntimeProgress';
 import type { ApplyReport } from './bindings/ApplyReport';
 import type { ServerStatus } from './bindings/ServerStatus';
@@ -100,6 +102,8 @@ export type {
   PluginMessage,
   PluginsStatus,
   RuntimeStatus,
+  PluginHostChoice,
+  CalibreInstall,
   RuntimeProgress,
   ServerStatus,
   AuthorSort,
@@ -410,6 +414,9 @@ export const api = {
   /** Open a plugin's own settings (its dialog, in the plugin runtime) and wait for it to close. */
   configurePlugin: (name: string) => invoke<PluginConfigured>('configure_plugin', { name }),
 
+  /** Where plugins run: an installed calibre, Magnitide's runtime, or whichever is there. */
+  setPluginHost: (choice: PluginHostChoice) => invoke<RuntimeStatus>('set_plugin_host', { choice }),
+
   /** What books are converted to when a plugin asks (calibre's output format). */
   setPluginOutputFormat: (format: string) => invoke<void>('set_plugin_output_format', { format }),
 
@@ -552,11 +559,17 @@ export function onPluginRuntimeProgress(handler: (p: RuntimeProgress) => void): 
   return listen<RuntimeProgress>('plugin-runtime-progress', (e) => handler(e.payload));
 }
 
-/** The error the backend gives when plugins are used without the runtime (matches `RUNTIME_MISSING` in the plugins crate). */
+/** The errors the backend gives when plugins are used with no host to run them (the plugins crate's constants). */
 export const RUNTIME_MISSING = "The plugin runtime isn't installed. Install it in Settings › Plugins.";
+export const CALIBRE_MISSING =
+  "No installed calibre was found. Install calibre, or choose Magnitide's plugin runtime in Settings › Plugins.";
+export const RUNTIME_OR_CALIBRE_MISSING =
+  "calibre plugins need an installed calibre or Magnitide's plugin runtime. Install either in Settings › Plugins.";
 
+/** Whether an error means there's nothing to run plugins in (Settings › Plugins sorts it out). */
 export function isRuntimeMissing(err: unknown): boolean {
-  return errorMessage(err) === RUNTIME_MISSING;
+  const m = errorMessage(err);
+  return m === RUNTIME_MISSING || m === CALIBRE_MISSING || m === RUNTIME_OR_CALIBRE_MISSING;
 }
 
 export function onZoomMenu(handler: (action: 'in' | 'out' | 'reset') => void): Promise<UnlistenFn> {

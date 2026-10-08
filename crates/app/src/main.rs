@@ -183,6 +183,7 @@ fn main() {
             plugins::plugin_answer,
             plugins::configure_plugin,
             plugins::set_plugin_output_format,
+            plugins::set_plugin_host,
             plugins::plugin_runtime_status,
             plugins::install_plugin_runtime,
             plugins::install_plugin_runtime_from_file,
