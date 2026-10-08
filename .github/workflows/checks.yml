@@ -29,8 +29,19 @@ jobs:
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      # The workspace (wasmtime and its compiler included) plus the plugin
+      # runtime and a calibre fill the runner's disk: no incremental
+      # artifacts, and line tables rather than full debug info.
+      CARGO_INCREMENTAL: 0
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@v5
+      - name: Make room on the runner
+        run: |
+          df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h / | tail -1
       - name: System libraries Tauri builds against
         run: |
           sudo apt-get update
