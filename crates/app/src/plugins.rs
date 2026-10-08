@@ -1,3 +1,8 @@
+//! Plugins, of both kinds. Magnitide's own (WebAssembly components on the
+//! `magnitide:plugin` API, see the magnitide-plugins-wasm crate and
+//! docs/plugin-api.md): installing `.mgp` packages, turning them on and
+//! off, their logs; they're asked in Find Metadata (lookup.rs).
+//!
 //! calibre plugins: installing, turning on and off, and the host's log
 //! (Settings › Plugins), running GUI plugins on the open library, and the
 //! other kinds as Magnitide's hooks: file-type plugins when books are added
@@ -27,6 +32,7 @@ use magnitide_core::hooks::{ImportHooks, ImportOutcome, MetadataPlugins, Precede
 use magnitide_core::metadata::BookMetadata;
 use magnitide_plugins::shadow::{Shadow, baseline};
 use magnitide_plugins::{Configured, Hook, HostChoice, Installed, PluginMenus, Plugins, Progress, RuntimeStatus};
+use magnitide_plugins_wasm::{Installed as NativePlugin, WasmPlugins};
 use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -165,6 +171,10 @@ pub struct PluginsStatus {
     output_format: String,
     /// Each plugin's latest error, by name.
     errors: BTreeMap<String, String>,
+    /// Magnitide's own plugins.
+    native: Vec<NativePlugin>,
+    /// Their latest errors, by name.
+    native_errors: BTreeMap<String, String>,
 }
 
 /// The plugin runtime as core's extension points: file-type plugins on
@@ -276,6 +286,20 @@ pub fn create(app: &AppHandle) -> Plugins {
     app.manage(PluginLibrary::default());
     app.manage(RuntimeInstall::default());
     plugins
+}
+
+/// Magnitide's own plugins, from `<app config>/plugins`. A folder that
+/// can't be read or made still gives a host, with no plugins and the
+/// problem as the error of the folder itself.
+pub fn create_native(app: &AppHandle) -> WasmPlugins {
+    let dir = app.path().app_config_dir().unwrap_or_else(|_| PathBuf::from(".")).join("plugins");
+    match WasmPlugins::new(dir.clone()) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("plugins: {e}");
+            WasmPlugins::new(std::env::temp_dir().join("magnitide-plugins")).unwrap_or_else(|e| panic!("{e}"))
+        }
+    }
 }
 
 fn on_event(app: &AppHandle, e: Value) {
@@ -639,15 +663,47 @@ async fn blocking<T: Send + 'static>(
 
 #[tauri::command]
 pub async fn plugins_status(app: AppHandle) -> CmdResult<PluginsStatus> {
-    blocking(app, |p| {
+    let app2 = app.clone();
+    blocking(app, move |p| {
+        let native = app2.state::<WasmPlugins>();
         Ok(PluginsStatus {
             runtime: p.runtime_status(),
             plugins: p.list(),
             output_format: p.output_format(),
             errors: p.errors(),
+            native: native.list(),
+            native_errors: native.errors(),
         })
     })
     .await
+}
+
+/// Install a Magnitide plugin (`.mgp`), or update one already installed.
+#[tauri::command]
+pub async fn install_native_plugin(app: AppHandle, path: String) -> CmdResult<NativePlugin> {
+    tauri::async_runtime::spawn_blocking(move || app.state::<WasmPlugins>().install(Path::new(&path)))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn remove_native_plugin(app: AppHandle, name: String) -> CmdResult<Vec<NativePlugin>> {
+    let plugins = app.state::<WasmPlugins>();
+    plugins.remove(&name)?;
+    Ok(plugins.list())
+}
+
+#[tauri::command]
+pub async fn set_native_plugin_enabled(app: AppHandle, name: String, enabled: bool) -> CmdResult<Vec<NativePlugin>> {
+    let plugins = app.state::<WasmPlugins>();
+    plugins.set_enabled(&name, enabled)?;
+    Ok(plugins.list())
+}
+
+/// What a Magnitide plugin logged in its recent calls, oldest first.
+#[tauri::command]
+pub async fn native_plugin_log(app: AppHandle, name: String) -> CmdResult<Vec<String>> {
+    Ok(app.state::<WasmPlugins>().log(&name))
 }
 
 /// Open a plugin's own settings (its dialog, in the host) and wait for it

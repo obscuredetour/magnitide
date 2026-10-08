@@ -103,6 +103,7 @@ fn main() {
             devices::watch(app.handle().clone());
             server::start_if_enabled(app.handle());
             tauri::Manager::manage(app, plugins::create(app.handle()));
+            tauri::Manager::manage(app, plugins::create_native(app.handle()));
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
@@ -173,6 +174,10 @@ fn main() {
             server::server_status,
             server::set_server,
             plugins::plugins_status,
+            plugins::install_native_plugin,
+            plugins::remove_native_plugin,
+            plugins::set_native_plugin_enabled,
+            plugins::native_plugin_log,
             plugins::install_plugin,
             plugins::remove_plugin,
             plugins::set_plugin_enabled,

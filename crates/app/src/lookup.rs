@@ -1,5 +1,6 @@
 //! Metadata lookup ("Find Metadata"): searching online sources (built-in,
-//! and calibre metadata-source plugins), previewing their covers, and the
+//! Magnitide's own metadata-source plugins and calibre ones), previewing
+//! their covers, and the
 //! per-user source settings. The network is only used
 //! from these commands, which only run when the user asks; the webview never
 //! contacts the sources itself (covers are proxied through `cover://remote/`).
@@ -12,6 +13,7 @@ use std::path::PathBuf;
 
 use magnitide_plugins::Plugins;
 use magnitide_plugins::sources::is_plugin_cover;
+use magnitide_plugins_wasm::WasmPlugins;
 use magnitide_sources::{Lookup, SearchResult, Settings, SourceId, SourceRecord};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
@@ -104,24 +106,27 @@ pub async fn set_metadata_source(
     Ok(statuses(&s))
 }
 
-/// Search every active source, the built-in ones and calibre plugins at
-/// once. Descriptions come back sanitized.
+/// Search every active source at once: the built-in ones, Magnitide's own
+/// plugins and calibre plugins. Descriptions come back sanitized.
 #[tauri::command]
 pub async fn find_metadata(app: AppHandle, lookup: Lookup) -> CmdResult<SearchResult> {
     let settings = load_settings(&app);
-    let any_plugin = !app.state::<Plugins>().metadata_sources().is_empty();
+    let any_plugin = !app.state::<Plugins>().metadata_sources().is_empty()
+        || !app.state::<WasmPlugins>().metadata_sources().is_empty();
     if !SourceId::ALL.iter().any(|s| settings.enabled(*s)) && !any_plugin {
         return Err("Every metadata source is turned off. Turn one on in Settings → Metadata Sources.".into());
     }
     let app2 = app.clone();
     let mut result = tauri::async_runtime::spawn_blocking(move || {
         let plugins = app2.state::<Plugins>();
-        let ((mut records, mut errors), from_plugins) = std::thread::scope(|scope| {
+        let native = app2.state::<WasmPlugins>();
+        let ((mut records, mut errors), from_plugins, from_native) = std::thread::scope(|scope| {
             let plugins = scope.spawn(|| plugins.identify(&lookup));
+            let native = scope.spawn(|| native.identify(&lookup));
             let built_in = magnitide_sources::search_records(&lookup, &settings);
-            (built_in, plugins.join().unwrap_or_default())
+            (built_in, plugins.join().unwrap_or_default(), native.join().unwrap_or_default())
         });
-        for (name, answer) in from_plugins {
+        for (name, answer) in from_native.into_iter().chain(from_plugins) {
             match answer {
                 Ok(r) => records.extend(r),
                 Err(e) => errors.push(format!("{name}: {e}")),

@@ -10,6 +10,9 @@ import {
   type FieldKind,
   fileManagerName,
   type InstalledPlugin,
+  type NativeCapability,
+  type NativeKind,
+  type NativePlugin,
   onPluginRuntimeProgress,
   type PluginKind,
   type RuntimeStatus,
@@ -931,7 +934,14 @@ function SourceSettings() {
       .then((s) => s.plugins)
       .catch(() => [] as InstalledPlugin[]),
   );
+  const [native, { mutate: setNative }] = createResource(() =>
+    api
+      .pluginsStatus()
+      .then((s) => s.native)
+      .catch(() => [] as NativePlugin[]),
+  );
   const pluginSources = () => (plugins() ?? []).filter((p) => p.kind === 'metadataSource');
+  const nativeSources = () => (native() ?? []).filter((p) => p.manifest.kind === 'metadata-source');
   const [keyDraft, setKeyDraft] = createSignal('');
 
   const update = async (s: SourceStatus, enabled: boolean, apiKey: string | null = null) => {
@@ -1005,14 +1015,34 @@ function SourceSettings() {
           </>
         )}
       </For>
+      <Show when={nativeSources().length}>
+        <h4 class="mt-6 mb-1 text-[11px] font-semibold tracking-[.06em] text-muted uppercase">From plugins</h4>
+        <For each={nativeSources()}>
+          {(p) => (
+            <Row
+              label={p.manifest.name}
+              description={`${sentence(p.manifest.description)} Added in Settings › Plugins.`}
+            >
+              <input
+                type="checkbox"
+                class="size-4 accent-accent"
+                aria-label={`Use ${p.manifest.name}`}
+                checked={p.enabled}
+                onChange={(e) =>
+                  void api
+                    .setNativePluginEnabled(p.manifest.name, e.currentTarget.checked)
+                    .then(setNative, (err) => toast(errorMessage(err), { error: true }))
+                }
+              />
+            </Row>
+          )}
+        </For>
+      </Show>
       <Show when={pluginSources().length}>
         <h4 class="mt-6 mb-1 text-[11px] font-semibold tracking-[.06em] text-muted uppercase">From calibre plugins</h4>
         <For each={pluginSources()}>
           {(p) => (
-            <Row
-              label={p.name}
-              description={`${p.description.trim().replace(/[^.!?]$/, '$&.')} Added in Settings › Plugins.`}
-            >
+            <Row label={p.name} description={`${sentence(p.description)} Added in Settings › Plugins.`}>
               <input
                 type="checkbox"
                 class="size-4 accent-accent"
@@ -1294,6 +1324,21 @@ function ServerSettings() {
   );
 }
 
+/** A description as a sentence (a full stop added when it has none). */
+function sentence(s: string): string {
+  const t = s.trim();
+  return t ? t.replace(/[^.!?]$/, '$&.') : '';
+}
+
+const NATIVE_KINDS: Record<NativeKind, string> = {
+  'metadata-source': 'Metadata source',
+};
+
+/** What a capability lets a plugin do, as Settings shows it. */
+const NATIVE_CAPABILITIES: Record<NativeCapability, string> = {
+  network: 'uses the network',
+};
+
 const PLUGIN_KINDS: Record<PluginKind, string> = {
   metadataSource: 'Metadata source',
   interfaceAction: 'Library tool',
@@ -1427,6 +1472,22 @@ function PluginSettings() {
   return (
     <>
       <Heading>Plugins</Heading>
+      <p class="mb-4 text-xs text-muted">
+        Magnitide plugins are .mgp packages: small, sandboxed programs that can do only what their package declares (the
+        network, say), and that Magnitide stops if they misbehave. Metadata sources join Find Metadata. Nothing else
+        needs to be installed. Writing one is described in docs/plugin-api.md.
+      </p>
+      <Show when={status()} fallback={<p class="text-xs text-muted">Checking the plugins…</p>}>
+        {(s) => (
+          <NativePlugins
+            plugins={s().native}
+            errors={s().nativeErrors}
+            onChange={(native) => mutate({ ...s(), native })}
+            onInstalled={() => void refetch()}
+          />
+        )}
+      </Show>
+      <h4 class="mt-8 mb-1 text-[11px] font-semibold tracking-[.06em] text-muted uppercase">calibre plugins</h4>
       <p class="mb-4 text-xs text-muted">
         Magnitide runs calibre plugins in its own plugin runtime: a copy of Python, Qt and the parts of calibre that
         plugins use, downloaded once. calibre itself needn't be installed. Plugins work as they do in calibre, with
@@ -1610,6 +1671,112 @@ function PluginSettings() {
             </Show>
           </>
         )}
+      </Show>
+    </>
+  );
+}
+
+/** Magnitide's own plugins: adding, turning on and off, their logs. */
+function NativePlugins(props: {
+  plugins: NativePlugin[];
+  errors: Record<string, string>;
+  onChange(plugins: NativePlugin[]): void;
+  onInstalled(): void;
+}) {
+  const [busy, setBusy] = createSignal(false);
+  const [log, setLog] = createSignal<{ name: string; lines: string[] } | null>(null);
+
+  const add = async () => {
+    const path = await api.chooseNativePlugin();
+    if (!path) return;
+    setBusy(true);
+    try {
+      const p = await api.installNativePlugin(path);
+      props.onInstalled();
+      toast(`Added ${p.manifest.name}: it's now asked in Find Metadata`);
+    } catch (err) {
+      toast(errorMessage(err), { error: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const run = (f: () => Promise<NativePlugin[]>) =>
+    f().then(props.onChange, (err) => toast(errorMessage(err), { error: true }));
+
+  const remove = async (p: NativePlugin) => {
+    const ok = await confirm({
+      title: `Remove ${p.manifest.name}?`,
+      message: () => 'The plugin is deleted from Magnitide.',
+      confirm: 'Remove',
+      danger: true,
+    });
+    if (ok) void run(() => api.removeNativePlugin(p.manifest.name));
+  };
+
+  const showLog = (p: NativePlugin) => {
+    if (log()?.name === p.manifest.name) return setLog(null);
+    void api.nativePluginLog(p.manifest.name).then(
+      (lines) => setLog({ name: p.manifest.name, lines }),
+      (err) => toast(errorMessage(err), { error: true }),
+    );
+  };
+
+  const capabilities = (p: NativePlugin) =>
+    p.manifest.capabilities.length
+      ? p.manifest.capabilities.map((c) => NATIVE_CAPABILITIES[c]).join(', ')
+      : 'works on its own, without the network';
+
+  return (
+    <>
+      <Row label="Magnitide plugins" description="Add a plugin from its .mgp package.">
+        <button class={button} disabled={busy()} onClick={() => void add()}>
+          {busy() ? 'Adding…' : 'Add Plugin…'}
+        </button>
+      </Row>
+      <Show when={props.plugins.length} fallback={<p class="py-3.5 text-xs text-muted">No Magnitide plugins yet.</p>}>
+        <For each={props.plugins}>
+          {(p) => (
+            <>
+              <Row
+                label={`${p.manifest.name} ${p.manifest.version}`}
+                description={
+                  <>
+                    {p.manifest.description}
+                    <span class="mt-0.5 block">
+                      {NATIVE_KINDS[p.manifest.kind]}
+                      <Show when={p.manifest.author}> · by {p.manifest.author}</Show> · {capabilities(p)}
+                    </span>
+                    <Show when={props.errors[p.manifest.name]}>
+                      {(error) => <span class="mt-0.5 block text-danger select-text">Last error: {error()}</span>}
+                    </Show>
+                  </>
+                }
+              >
+                <input
+                  type="checkbox"
+                  class="size-4 accent-accent"
+                  aria-label={`Use ${p.manifest.name}`}
+                  checked={p.enabled}
+                  onChange={(e) => void run(() => api.setNativePluginEnabled(p.manifest.name, e.currentTarget.checked))}
+                />
+                <button class={button} onClick={() => showLog(p)}>
+                  {log()?.name === p.manifest.name ? 'Hide log' : 'Log'}
+                </button>
+                <button class={button} onClick={() => void remove(p)}>
+                  Remove
+                </button>
+              </Row>
+              <Show when={log()?.name === p.manifest.name && log()}>
+                {(l) => (
+                  <pre class="mb-2 max-h-64 overflow-auto rounded-control border border-line bg-bg/50 p-2 text-[11px] whitespace-pre-wrap select-text">
+                    {l().lines.length ? l().lines.join('\n') : 'Nothing logged yet.'}
+                  </pre>
+                )}
+              </Show>
+            </>
+          )}
+        </For>
       </Show>
     </>
   );

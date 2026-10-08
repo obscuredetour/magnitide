@@ -1,0 +1,8 @@
+name = "Open Library (plugin)"
+version = "0.1.0"
+author = "Magnitide"
+description = "Looks books up on Open Library: the example metadata-source plugin"
+api = "0.1"
+kind = "metadata-source"
+capabilities = ["network"]
+component = "plugin.wasm"

@@ -1,0 +1,20 @@
+# A metadata source for magnitide-plugins-wasm's tests: answers without the
+# network, exercises the log and http imports, and misbehaves on request.
+# Its own workspace, so cargo builds it apart from Magnitide's.
+[package]
+name = "magnitide-test-source"
+version = "1.2.3"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+magnitide-plugin-sdk = { path = "../../../../plugin-sdk" }
+
+[workspace]
+
+[profile.release]
+opt-level = "s"
+strip = true

@@ -1,0 +1,93 @@
+/// Magnitide's native plugin API: WebAssembly components, any language with
+/// a WIT toolchain. Versioned apart from the app; a plugin names the version
+/// it was built for in its manifest.
+package magnitide:plugin@0.1.0;
+
+/// Book data, as Magnitide's metadata lookup uses it.
+interface types {
+    /// What Find Metadata knows about the book being looked up.
+    record lookup {
+        title: string,
+        authors: list<string>,
+        isbn: option<string>,
+    }
+
+    record identifier {
+        /// "isbn" (an ISBN-13), or the source's own kind ("openlibrary", "goodreads").
+        key: string,
+        value: string,
+    }
+
+    /// One source's description of a book. Everything but `title` is optional.
+    record book-record {
+        /// The source's own id for it, unique within the source.
+        source-key: string,
+        /// The book's page on the source's website.
+        link: option<string>,
+        title: string,
+        subtitle: option<string>,
+        authors: list<string>,
+        publisher: option<string>,
+        /// ISO date, "YYYY-MM-DD"; a year alone is allowed ("1965").
+        published: option<string>,
+        /// ISO 639-2 codes ("eng").
+        languages: list<string>,
+        identifiers: list<identifier>,
+        tags: list<string>,
+        /// HTML or plain text; Magnitide sanitizes it.
+        description-html: option<string>,
+        cover-url: option<string>,
+        pages: option<u32>,
+    }
+}
+
+/// Lines for the plugin log Magnitide shows in Settings.
+interface log {
+    enum level { debug, info, warn, error }
+    log: func(level: level, text: string);
+}
+
+/// HTTP through Magnitide. Needs the `network` capability in the manifest;
+/// without it every call fails. Responses are capped at 20 MB and 30 s.
+interface http {
+    record header { name: string, value: string }
+    record request {
+        /// "GET", "POST", …
+        method: string,
+        url: string,
+        headers: list<header>,
+        body: option<list<u8>>,
+    }
+    record response {
+        status: u16,
+        headers: list<header>,
+        body: list<u8>,
+    }
+    fetch: func(req: request) -> result<response, string>;
+}
+
+/// A metadata source: asked in Find Metadata beside Magnitide's own.
+interface metadata-source {
+    use types.{lookup, book-record};
+
+    record source-info {
+        /// Shown to the user ("Open Library").
+        name: string,
+        description: string,
+        /// The plugin's own version ("1.2.0").
+        version: string,
+    }
+
+    info: func() -> source-info;
+
+    /// Records for the lookup, best first; an empty list when nothing
+    /// matched, an error only when the source couldn't be asked.
+    identify: func(lookup: lookup) -> result<list<book-record>, string>;
+}
+
+/// What a metadata-source plugin exports and may import.
+world metadata-source-plugin {
+    import log;
+    import http;
+    export metadata-source;
+}

@@ -187,8 +187,15 @@ a library file directly.
   applied back through Magnitide's edit path; file-type plugins, metadata
   readers and writers plug into `core::hooks`. The survey, the design and
   what each plugin type gets are in [calibre-plugins.md](calibre-plugins.md).
-- **Magnitide's own plugins** (later) run as WebAssembly modules (sandboxed,
-  language-agnostic, safe on a server) once the traits have settled.
+- **Magnitide's own plugins** are WebAssembly components on the
+  `magnitide:plugin` WIT API (`crates/plugin-sdk/wit`), run by
+  `crates/plugins-wasm` in wasmtime: sandboxed (no filesystem or network
+  unless the manifest's capabilities grant it, a memory cap, a deadline per
+  call, a fresh instance per call), language-agnostic, and the same on a
+  server. Packaged as `.mgp` (a zip with `manifest.toml` and the
+  component). Metadata sources are the first kind; import hooks, metadata
+  readers/writers and library actions follow the same path the calibre
+  host took. See [plugin-api.md](plugin-api.md).
 
 ## Security principles
 

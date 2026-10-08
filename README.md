@@ -20,9 +20,10 @@ core with a Tauri desktop app, built to stay quick with 50,000 books and more.
   on a Kobo, for Kobo's own app and KOReader alike.
 - **On your network.** An optional library server with an OPDS catalogue for reading apps, a simple page for
   e-reader browsers, and KOReader progress sync.
-- **calibre plugins.** The plugins you rely on run unchanged: in your installed calibre when you have one, in a
-  calibre Magnitide downloads for you, or without calibre at all through Magnitide's own plugin runtime (Settings →
-  Plugins). Metadata sources
+- **Plugins.** Magnitide's own plugins are small sandboxed WebAssembly components (Settings → Plugins, `.mgp`
+  files); metadata sources are the first kind, and a Rust SDK with an example is in the repository. calibre plugins
+  run unchanged too: in your installed calibre when you have one, in a
+  calibre Magnitide downloads for you, or without calibre at all through Magnitide's own plugin runtime. Metadata sources
   join Find Metadata. Toolbar plugins work on the selected books from the Plugins button or the book menu; their
   windows open as in calibre, and what they change comes back into the library through Magnitide's own editing.
   File-type plugins run when books are added, metadata readers and writers handle their formats, and plugins'
@@ -41,6 +42,8 @@ and the decisions behind them: [docs/architecture.md](docs/architecture.md).
 | [`catalog`](crates/catalog)               | `magnitide-catalog`: the in-memory book model, search and sort that every kind of library loads into                                                                                |
 | [`sources`](crates/sources)               | `magnitide-sources`: metadata lookup from Open Library and Google Books, on request only                                                                                            |
 | [`plugins`](crates/plugins)               | `magnitide-plugins`: runs calibre plugins in an installed calibre or in Magnitide's own plugin runtime (CPython + PyQt6, downloaded once, with a calibre compatibility package of its own) |
+| [`plugins-wasm`](crates/plugins-wasm)     | `magnitide-plugins-wasm`: runs Magnitide's own plugins, WebAssembly components on the `magnitide:plugin` API, sandboxed in wasmtime ([docs/plugin-api.md](docs/plugin-api.md))             |
+| [`plugin-sdk`](crates/plugin-sdk)         | `magnitide-plugin-sdk`: the API's WIT definitions and the Rust bindings for writing a plugin; [`plugins/`](plugins) holds the example                                                      |
 | [`server`](crates/server)                 | `magnitide-server`: serves a library read-only on the local network, as a plain web page for e-reader browsers and an OPDS catalogue for reading apps                               |
 | [`calibre-compat`](crates/calibre-compat) | Read-only access to calibre libraries (`metadata.db` + book folders), plus a CLI to inspect them                                                                                    |
 
@@ -164,6 +167,8 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] calibre plugins, step 1: Settings → Plugins installs calibre plugin zips with their own settings; metadata-source plugins are asked in Find Metadata alongside the built-in sources (survey, design and status: [docs/calibre-plugins.md](docs/calibre-plugins.md))
 - [x] calibre plugins, step 2: GUI plugins on a calibre-format shadow library, run from the toolbar's Plugins button and the book menu; their changes come back into the library, and calibre's Edit Metadata, Remove Books, metadata download, Convert Books, Add Books and View are Magnitide's
 - [x] calibre plugins, step 3: no calibre needed. Magnitide's own plugin runtime (downloaded once) and its own `calibre` package; file-type, metadata reader/writer, preferences and library-closed plugins too. Checked against Count Pages, Reading List, Goodreads Sync, Generate Cover, Manage Series, Quality Check, FanFicFare, EpubMerge, EpubSplit and Comments Cleaner ([coverage](docs/calibre-plugins-coverage.md)); Ebook Translator needs calibre's conversion pipeline and isn't supported
+- [x] Magnitide plugins, step 1: a native plugin API (WebAssembly components, sandboxed, any language) with metadata sources as the first kind; `.mgp` packages added in Settings → Plugins, asked in Find Metadata. A Rust SDK and an Open Library example plugin ([docs/plugin-api.md](docs/plugin-api.md))
+- [ ] Magnitide plugins, step 2: import hooks, metadata readers and writers, library actions on the native API
 - [ ] Find Duplicates, built in
 - [ ] Built-in reader
 - [ ] Export to a calibre library

@@ -244,6 +244,12 @@ reverting is a `git revert`.
    reader/writer, preferences and library-closed plugins, with fixtures for
    each.
 
+Beside all of this, Magnitide has a plugin API of its own
+([plugin-api.md](plugin-api.md)): WebAssembly components, sandboxed, with
+metadata sources first. Lighter calibre plugins (metadata scraping) port to
+it with far less code than the compat package needs to run them; the calibre
+host stays for everything that leans on calibre's GUI and library.
+
 Still to do:
 
 - Exercising the corpus plugins' own features (Count Pages into `#pages`,

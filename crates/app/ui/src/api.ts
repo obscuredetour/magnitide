@@ -31,6 +31,9 @@ import type { MergeOutcome } from './bindings/MergeOutcome';
 import type { RemoveReport } from './bindings/RemoveReport';
 import type { SendReport } from './bindings/SendReport';
 import type { Installed as InstalledPlugin } from './bindings/Installed';
+import type { NativePlugin } from './bindings/NativePlugin';
+import type { NativeCapability } from './bindings/NativeCapability';
+import type { NativeKind } from './bindings/NativeKind';
 import type { PluginKind } from './bindings/PluginKind';
 import type { PluginsStatus } from './bindings/PluginsStatus';
 import type { PluginMenus } from './bindings/PluginMenus';
@@ -89,6 +92,9 @@ export type {
   AddReport,
   ApplyReport,
   InstalledPlugin,
+  NativePlugin,
+  NativeCapability,
+  NativeKind,
   PluginAsk,
   PluginOpenBook,
   PluginJob,
@@ -383,6 +389,26 @@ export const api = {
 
   /** Remove the plugin runtime (plugins and their settings are kept). */
   removePluginRuntime: () => invoke<RuntimeStatus>('remove_plugin_runtime'),
+
+  /** Install a Magnitide plugin (a .mgp package), or update one already installed. */
+  installNativePlugin: (path: string) => invoke<NativePlugin>('install_native_plugin', { path }),
+
+  removeNativePlugin: (name: string) => invoke<NativePlugin[]>('remove_native_plugin', { name }),
+
+  setNativePluginEnabled: (name: string, enabled: boolean) =>
+    invoke<NativePlugin[]>('set_native_plugin_enabled', { name, enabled }),
+
+  /** What a Magnitide plugin logged in its recent calls, oldest first. */
+  nativePluginLog: (name: string) => invoke<string[]>('native_plugin_log', { name }),
+
+  async chooseNativePlugin(): Promise<string | null> {
+    const picked = await open({
+      title: 'Choose a Magnitide plugin',
+      multiple: false,
+      filters: [{ name: 'Magnitide plugins', extensions: ['mgp'] }],
+    });
+    return typeof picked === 'string' ? picked : null;
+  },
 
   /** Install a calibre plugin zip, or update one already installed. */
   installPlugin: (path: string) => invoke<InstalledPlugin>('install_plugin', { path }),

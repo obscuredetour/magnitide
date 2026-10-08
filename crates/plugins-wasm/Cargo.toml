@@ -1,0 +1,23 @@
+[package]
+name = "magnitide-plugins-wasm"
+version = "0.1.0"
+edition = "2024"
+description = "Magnitide's own plugins: WebAssembly components on the magnitide:plugin API, sandboxed in wasmtime"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+magnitide-sources = { version = "0.1.0", path = "../sources" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+toml = "0.9"
+ts-rs = { version = "12.0.1", optional = true }
+ureq = "3"
+wasmtime = { version = "49", default-features = false, features = ["component-model", "cranelift", "runtime", "std", "parallel-compilation"] }
+wasmtime-wasi = { version = "49", default-features = false }
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[features]
+ts = ["dep:ts-rs", "magnitide-sources/ts"]
