@@ -77,7 +77,8 @@ same protocol, shadow library, window stand-in and hooks:
   data folder (tar.xz on Linux; the disk image through hdiutil on macOS;
   the MSI through msiexec's administrative install on Windows, which needs
   no elevation) and run exactly like an installed calibre. About 180 to
-  350 MB. `scripts/calibre-release/pin.py <version>` moves to a newer
+  350 MB. Verified on macOS and Linux (2026-10-07); the Windows unpack
+  hasn't been tried yet. `scripts/calibre-release/pin.py <version>` moves to a newer
   calibre; `--rust-table` prints the table for `calibre.rs`.
 - **Magnitide's own plugin runtime** (for people who want nothing of
   calibre): the same host package on a downloaded CPython + PyQt6, with a
