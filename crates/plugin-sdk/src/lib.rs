@@ -72,6 +72,30 @@ pub mod file_metadata_bindings {
     });
 }
 
+/// The library-action world: the `library` and `ui` imports are its own.
+pub mod library_action_bindings {
+    wit_bindgen::generate!({
+        world: "library-action-plugin",
+        path: "wit",
+        pub_export_macro: true,
+        export_macro_name: "export_library_action",
+        default_bindings_module: "magnitide_plugin_sdk::library_action_bindings",
+        with: {
+            "magnitide:plugin/types@0.1.0": crate::bindings::magnitide::plugin::types,
+            "magnitide:plugin/log@0.1.0": crate::bindings::magnitide::plugin::log,
+            "magnitide:plugin/http@0.1.0": crate::bindings::magnitide::plugin::http,
+        },
+    });
+}
+
+/// Export a library action: `export_library_action!(MyType)`.
+#[macro_export]
+macro_rules! export_library_action {
+    ($t:ident) => {
+        $crate::library_action_bindings::export_library_action!($t with_types_in $crate::library_action_bindings);
+    };
+}
+
 /// Export a metadata source: `export_metadata_source!(MyType)`.
 #[macro_export]
 macro_rules! export_metadata_source {
@@ -106,6 +130,13 @@ pub mod prelude {
     pub use crate::import_hook_bindings::exports::magnitide::plugin::import_hook::{
         self, Guest as ImportHook, Outcome,
     };
+    pub use crate::library_action_bindings::exports::magnitide::plugin::library_action::{
+        self, Guest as LibraryAction, MenuItem,
+    };
+    pub use crate::library_action_bindings::magnitide::plugin::library::{
+        self, Book, BookEdit, CustomEdit, CustomField, CustomValue, FieldValue, SeriesValue,
+    };
+    pub use crate::library_action_bindings::magnitide::plugin::ui;
     pub use crate::{http, log};
 }
 

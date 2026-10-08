@@ -193,11 +193,12 @@ a library file directly.
   unless the manifest's capabilities grant it, a memory cap, a deadline per
   call, a fresh instance per call), language-agnostic, and the same on a
   server. Packaged as `.mgp` (a zip with `manifest.toml` and the
-  component). Three kinds so far: metadata sources, import hooks and
-  file-metadata plugins (readers and writers), the latter two as the same
-  `core::hooks` traits the calibre host implements, with the file handed
-  in through a per-call sandbox (`/in` read-only, `/out` scratch). Library
-  actions follow. See [plugin-api.md](plugin-api.md).
+  component). Four kinds: metadata sources, import hooks, file-metadata
+  plugins (readers and writers) and library actions. The middle two are
+  the same `core::hooks` traits the calibre host implements, with the file
+  handed in through a per-call sandbox (`/in` read-only, `/out` scratch);
+  library actions read and edit the open library through host functions
+  gated by capabilities. See [plugin-api.md](plugin-api.md).
 
 ## Security principles
 

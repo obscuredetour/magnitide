@@ -1,7 +1,9 @@
-// GUI calibre plugins: their menus (the book menu's Plugins submenu) and
-// running them. A plugin runs in Magnitide's plugin runtime on a copy of the
-// library; when it's done, what it changed is applied here and reported as a
-// job (see crates/app/src/plugins.rs).
+// Plugins with menus: Magnitide's own library actions, and GUI calibre
+// plugins (the book menu's Plugins submenu and the toolbar's Plugins
+// button). A library action runs in the app on the open library and
+// reports when it's done; a calibre plugin runs in Magnitide's plugin
+// runtime on a copy of the library, and when it's done what it changed is
+// applied here. Either is a job (see crates/app/src/plugins.rs).
 
 import { createSignal } from 'solid-js';
 
@@ -18,6 +20,8 @@ import {
   onPluginOpenBook,
   onPluginSearch,
   onPluginSelect,
+  type NativeMenuItem,
+  type NativePlugin,
   type PluginMenu,
   type PluginMenuItem,
   type PluginMenus,
@@ -34,18 +38,51 @@ import { confirm } from './confirm';
 const [guiPlugins, setGuiPlugins] = createSignal<string[]>([]);
 /** Their menus, once loaded; null until then (loading starts the plugin runtime). */
 const [pluginMenus, setPluginMenus] = createSignal<PluginMenus | null>(null);
-export { guiPlugins, pluginMenus };
+/** Magnitide's own library actions that are on, with their menus. */
+const [nativeActions, setNativeActions] = createSignal<NativePlugin[]>([]);
+export { guiPlugins, nativeActions, pluginMenus };
+
+/** Whether anything has a plugin menu. */
+export const hasPluginMenus = () => guiPlugins().length > 0 || nativeActions().length > 0;
 
 let loading: Promise<void> | null = null;
 
-/** Check which GUI plugins are on (at start, and after they change in Settings). */
+/** Check which plugins with menus are on (at start, and after they change in Settings). */
 export async function refreshGuiPlugins(): Promise<void> {
   try {
     setGuiPlugins(await api.guiPluginNames());
   } catch {
     setGuiPlugins([]);
   }
+  try {
+    setNativeActions(await api.nativeActions());
+  } catch {
+    setNativeActions([]);
+  }
   setPluginMenus(null);
+}
+
+/** Run a Magnitide library action's menu item on these books, as a job. */
+export async function runNativeAction(plugin: NativePlugin, item: NativeMenuItem, ids: number[]) {
+  const name = plugin.manifest.name;
+  const job = startJob(name, `${item.text}…`);
+  running.get(name)?.job.finish('Still running when it was started again');
+  running.set(name, { job, messages: [], errors: [] });
+  try {
+    const done = await api.runNativeAction(name, item.id, ids);
+    running.delete(name);
+    if (done.updated.length) {
+      for (const id of done.updated) coverChanged(id);
+      setEditRevision((n) => n + 1);
+      await refresh();
+    }
+    job.finish(done.summary || `${item.text}: done`, {
+      details: done.updated.length ? [`Changed ${plural(done.updated.length, 'book')}`] : [],
+    });
+  } catch (err) {
+    running.delete(name);
+    job.finish(errorMessage(err), { error: true });
+  }
 }
 
 /** Load the plugins' menus, starting the plugin runtime the first time. */

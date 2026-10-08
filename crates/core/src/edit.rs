@@ -22,7 +22,7 @@ use crate::library::{BookId, LOCAL_USER, Library, author_id, now, publisher_id, 
 use crate::{html, images, names, paths};
 
 /// Every editable field of a book, as the edit form shows and returns it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct BookEdit {

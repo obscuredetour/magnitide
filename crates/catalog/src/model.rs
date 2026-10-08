@@ -6,7 +6,7 @@ use serde::Serialize;
 
 pub type BookId = i64;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct Book {
     pub id: BookId,
     pub title: String,
@@ -74,7 +74,7 @@ pub fn format_number(index: f64, end: Option<f64>) -> String {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct Format {
     /// Upper case, e.g. "EPUB".
     pub format: String,

@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use magnitide_core::hooks::{ImportHooks, ImportOutcome, MetadataPlugins, Precedence};
 use magnitide_core::metadata::{Author, BookMetadata};
-use magnitide_plugins_wasm::{Capability, Kind, WasmPlugins};
+use magnitide_plugins_wasm::{Capability, Kind, LibraryAccess, WasmPlugins};
 use magnitide_sources::Lookup;
 
 /// Build a fixture component once per test binary (cargo caches it).
@@ -282,4 +282,180 @@ fn a_file_metadata_plugin_reads_and_writes() {
     let err = plugins.read(&book, "TXT").unwrap_err();
     assert_eq!(err, "Headers: This reader failed on purpose.");
     assert_eq!(plugins.errors().get("Headers").map(String::as_str), Some("This reader failed on purpose."));
+}
+
+/// A library of three books in memory, as a library action sees it.
+struct FakeLibrary {
+    books: std::sync::Mutex<Vec<magnitide_catalog::Book>>,
+    dir: PathBuf,
+    status: std::sync::Mutex<Vec<String>>,
+    formats_added: std::sync::Mutex<Vec<(i64, String, String)>>,
+}
+
+impl FakeLibrary {
+    fn new(dir: &Path) -> Self {
+        let book = |id: i64, title: &str, tags: &[&str], txt: Option<&str>| {
+            let mut b = magnitide_catalog::Book { id, title: title.into(), ..Default::default() };
+            b.tags = tags.iter().map(|t| t.to_string()).collect();
+            b.path = format!("Author/{title} ({id})");
+            if let Some(text) = txt {
+                std::fs::create_dir_all(dir.join(&b.path)).unwrap();
+                std::fs::write(dir.join(&b.path).join("book.txt"), text).unwrap();
+                b.formats.push(magnitide_catalog::Format {
+                    format: "TXT".into(),
+                    size: text.len() as u64,
+                    name: "book".into(),
+                });
+            }
+            b
+        };
+        Self {
+            books: std::sync::Mutex::new(vec![
+                book(1, "Dune", &["unread", "Classic"], Some("the spice must flow")),
+                book(2, "Emma", &["unread"], None),
+                book(3, "Ulysses", &["Read"], Some("yes I said yes I will Yes")),
+            ]),
+            dir: dir.to_path_buf(),
+            status: Default::default(),
+            formats_added: Default::default(),
+        }
+    }
+}
+
+impl magnitide_plugins_wasm::LibraryAccess for FakeLibrary {
+    fn fields(&self) -> Result<Vec<magnitide_core::custom::CustomField>, String> {
+        Ok(vec![magnitide_core::custom::CustomField {
+            id: 1,
+            key: "read".into(),
+            name: "Read".into(),
+            kind: magnitide_core::custom::FieldKind::Bool,
+            multiple: false,
+            choices: vec![],
+        }])
+    }
+
+    fn book(&self, id: i64) -> Option<magnitide_catalog::Book> {
+        self.books.lock().unwrap().iter().find(|b| b.id == id).cloned()
+    }
+
+    fn all_ids(&self) -> Vec<i64> {
+        self.books.lock().unwrap().iter().map(|b| b.id).collect()
+    }
+
+    fn search(&self, query: &str) -> Result<Vec<i64>, String> {
+        let q = magnitide_catalog::search::Query::parse(query).map_err(|e| e.to_string())?;
+        Ok(self.books.lock().unwrap().iter().filter(|b| q.matches(b)).map(|b| b.id).collect())
+    }
+
+    fn book_edit(&self, id: i64) -> Result<magnitide_core::edit::BookEdit, String> {
+        let b = self.book(id).ok_or("no such book")?;
+        Ok(magnitide_core::edit::BookEdit {
+            title: b.title,
+            authors: b.authors,
+            tags: b.tags,
+            description_html: b.comments,
+            series_index: 1.0,
+            ..Default::default()
+        })
+    }
+
+    fn update_book(&self, id: i64, edit: &magnitide_core::edit::BookEdit) -> Result<(), String> {
+        let mut books = self.books.lock().unwrap();
+        let b = books.iter_mut().find(|b| b.id == id).ok_or("no such book")?;
+        b.title = edit.title.clone();
+        b.tags = edit.tags.clone();
+        b.comments = edit.description_html.clone();
+        for (key, value) in &edit.custom {
+            match value {
+                Some(magnitide_core::custom::FieldValue::Bool(v)) => {
+                    b.custom.insert(format!("#{key}"), magnitide_catalog::CustomValue::Bool(*v));
+                }
+                Some(_) => return Err(format!("unexpected custom value for {key}")),
+                None => {
+                    b.custom.remove(&format!("#{key}"));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn set_cover(&self, _id: i64, _image: &[u8]) -> Result<(), String> {
+        Err("no covers here".into())
+    }
+
+    fn format_path(&self, id: i64, format: &str) -> Result<PathBuf, String> {
+        let b = self.book(id).ok_or("no such book")?;
+        let f = b.formats.iter().find(|f| f.format == format).ok_or_else(|| format!("no {format} file"))?;
+        Ok(b.format_path(&self.dir, f))
+    }
+
+    fn add_format(&self, id: i64, format: &str, file: &Path) -> Result<(), String> {
+        let text = std::fs::read_to_string(file).map_err(|e| e.to_string())?;
+        self.formats_added.lock().unwrap().push((id, format.to_owned(), text));
+        Ok(())
+    }
+
+    fn status(&self, text: &str) {
+        self.status.lock().unwrap().push(text.to_owned());
+    }
+}
+
+#[test]
+fn a_library_action_edits_the_library_through_the_host() {
+    use std::sync::Arc;
+
+    let dir = tempfile::tempdir().unwrap();
+    let mut plugins = WasmPlugins::new(dir.path().join("plugins")).unwrap();
+    plugins.set_call_timeout(Duration::from_millis(100));
+    let lib = Arc::new(FakeLibrary::new(&dir.path().join("library")));
+
+    // Without capabilities: reading works, editing is refused by the host.
+    let p = plugins.install(&mgp_of(dir.path(), "test-library-action", "library-action", "Reader", "[]")).unwrap();
+    let menu: Vec<(&str, &str, bool)> =
+        p.handles.menu.iter().map(|m| (m.id.as_str(), m.text.as_str(), m.needs_selection)).collect();
+    assert_eq!(menu[..2], [("read", "Mark as Read", true), ("count", "Count Words", true)]);
+    assert_eq!(plugins.library_actions().len(), 1);
+    let report = plugins.run_action("Reader", "survey", &[], lib.clone()).unwrap();
+    assert_eq!((report.summary.as_str(), report.updated.as_slice()), ("3 books, 2 unread", &[][..]));
+    let refused = plugins.run_action("Reader", "read", &[1], lib.clone()).unwrap_err();
+    assert!(refused.contains("edit the library, which its manifest doesn't declare"), "{refused}");
+    assert!(lib.book(1).unwrap().tags.contains(&"unread".to_owned()), "nothing changed");
+    assert!(plugins.run_action("Reader", "nothing", &[], lib.clone()).unwrap_err().contains("no menu item"));
+
+    // With them: tags and a custom field set, progress reported, books listed as updated.
+    let caps = "[\"write-library\", \"read-files\"]";
+    plugins.install(&mgp_of(dir.path(), "test-library-action", "library-action", "Reader", caps)).unwrap();
+    let report = plugins.run_action("Reader", "read", &[2, 1], lib.clone()).unwrap();
+    assert_eq!(report.summary, "Marked 2 books as read");
+    assert_eq!(report.updated, [2, 1], "in the order touched");
+    let dune = lib.book(1).unwrap();
+    assert_eq!(dune.tags, ["unread", "Classic", "Read"]);
+    assert_eq!(dune.custom.get("#read"), Some(&magnitide_catalog::CustomValue::Bool(true)));
+    // (The refused run reported its first status before the host said no.)
+    assert_eq!(lib.status.lock().unwrap().as_slice(), ["Marking Dune…", "Marking Emma…", "Marking Dune…"]);
+
+    // Book files come through the sandbox; a file the plugin wrote becomes a format.
+    let report = plugins.run_action("Reader", "count", &[1, 2, 3], lib.clone()).unwrap();
+    assert_eq!(report.summary, "Counted words in 2 books");
+    assert_eq!(lib.book(1).unwrap().comments.as_deref(), Some("<p>4 words</p>"));
+    assert_eq!(lib.book(3).unwrap().comments.as_deref(), Some("<p>7 words</p>"));
+    let added = lib.formats_added.lock().unwrap();
+    assert_eq!(added[0], (1, "SHOUT".to_owned(), "THE SPICE MUST FLOW".to_owned()));
+    assert_eq!(added.len(), 2);
+    drop(added);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("library/Author/Dune (1)/book.txt")).unwrap(),
+        "the spice must flow"
+    );
+    assert!(
+        std::fs::read_dir(dir.path().join("plugins/tmp")).unwrap().next().is_none(),
+        "scratch folders are cleaned up"
+    );
+
+    // Failures: the plugin's message, and the deadline.
+    assert_eq!(plugins.run_action("Reader", "fail", &[], lib.clone()).unwrap_err(), "This action failed on purpose.");
+    let looped = plugins.run_action("Reader", "loop", &[], lib.clone()).unwrap_err();
+    assert!(looped.contains("took too long"), "{looped}");
+    let log = plugins.log("Reader");
+    assert!(log.iter().any(|l| l.contains("status: Marking Dune…")), "{log:?}");
 }

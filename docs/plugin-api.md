@@ -20,14 +20,16 @@ HTTP are the API.
 | `metadata-source` | `metadata-source-plugin` | `info()`, `identify(lookup)`              | Find Metadata, beside the built-in sources; Settings › Metadata Sources |
 | `import-hook`     | `import-hook-plugin`     | `file-types()`, `on-import(file, format)` | Adding books: runs on each file of its types before it's stored         |
 | `file-metadata`   | `file-metadata-plugin`   | `reads()`, `read()`, `writes()`, `write()` | Reading a file's metadata when it's added or re-read; writing metadata back into the file |
+| `library-action`  | `library-action-plugin`  | `menu()`, `run(item, selection)`          | The book menu, under Plugins, and the toolbar's Plugins button: runs on the selected books |
 
-These mirror calibre's `Source`, `FileTypePlugin` (on import) and
-`MetadataReaderPlugin`/`MetadataWriterPlugin`, and in the app they're the
-same `core::hooks` traits the calibre host implements: Magnitide's own
-plugins are asked first, calibre plugins see what they made of a file.
-Planned next: `library-action` (menu items that run on the selected books,
-with host functions for reading and editing the library, progress and
-questions). Each kind is a world; a plugin implements one.
+These mirror calibre's `Source`, `FileTypePlugin` (on import),
+`MetadataReaderPlugin`/`MetadataWriterPlugin` and `InterfaceAction`. In
+the app the first three are the same `core::hooks` traits and the same
+Find Metadata fan-out the calibre host plugs into: Magnitide's own plugins
+are asked first, calibre plugins see what they made of a file. A library
+action works on the open library directly, through host functions, where
+a calibre GUI plugin works on a calibre-format shadow of it. Each kind is
+a world; a plugin implements one.
 
 ## The API
 
@@ -98,6 +100,35 @@ and an optional sort form), `series` and `series-index`, `publisher`,
 `description` (HTML or text), `tags`, `cover` (image bytes), `uuids`. All
 optional: leave out what the file doesn't say.
 
+`library-action` exports:
+
+- `menu() -> list<menu-item>`: the items (`id`, `text`, `needs-selection`)
+  shown under the plugin's name in the book menu and the Plugins button.
+  Asked once, at install. One item is shown on its own, several as a
+  submenu; an item that needs a selection is greyed out without one.
+- `run(item, selection) -> result<string, string>`: run the item on the
+  selected books, in list order. Return a line to show when done
+  ("Tagged 12 books"); an error is shown as one. The run is a job in
+  Magnitide's job bar, with the plugin's status lines as its progress.
+
+A library action imports two more interfaces:
+
+- `library`: the open library. `fields()` (the custom fields), `books(ids)`
+  (title, authors, series, publisher, published, rating, languages,
+  identifiers, tags, description, formats, cover flag and custom values),
+  `all-books()`, `search(query)` in Magnitide's search syntax; then, with
+  the `write-library` capability, `edit(id, changes)` (only what's set
+  changes; an empty string clears a text, a series with an empty name
+  clears the series, rating 0 clears it, a custom value of none clears the
+  field), `set-cover(id, image)` and `add-format(id, format, file)` (a
+  file the plugin wrote under `/out/`, replacing a format the book has);
+  with `read-files`, `open-format(id, format)` puts the book's file in the
+  sandbox and returns its `/in/…` path. Edits go through the same paths as
+  Magnitide's own editor (names synced, files renamed, write-back), and
+  the library view reloads when the action is done.
+- `ui`: `status(text)` for a line of progress, `progress(done, total)`
+  for how far along.
+
 ## The sandbox
 
 Each call to a plugin gets a fresh instance: no state survives between
@@ -114,12 +145,16 @@ see another's memory. The instance has:
   never sees the library, the file's folder or its siblings;
 - 256 MB of memory at most;
 - 60 s per call, after which it's stopped ("the plugin took too long and
-  was stopped");
+  was stopped"); an import hook gets five minutes, a library action an
+  hour;
 - only the host functions its capabilities allow. Today's capability is
   `network`.
 
 What a plugin may do is in its manifest and shown in Settings when it's
-added. A plugin that asks for nothing can only compute over its input.
+added. The capabilities are `network` (`http.fetch`), `write-library`
+(`library.edit`, `set-cover`, `add-format`) and `read-files`
+(`library.open-format`). A plugin that asks for nothing can only compute
+over its input and read the library's metadata.
 
 ## Packaging: `.mgp`
 
@@ -183,9 +218,11 @@ scripts/build-plugin.sh plugins/openlibrary-source   # → target/plugins/openli
 An import hook or a file-metadata plugin implements `ImportHook` or
 `FileMetadata` from the same prelude and is exported with
 `export_import_hook!` or `export_file_metadata!`. It reads and writes
-the file with `std::fs` at the paths it's given (`/in/…`, `/out/…`); the
-fixtures in `crates/plugins-wasm/tests/fixtures` are the smallest
-examples of each.
+the file with `std::fs` at the paths it's given (`/in/…`, `/out/…`). A
+library action implements `LibraryAction` (`export_library_action!`) and
+calls `library::books`, `library::edit`, `ui::status` and the rest from
+the prelude. The fixtures in `crates/plugins-wasm/tests/fixtures` are the
+smallest examples of each.
 
 The plugin's `Cargo.toml` is its own workspace (`[workspace]`), with
 `crate-type = ["cdylib"]` and the SDK as a path or git dependency. Any crate
@@ -199,12 +236,14 @@ the same way; the manifest and `.mgp` are identical.
 
 ## Testing
 
-`cargo test -p magnitide-plugins-wasm` builds three fixture plugins for
+`cargo test -p magnitide-plugins-wasm` builds four fixture plugins for
 `wasm32-wasip2` (the target must be installed), one per kind, and runs
 them through the host: installing, a lookup, an import hook that rewrites
 a file into another format (and checks its sandbox has nothing else in
-it), a file-metadata plugin reading and writing, errors, a panic, a
-runaway loop that the deadline stops, the network gate, bad packages.
+it), a file-metadata plugin reading and writing, a library action editing
+an in-memory library (refused without `write-library`, book files through
+the sandbox, a format added), errors, a panic, a runaway loop that the
+deadline stops, the network gate, bad packages.
 `MAGNITIDE_PLUGIN_NETWORK=1` adds a test that builds the example plugin and
 asks Open Library through it.
 
@@ -213,9 +252,11 @@ asks Open Library through it.
 `crates/plugins-wasm` is the host: the engine (wasmtime), the manifest and
 registry, capability gating, the host functions, the per-call file sandbox
 and the limits; it implements `core::hooks::ImportHooks` and
-`MetadataPlugins`. The app keeps one `WasmPlugins` beside the calibre
+`MetadataPlugins`, and runs library actions over a `LibraryAccess` the
+app provides. The app keeps one `WasmPlugins` beside the calibre
 `Plugins`: Find Metadata asks both, `AppHooks` fans adding and metadata
-reading/writing out to both (Magnitide's plugins first), and Settings ›
+reading/writing out to both (Magnitide's plugins first), the plugin menus
+show Magnitide's actions first and calibre's after, and Settings ›
 Plugins lists Magnitide plugins first, calibre plugins below, each with
 what it handles. The TypeScript side sees `NativePlugin` (`manifest`,
 `slug`, `enabled`, `handles`).

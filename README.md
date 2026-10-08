@@ -169,7 +169,7 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 - [x] calibre plugins, step 3: no calibre needed. Magnitide's own plugin runtime (downloaded once) and its own `calibre` package; file-type, metadata reader/writer, preferences and library-closed plugins too. Checked against Count Pages, Reading List, Goodreads Sync, Generate Cover, Manage Series, Quality Check, FanFicFare, EpubMerge, EpubSplit and Comments Cleaner ([coverage](docs/calibre-plugins-coverage.md)); Ebook Translator needs calibre's conversion pipeline and isn't supported
 - [x] Magnitide plugins, step 1: a native plugin API (WebAssembly components, sandboxed, any language) with metadata sources as the first kind; `.mgp` packages added in Settings → Plugins, asked in Find Metadata. A Rust SDK and an Open Library example plugin ([docs/plugin-api.md](docs/plugin-api.md))
 - [x] Magnitide plugins, step 2: import hooks (run on files being added, in a sandbox that holds only that file) and file-metadata plugins (readers and writers for formats) on the native API, beside calibre's
-- [ ] Magnitide plugins, step 3: library actions on the native API (menu items on the selected books, with host functions for reading and editing the library)
+- [x] Magnitide plugins, step 3: library actions on the native API: menu items in the book menu and the Plugins button that run on the selected books, with host functions for reading, searching and editing the library, book files through the sandbox, and progress in the job bar
 - [ ] Find Duplicates, built in
 - [ ] Built-in reader
 - [ ] Export to a calibre library

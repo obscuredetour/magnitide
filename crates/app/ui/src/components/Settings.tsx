@@ -1334,6 +1334,7 @@ const NATIVE_KINDS: Record<NativeKind, string> = {
   'metadata-source': 'Metadata source',
   'import-hook': 'Runs on files being added',
   'file-metadata': 'Reads and writes metadata in book files',
+  'library-action': 'Library tool',
 };
 
 /** What an import-hook or file-metadata plugin handles, as Settings lines. */
@@ -1346,12 +1347,16 @@ function nativeHandlesLines(p: NativePlugin): string[] {
       `Reads metadata from: ${p.handles.reads.map((r) => r.format + (r.overrides ? ' (before Magnitide)' : '')).join(', ')}`,
     );
   if (p.handles.writes.length) lines.push(`Writes metadata into: ${p.handles.writes.join(', ')}`);
+  if (p.handles.menu.length)
+    lines.push(`In the book menu, under Plugins: ${p.handles.menu.map((m) => m.text).join(', ')}`);
   return lines;
 }
 
 /** What a capability lets a plugin do, as Settings shows it. */
 const NATIVE_CAPABILITIES: Record<NativeCapability, string> = {
   network: 'uses the network',
+  'write-library': 'edits books',
+  'read-files': 'reads book files',
 };
 
 const PLUGIN_KINDS: Record<PluginKind, string> = {
@@ -1490,8 +1495,9 @@ function PluginSettings() {
       <p class="mb-4 text-xs text-muted">
         Magnitide plugins are .mgp packages: small, sandboxed programs that can do only what their package declares (the
         network, say), and that Magnitide stops if they misbehave. Metadata sources join Find Metadata; import hooks run
-        on files you add, and see only that file; metadata plugins read and write book formats. Nothing else needs to be
-        installed. Writing one is described in docs/plugin-api.md.
+        on files you add, and see only that file; metadata plugins read and write book formats; library tools are in the
+        book menu, under Plugins, and work on the selected books. Nothing else needs to be installed. Writing one is
+        described in docs/plugin-api.md.
       </p>
       <Show when={status()} fallback={<p class="text-xs text-muted">Checking the plugins…</p>}>
         {(s) => (
@@ -1709,12 +1715,15 @@ function NativePlugins(props: {
     try {
       const p = await api.installNativePlugin(path);
       props.onInstalled();
+      void refreshGuiPlugins();
       toast(
         p.manifest.kind === 'metadata-source'
           ? `Added ${p.manifest.name}: it's now asked in Find Metadata`
           : p.manifest.kind === 'import-hook'
             ? `Added ${p.manifest.name}: it runs on files you add`
-            : `Added ${p.manifest.name}: it reads and writes metadata in the formats it handles`,
+            : p.manifest.kind === 'library-action'
+              ? `Added ${p.manifest.name}: its menu is in the book menu, under Plugins`
+              : `Added ${p.manifest.name}: it reads and writes metadata in the formats it handles`,
       );
     } catch (err) {
       toast(errorMessage(err), { error: true });
@@ -1724,7 +1733,13 @@ function NativePlugins(props: {
   };
 
   const run = (f: () => Promise<NativePlugin[]>) =>
-    f().then(props.onChange, (err) => toast(errorMessage(err), { error: true }));
+    f().then(
+      (plugins) => {
+        props.onChange(plugins);
+        void refreshGuiPlugins();
+      },
+      (err) => toast(errorMessage(err), { error: true }),
+    );
 
   const remove = async (p: NativePlugin) => {
     const ok = await confirm({

@@ -34,6 +34,8 @@ import type { Installed as InstalledPlugin } from './bindings/Installed';
 import type { NativePlugin } from './bindings/NativePlugin';
 import type { NativeCapability } from './bindings/NativeCapability';
 import type { NativeKind } from './bindings/NativeKind';
+import type { NativeMenuItem } from './bindings/NativeMenuItem';
+import type { NativeActionDone } from './bindings/NativeActionDone';
 import type { PluginKind } from './bindings/PluginKind';
 import type { PluginsStatus } from './bindings/PluginsStatus';
 import type { PluginMenus } from './bindings/PluginMenus';
@@ -95,6 +97,8 @@ export type {
   NativePlugin,
   NativeCapability,
   NativeKind,
+  NativeMenuItem,
+  NativeActionDone,
   PluginAsk,
   PluginOpenBook,
   PluginJob,
@@ -400,6 +404,16 @@ export const api = {
 
   /** What a Magnitide plugin logged in its recent calls, oldest first. */
   nativePluginLog: (name: string) => invoke<string[]>('native_plugin_log', { name }),
+
+  /** The Magnitide library actions that are on, with their menus (nothing runs for this). */
+  nativeActions: () => invoke<NativePlugin[]>('native_actions'),
+
+  /**
+   * Run a Magnitide library action's menu item on these books. Resolves when
+   * it's done; `onPluginMessage` reports its progress meanwhile.
+   */
+  runNativeAction: (plugin: string, item: string, selection: number[]) =>
+    invoke<NativeActionDone>('run_native_action', { plugin, item, selection }),
 
   async chooseNativePlugin(): Promise<string | null> {
     const picked = await open({

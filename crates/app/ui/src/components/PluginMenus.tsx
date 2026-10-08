@@ -1,18 +1,73 @@
-// GUI calibre plugins' menus, as calibre shows them on its toolbar: one
-// submenu per plugin. In the book menu (for the books it was opened on) and
-// behind the toolbar's Plugins button (for the selection, even if empty).
+// Plugins' menus: Magnitide's own library actions first (one submenu per
+// plugin, or its one item), then GUI calibre plugins' menus as calibre
+// shows them on its toolbar. In the book menu (for the books it was opened
+// on) and behind the toolbar's Plugins button (for the selection, even if
+// empty).
 
 import { For, onMount, Show } from 'solid-js';
 import Puzzle from 'lucide-solid/icons/puzzle';
 
-import type { PluginMenu, PluginMenuItem } from '../api';
+import type { NativeMenuItem, NativePlugin, PluginMenu, PluginMenuItem } from '../api';
 import { items, library, query, selectedIds } from '../library';
-import { guiPlugins, loadPluginMenus, pluginMenus, runPlugin } from '../plugins';
+import {
+  guiPlugins,
+  hasPluginMenus,
+  loadPluginMenus,
+  nativeActions,
+  pluginMenus,
+  runNativeAction,
+  runPlugin,
+} from '../plugins';
 import { Icon } from './Icon';
 import { Menu, MenuItem, MenuLabel, MenuSeparator, SubMenu } from './Menu';
 
-/** Each plugin's menu, for the books `ids` gives when an item is chosen. Loads them (starting calibre) when first shown. */
+/** Every plugin's menu, for the books `ids` gives when an item is chosen. calibre's load (starting calibre) when first shown. */
 export function PluginItems(props: { ids(): number[] }) {
+  return (
+    <>
+      <For each={nativeActions()}>{(p) => <NativeActionItems plugin={p} ids={props.ids} />}</For>
+      <Show when={guiPlugins().length}>
+        <Show when={nativeActions().length}>
+          <MenuSeparator />
+        </Show>
+        <CalibrePluginItems ids={props.ids} />
+      </Show>
+    </>
+  );
+}
+
+/** A library action's menu: its items, in a submenu when there are several. */
+function NativeActionItems(props: { plugin: NativePlugin; ids(): number[] }) {
+  const run = (item: NativeMenuItem) => void runNativeAction(props.plugin, item, props.ids());
+  const disabled = (item: NativeMenuItem) => item.needsSelection && props.ids().length === 0;
+  return (
+    <Show
+      when={props.plugin.handles.menu.length > 1}
+      fallback={
+        <For each={props.plugin.handles.menu}>
+          {(item) => (
+            <MenuItem disabled={disabled(item)} onSelect={() => run(item)}>
+              {item.text}
+            </MenuItem>
+          )}
+        </For>
+      }
+    >
+      <SubMenu label={props.plugin.manifest.name}>
+        <For each={props.plugin.handles.menu}>
+          {(item) => (
+            <MenuItem disabled={disabled(item)} onSelect={() => run(item)}>
+              {item.text}
+            </MenuItem>
+          )}
+        </For>
+      </SubMenu>
+    </Show>
+  );
+}
+
+/** GUI calibre plugins' menus. */
+function CalibrePluginItems(props: { ids(): number[] }) {
   onMount(() => {
     if (!pluginMenus()) void loadPluginMenus();
   });
@@ -93,7 +148,7 @@ function PluginMenuItems(props: {
   );
 }
 
-/** The toolbar's Plugins button: shown when a GUI plugin is on and the library is a Magnitide one. */
+/** The toolbar's Plugins button: shown when a plugin with a menu is on and the library is a Magnitide one. */
 export function PluginsMenu(props: { onManage(): void }) {
   // The selection in list order, read when an item is chosen.
   const selection = () => {
@@ -104,7 +159,7 @@ export function PluginsMenu(props: { onManage(): void }) {
   };
   const count = () => selectedIds().size;
   return (
-    <Show when={guiPlugins().length && library()?.kind === 'magnitide'}>
+    <Show when={hasPluginMenus() && library()?.kind === 'magnitide'}>
       <Menu
         label="Plugins"
         iconOnly

@@ -3,4 +3,4 @@
 /**
  * What a plugin may do, declared in its manifest and granted at install.
  */
-export type NativeCapability = "network";
+export type NativeCapability = "network" | "write-library" | "read-files";

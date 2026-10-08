@@ -418,7 +418,7 @@ pub async fn remove_format(app: AppHandle, state: State<'_, AppState>, id: i64, 
     Ok(())
 }
 
-const READ_ONLY: &str =
+pub(crate) const READ_ONLY: &str =
     "This calibre library is read-only. Import it into a Magnitide library (library menu) to change it.";
 
 /// The open Magnitide library, or an error for calibre libraries.

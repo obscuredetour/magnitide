@@ -2874,6 +2874,7 @@ dependencies = [
 name = "magnitide-plugins-wasm"
 version = "0.1.0"
 dependencies = [
+ "magnitide-catalog",
  "magnitide-core",
  "magnitide-sources",
  "serde",

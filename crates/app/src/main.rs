@@ -178,6 +178,8 @@ fn main() {
             plugins::remove_native_plugin,
             plugins::set_native_plugin_enabled,
             plugins::native_plugin_log,
+            plugins::native_actions,
+            plugins::run_native_action,
             plugins::install_plugin,
             plugins::remove_plugin,
             plugins::set_plugin_enabled,

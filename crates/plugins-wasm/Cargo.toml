@@ -6,6 +6,7 @@ description = "Magnitide's own plugins: WebAssembly components on the magnitide:
 license = "GPL-3.0-or-later"
 
 [dependencies]
+magnitide-catalog = { version = "0.1.0", path = "../catalog" }
 magnitide-core = { version = "0.1.0", path = "../core" }
 magnitide-sources = { version = "0.1.0", path = "../sources" }
 serde = { version = "1.0.229", features = ["derive"] }

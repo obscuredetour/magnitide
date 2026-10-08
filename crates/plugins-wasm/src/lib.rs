@@ -20,6 +20,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use magnitide_catalog::{Book, BookId, CustomValue};
+use magnitide_core::custom::{CustomField, FieldKind, FieldValue};
+use magnitide_core::edit::BookEdit;
 use magnitide_core::hooks::{ImportHooks, ImportOutcome, MetadataPlugins, Precedence};
 use magnitide_core::metadata::{Author, BookMetadata};
 use magnitide_sources::{Lookup, SourceRecord};
@@ -59,12 +62,26 @@ mod file_metadata_bindings {
     });
 }
 
+mod library_action_bindings {
+    wasmtime::component::bindgen!({
+        world: "library-action-plugin",
+        path: "../plugin-sdk/wit",
+        with: {
+            "magnitide:plugin/types": crate::bindings::magnitide::plugin::types,
+            "magnitide:plugin/log": crate::bindings::magnitide::plugin::log,
+            "magnitide:plugin/http": crate::bindings::magnitide::plugin::http,
+        },
+    });
+}
+
 use bindings::MetadataSourcePlugin;
 use bindings::magnitide::plugin::{http, log, types};
 use file_metadata_bindings::FileMetadataPlugin;
 use file_metadata_bindings::exports::magnitide::plugin::file_metadata as wit_file_metadata;
 use import_hook_bindings::ImportHookPlugin;
 use import_hook_bindings::exports::magnitide::plugin::import_hook as wit_import_hook;
+use library_action_bindings::LibraryActionPlugin;
+use library_action_bindings::magnitide::plugin::{library, ui};
 
 /// The API version this host provides; a plugin's manifest names the one it targets.
 pub const API_VERSION: &str = "0.1";
@@ -75,6 +92,8 @@ const MEMORY_LIMIT: usize = 256 * 1024 * 1024;
 const CALL_TIMEOUT: Duration = Duration::from_secs(60);
 /// An import hook may rewrite a whole book: this many call timeouts.
 const ON_IMPORT_TIMEOUTS: u32 = 5;
+/// A library action may work through a whole library: this many.
+const ACTION_TIMEOUTS: u32 = 60;
 const EPOCH_TICK: Duration = Duration::from_millis(100);
 const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 const HTTP_BODY_LIMIT: u64 = 20 * 1024 * 1024;
@@ -87,6 +106,10 @@ const LOG_LINES: usize = 400;
 pub enum Capability {
     /// HTTP through Magnitide.
     Network,
+    /// Editing books (library actions).
+    WriteLibrary,
+    /// Reading book files (library actions).
+    ReadFiles,
 }
 
 /// What kind of plugin, by the world it implements.
@@ -100,6 +123,8 @@ pub enum Kind {
     ImportHook,
     /// Reads and writes metadata in book files (world `file-metadata-plugin`).
     FileMetadata,
+    /// Menu items on the selected books (world `library-action-plugin`).
+    LibraryAction,
 }
 
 /// `manifest.toml` in a `.mgp`.
@@ -157,6 +182,18 @@ pub struct Handles {
     /// Upper-case formats it writes.
     #[serde(default)]
     pub writes: Vec<String>,
+    /// A library action's menu.
+    #[serde(default)]
+    pub menu: Vec<MenuEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export, rename = "NativeMenuItem"))]
+#[serde(rename_all = "camelCase")]
+pub struct MenuEntry {
+    pub id: String,
+    pub text: String,
+    pub needs_selection: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -213,12 +250,18 @@ impl Sandbox {
 
     /// The host path of a `/out/...` path the plugin named, if it's one.
     fn host_path(&self, guest: &str) -> Option<PathBuf> {
-        let rest = guest.strip_prefix("/out/")?;
-        if rest.is_empty() || rest.split('/').any(|c| c.is_empty() || c == "." || c == "..") {
-            return None;
-        }
-        Some(self.output().join(rest))
+        out_path(&self.dir, guest)
     }
+}
+
+/// The host path under a call's folder of a `/out/...` path the plugin
+/// named, if it's one.
+fn out_path(dir: &Path, guest: &str) -> Option<PathBuf> {
+    let rest = guest.strip_prefix("/out/")?;
+    if rest.is_empty() || rest.split('/').any(|c| c.is_empty() || c == "." || c == "..") {
+        return None;
+    }
+    Some(dir.join("out").join(rest))
 }
 
 impl Drop for Sandbox {
@@ -235,6 +278,12 @@ struct State {
     plugin: String,
     capabilities: Vec<Capability>,
     log: Vec<String>,
+    /// The call's scratch folder, when it has one.
+    sandbox: Option<PathBuf>,
+    /// The library, for a library action.
+    library: Option<Arc<dyn LibraryAccess>>,
+    /// Books the action edited.
+    touched: Vec<BookId>,
 }
 
 impl WasiView for State {
@@ -593,11 +642,26 @@ impl WasmPlugins {
                     .map(|f| f.trim().to_uppercase())
                     .filter(|f| !f.is_empty())
                     .collect();
-                let handles = Handles { file_types: Vec::new(), reads, writes };
+                let handles = Handles { reads, writes, ..Default::default() };
                 if handles.reads.is_empty() && handles.writes.is_empty() {
                     return Err(format!("{} names no formats it reads or writes.", m.name));
                 }
                 Ok(handles)
+            }
+            Kind::LibraryAction => {
+                let (mut store, plugin) = self.library_action(component, &m.name, None, None, timeout)?;
+                let menu: Vec<MenuEntry> = plugin
+                    .magnitide_plugin_library_action()
+                    .call_menu(&mut store)
+                    .map_err(|e| describe_trap(&e))?
+                    .into_iter()
+                    .filter(|i| !i.id.trim().is_empty() && !i.text.trim().is_empty())
+                    .map(|i| MenuEntry { id: i.id, text: i.text, needs_selection: i.needs_selection })
+                    .collect();
+                if menu.is_empty() {
+                    return Err(format!("{} has no menu items.", m.name));
+                }
+                Ok(Handles { menu, ..Default::default() })
             }
         }
     }
@@ -609,6 +673,7 @@ impl WasmPlugins {
         name: &str,
         capabilities: &[Capability],
         sandbox: Option<&Sandbox>,
+        library: Option<Arc<dyn LibraryAccess>>,
         timeout: Duration,
     ) -> Result<Store<State>, String> {
         let mut wasi = WasiCtxBuilder::new();
@@ -626,6 +691,9 @@ impl WasmPlugins {
             plugin: name.to_owned(),
             capabilities: capabilities.to_vec(),
             log: Vec::new(),
+            sandbox: sandbox.map(|s| s.dir.clone()),
+            library,
+            touched: Vec::new(),
         };
         let mut store = Store::new(&self.engine, state);
         store.limiter(|s| &mut s.limits);
@@ -648,7 +716,7 @@ impl WasmPlugins {
         let mut linker = self.linker()?;
         MetadataSourcePlugin::add_to_linker::<_, HasSelf<_>>(&mut linker, |s: &mut State| s)
             .map_err(|e| e.to_string())?;
-        let mut store = self.store(name, &self.capabilities_of(name), None, timeout)?;
+        let mut store = self.store(name, &self.capabilities_of(name), None, None, timeout)?;
         let instance = MetadataSourcePlugin::instantiate(&mut store, component, &linker)
             .map_err(|e| format!("{name} doesn't implement the metadata-source API: {}", first_line(&e.to_string())))?;
         Ok((store, instance))
@@ -663,7 +731,7 @@ impl WasmPlugins {
     ) -> Result<(Store<State>, ImportHookPlugin), String> {
         let mut linker = self.linker()?;
         ImportHookPlugin::add_to_linker::<_, HasSelf<_>>(&mut linker, |s: &mut State| s).map_err(|e| e.to_string())?;
-        let mut store = self.store(name, &self.capabilities_of(name), sandbox, timeout)?;
+        let mut store = self.store(name, &self.capabilities_of(name), sandbox, None, timeout)?;
         let instance = ImportHookPlugin::instantiate(&mut store, component, &linker)
             .map_err(|e| format!("{name} doesn't implement the import-hook API: {}", first_line(&e.to_string())))?;
         Ok((store, instance))
@@ -679,7 +747,7 @@ impl WasmPlugins {
         let mut linker = self.linker()?;
         FileMetadataPlugin::add_to_linker::<_, HasSelf<_>>(&mut linker, |s: &mut State| s)
             .map_err(|e| e.to_string())?;
-        let mut store = self.store(name, &self.capabilities_of(name), sandbox, timeout)?;
+        let mut store = self.store(name, &self.capabilities_of(name), sandbox, None, timeout)?;
         let instance = FileMetadataPlugin::instantiate(&mut store, component, &linker)
             .map_err(|e| format!("{name} doesn't implement the file-metadata API: {}", first_line(&e.to_string())))?;
         Ok((store, instance))
@@ -916,6 +984,323 @@ fn file_name(path: &Path) -> String {
         .map(|n| n.to_string_lossy().into_owned())
         .filter(|n| !n.is_empty())
         .unwrap_or_else(|| "book".into())
+}
+
+/// The open library as a library action sees it. The app implements this
+/// over its open library; tests use a fake. Edits go through the same
+/// paths as the app's own (names synced, files renamed, write-back).
+pub trait LibraryAccess: Send + Sync {
+    fn fields(&self) -> Result<Vec<CustomField>, String>;
+    fn book(&self, id: BookId) -> Option<Book>;
+    fn all_ids(&self) -> Vec<BookId>;
+    /// Magnitide's search syntax.
+    fn search(&self, query: &str) -> Result<Vec<BookId>, String>;
+    fn book_edit(&self, id: BookId) -> Result<BookEdit, String>;
+    fn update_book(&self, id: BookId, edit: &BookEdit) -> Result<(), String>;
+    fn set_cover(&self, id: BookId, image: &[u8]) -> Result<(), String>;
+    /// The path of a book's file, for linking into the sandbox.
+    fn format_path(&self, id: BookId, format: &str) -> Result<PathBuf, String>;
+    /// Add a format from `file`, replacing one the book has.
+    fn add_format(&self, id: BookId, format: &str, file: &Path) -> Result<(), String>;
+    /// A line of progress from the plugin, and how far along it is.
+    fn status(&self, _text: &str) {}
+    fn progress(&self, _done: u32, _total: u32) {}
+}
+
+/// What a library action did.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ActionReport {
+    /// The plugin's own line ("Tagged 12 books").
+    pub summary: String,
+    /// Books it edited, in the order it first touched them.
+    pub updated: Vec<BookId>,
+}
+
+impl library::Host for State {
+    fn fields(&mut self) -> Vec<library::CustomField> {
+        let Some(lib) = &self.library else { return Vec::new() };
+        lib.fields()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|f| library::CustomField {
+                key: f.key,
+                name: f.name,
+                kind: kind_name(f.kind).into(),
+                multiple: f.multiple,
+            })
+            .collect()
+    }
+
+    fn books(&mut self, ids: Vec<u64>) -> Vec<library::Book> {
+        let Some(lib) = &self.library else { return Vec::new() };
+        ids.into_iter().filter_map(|id| lib.book(id as BookId)).map(to_wit_book).collect()
+    }
+
+    fn all_books(&mut self) -> Vec<u64> {
+        self.library.as_ref().map(|l| l.all_ids().into_iter().map(|id| id as u64).collect()).unwrap_or_default()
+    }
+
+    fn search(&mut self, query: String) -> Vec<u64> {
+        let Some(lib) = &self.library else { return Vec::new() };
+        match lib.search(&query) {
+            Ok(ids) => ids.into_iter().map(|id| id as u64).collect(),
+            Err(e) => {
+                self.log.push(format!("[{}] warn: search {query:?}: {e}", self.plugin));
+                Vec::new()
+            }
+        }
+    }
+
+    fn edit(&mut self, id: u64, changes: library::BookEdit) -> Result<(), String> {
+        self.need(Capability::WriteLibrary, "edit the library")?;
+        let lib = self.library.clone().ok_or("no library is open")?;
+        let id = id as BookId;
+        let mut edit = lib.book_edit(id)?;
+        apply_edit(&mut edit, changes);
+        lib.update_book(id, &edit)?;
+        self.touch(id);
+        Ok(())
+    }
+
+    fn set_cover(&mut self, id: u64, image: Vec<u8>) -> Result<(), String> {
+        self.need(Capability::WriteLibrary, "edit the library")?;
+        let lib = self.library.clone().ok_or("no library is open")?;
+        lib.set_cover(id as BookId, &image)?;
+        self.touch(id as BookId);
+        Ok(())
+    }
+
+    fn open_format(&mut self, id: u64, format: String) -> Result<String, String> {
+        self.need(Capability::ReadFiles, "read book files")?;
+        let lib = self.library.clone().ok_or("no library is open")?;
+        let sandbox = self.sandbox.clone().ok_or("no sandbox for this call")?;
+        let path = lib.format_path(id as BookId, &format.to_uppercase())?;
+        // Each book's file under its own folder: two books may share a file name.
+        let sub = sandbox.join("in").join(id.to_string());
+        std::fs::create_dir_all(&sub).map_err(|e| e.to_string())?;
+        let name = file_name(&path);
+        let dest = sub.join(&name);
+        if !dest.exists() && std::fs::hard_link(&path, &dest).is_err() {
+            std::fs::copy(&path, &dest).map_err(|e| format!("couldn't give the plugin {}: {e}", path.display()))?;
+        }
+        Ok(format!("/in/{id}/{name}"))
+    }
+
+    fn add_format(&mut self, id: u64, format: String, file: String) -> Result<(), String> {
+        self.need(Capability::WriteLibrary, "edit the library")?;
+        let lib = self.library.clone().ok_or("no library is open")?;
+        let sandbox = self.sandbox.clone().ok_or("no sandbox for this call")?;
+        let made = out_path(&sandbox, &file).ok_or_else(|| format!("{file} isn't under /out/"))?;
+        if !made.is_file() {
+            return Err(format!("{file} wasn't written"));
+        }
+        lib.add_format(id as BookId, &format.to_uppercase(), &made)?;
+        self.touch(id as BookId);
+        Ok(())
+    }
+}
+
+impl ui::Host for State {
+    fn status(&mut self, text: String) {
+        self.log.push(format!("[{}] status: {text}", self.plugin));
+        if let Some(lib) = &self.library {
+            lib.status(&text);
+        }
+    }
+
+    fn progress(&mut self, done: u32, total: u32) {
+        if let Some(lib) = &self.library {
+            lib.progress(done, total);
+        }
+    }
+}
+
+impl State {
+    fn need(&self, capability: Capability, to: &str) -> Result<(), String> {
+        if self.capabilities.contains(&capability) {
+            Ok(())
+        } else {
+            let name = match capability {
+                Capability::Network => "network",
+                Capability::WriteLibrary => "write-library",
+                Capability::ReadFiles => "read-files",
+            };
+            Err(format!(
+                "{} asked to {to}, which its manifest doesn't declare (capabilities = [\"{name}\"])",
+                self.plugin
+            ))
+        }
+    }
+
+    fn touch(&mut self, id: BookId) {
+        if !self.touched.contains(&id) {
+            self.touched.push(id);
+        }
+    }
+}
+
+fn kind_name(kind: FieldKind) -> &'static str {
+    match kind {
+        FieldKind::Text => "text",
+        FieldKind::LongText => "long-text",
+        FieldKind::Integer => "integer",
+        FieldKind::Number => "number",
+        FieldKind::Bool => "bool",
+        FieldKind::Date => "date",
+        FieldKind::Rating => "rating",
+        FieldKind::Choice => "choice",
+        FieldKind::Series => "series",
+    }
+}
+
+fn to_wit_book(b: Book) -> library::Book {
+    library::Book {
+        id: b.id as u64,
+        title: b.title,
+        authors: b.authors,
+        series: b.series,
+        series_index: b.series_index,
+        publisher: b.publisher,
+        published: b.pubdate.map(|d| d.date_naive().to_string()),
+        rating: b.rating,
+        languages: b.languages,
+        identifiers: b.identifiers.into_iter().map(|(key, value)| types::Identifier { key, value }).collect(),
+        tags: b.tags,
+        description_html: b.comments,
+        formats: b.formats.into_iter().map(|f| f.format).collect(),
+        has_cover: b.has_cover,
+        custom: b
+            .custom
+            .into_iter()
+            .map(|(key, value)| library::CustomValue {
+                key: key.trim_start_matches('#').to_owned(),
+                value: match value {
+                    CustomValue::Text(t) => library::FieldValue::Text(t),
+                    CustomValue::TextList(l) => library::FieldValue::TextList(l),
+                    CustomValue::Series { name, index } => {
+                        library::FieldValue::Series(library::SeriesValue { name, index })
+                    }
+                    CustomValue::Int(i) => library::FieldValue::Number(i as f64),
+                    CustomValue::Float(f) => library::FieldValue::Number(f),
+                    CustomValue::Bool(b) => library::FieldValue::Boolean(b),
+                    CustomValue::Rating(r) => library::FieldValue::Number(f64::from(r)),
+                    CustomValue::Datetime(d) => library::FieldValue::Text(d.date_naive().to_string()),
+                },
+            })
+            .collect(),
+    }
+}
+
+/// Lay the plugin's changes over the book's current values.
+fn apply_edit(edit: &mut BookEdit, c: library::BookEdit) {
+    let blank = |s: String| Some(s).filter(|s| !s.trim().is_empty());
+    if let Some(t) = c.title.and_then(blank) {
+        edit.title = t;
+        edit.title_sort = String::new();
+    }
+    if let Some(a) = c.authors {
+        edit.authors = a.into_iter().filter(|a| !a.trim().is_empty()).collect();
+    }
+    if let Some(s) = c.series {
+        if s.name.trim().is_empty() {
+            edit.series = None;
+            edit.series_index = 1.0;
+        } else {
+            edit.series = Some(s.name);
+            edit.series_index = s.index;
+        }
+    }
+    if let Some(p) = c.publisher {
+        edit.publisher = blank(p);
+    }
+    if let Some(p) = c.published {
+        edit.published = blank(p);
+    }
+    if let Some(r) = c.rating {
+        edit.rating = (r > 0).then_some(r.min(10));
+    }
+    if let Some(t) = c.tags {
+        edit.tags = t;
+    }
+    if let Some(l) = c.languages {
+        edit.languages = l;
+    }
+    if let Some(i) = c.identifiers {
+        edit.identifiers = i.into_iter().map(|i| (i.key, i.value)).collect();
+    }
+    if let Some(d) = c.description_html {
+        edit.description_html = blank(d);
+    }
+    for custom in c.custom {
+        let value = custom.value.map(|v| match v {
+            library::FieldValue::Boolean(b) => FieldValue::Bool(b),
+            library::FieldValue::Number(n) => FieldValue::Number(n),
+            library::FieldValue::Text(t) => FieldValue::Text(t),
+            library::FieldValue::TextList(l) => FieldValue::List(l),
+            library::FieldValue::Series(s) => FieldValue::Series { name: s.name, index: s.index },
+        });
+        edit.custom.insert(custom.key.trim_start_matches('#').to_owned(), value);
+    }
+}
+
+impl WasmPlugins {
+    /// Enabled library actions.
+    pub fn library_actions(&self) -> Vec<Installed> {
+        self.list().into_iter().filter(|p| p.enabled && p.manifest.kind == Kind::LibraryAction).collect()
+    }
+
+    /// Run a plugin's menu item on the selected books, with the library
+    /// behind `lib`. Progress goes to `lib` as it happens.
+    pub fn run_action(
+        &self,
+        name: &str,
+        item: &str,
+        selection: &[BookId],
+        lib: Arc<dyn LibraryAccess>,
+    ) -> Result<ActionReport, String> {
+        let plugin = self
+            .library_actions()
+            .into_iter()
+            .find(|p| p.manifest.name == name)
+            .ok_or_else(|| format!("{name} isn't an enabled plugin."))?;
+        if !plugin.handles.menu.iter().any(|m| m.id == item) {
+            return Err(format!("{name} has no menu item {item:?}."));
+        }
+        let component = self.component(&plugin)?;
+        let sandbox = self.sandbox()?;
+        let timeout = self.call_timeout * ACTION_TIMEOUTS;
+        let (mut store, instance) = self.library_action(&component, name, Some(&sandbox), Some(lib), timeout)?;
+        let ids: Vec<u64> = selection.iter().map(|&id| id as u64).collect();
+        let answer = instance.magnitide_plugin_library_action().call_run(&mut store, item, &ids);
+        let state = store.data_mut();
+        let lines = std::mem::take(&mut state.log);
+        let updated = std::mem::take(&mut state.touched);
+        drop(store);
+        let result = match answer {
+            Ok(Ok(summary)) => Ok(ActionReport { summary, updated }),
+            Ok(Err(e)) => Err(e),
+            Err(e) => Err(describe_trap(&e)),
+        };
+        self.note(name, lines, result.as_ref().err().map(String::as_str));
+        result
+    }
+
+    fn library_action(
+        &self,
+        component: &Component,
+        name: &str,
+        sandbox: Option<&Sandbox>,
+        library: Option<Arc<dyn LibraryAccess>>,
+        timeout: Duration,
+    ) -> Result<(Store<State>, LibraryActionPlugin), String> {
+        let mut linker = self.linker()?;
+        LibraryActionPlugin::add_to_linker::<_, HasSelf<_>>(&mut linker, |s: &mut State| s)
+            .map_err(|e| e.to_string())?;
+        let mut store = self.store(name, &self.capabilities_of(name), sandbox, library, timeout)?;
+        let instance = LibraryActionPlugin::instantiate(&mut store, component, &linker)
+            .map_err(|e| format!("{name} doesn't implement the library-action API: {}", first_line(&e.to_string())))?;
+        Ok((store, instance))
+    }
 }
 
 fn validate(m: &Manifest) -> Result<(), String> {

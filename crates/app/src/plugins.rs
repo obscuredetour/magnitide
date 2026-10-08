@@ -32,7 +32,7 @@ use magnitide_core::hooks::{ImportHooks, ImportOutcome, MetadataPlugins, Precede
 use magnitide_core::metadata::BookMetadata;
 use magnitide_plugins::shadow::{Shadow, baseline};
 use magnitide_plugins::{Configured, Hook, HostChoice, Installed, PluginMenus, Plugins, Progress, RuntimeStatus};
-use magnitide_plugins_wasm::{Installed as NativePlugin, WasmPlugins};
+use magnitide_plugins_wasm::{ActionReport, Installed as NativePlugin, LibraryAccess, WasmPlugins};
 use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -771,6 +771,161 @@ pub async fn set_native_plugin_enabled(app: AppHandle, name: String, enabled: bo
 #[tauri::command]
 pub async fn native_plugin_log(app: AppHandle, name: String) -> CmdResult<Vec<String>> {
     Ok(app.state::<WasmPlugins>().log(&name))
+}
+
+/// The library actions that are on, with their menus (nothing runs for this).
+#[tauri::command]
+pub async fn native_actions(app: AppHandle) -> CmdResult<Vec<NativePlugin>> {
+    Ok(app.state::<WasmPlugins>().library_actions())
+}
+
+/// What a library action did, for the UI's job entry.
+#[derive(Clone, Serialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeActionDone {
+    /// The plugin's own line ("Tagged 12 books").
+    summary: String,
+    /// Books it edited.
+    updated: Vec<BookId>,
+}
+
+/// Run a Magnitide library action's menu item on the selected books. Its
+/// progress comes as `plugin-message` events meanwhile; the library's
+/// catalog is reloaded when it changed anything.
+#[tauri::command]
+pub async fn run_native_action(
+    app: AppHandle,
+    plugin: String,
+    item: String,
+    selection: Vec<BookId>,
+) -> CmdResult<NativeActionDone> {
+    let state = app.state::<AppState>();
+    let loaded = state.current().ok_or("No library is open")?;
+    let native = loaded.native.clone().ok_or_else(|| crate::commands::READ_ONLY.to_owned())?;
+    let app2 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let lib = Arc::new(AppLibrary {
+            app: app2.clone(),
+            plugin: plugin.clone(),
+            root: loaded.root.clone(),
+            native,
+            catalog: Mutex::new(Arc::new(loaded.catalog.clone())),
+            dirty: AtomicBool::new(false),
+            status: Mutex::new(String::new()),
+        });
+        let result = app2.state::<WasmPlugins>().run_action(&plugin, &item, &selection, lib.clone());
+        // Whatever it did is in the library: show it.
+        if lib.dirty.load(std::sync::atomic::Ordering::SeqCst) {
+            let catalog =
+                lib.native.lock().unwrap_or_else(|e| e.into_inner()).load_catalog().map_err(|e| e.to_string())?;
+            let state = app2.state::<AppState>();
+            if let Some(current) = state.current().filter(|c| c.root == lib.root) {
+                state.replace(current.with_catalog(catalog));
+            }
+        }
+        result.map(|ActionReport { summary, updated }| NativeActionDone { summary, updated })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The open library as a Magnitide library action sees it: reads from the
+/// catalog (reloaded after a write, when next read), writes through core's
+/// own edit paths, progress as `plugin-message` events.
+struct AppLibrary {
+    app: AppHandle,
+    plugin: String,
+    root: PathBuf,
+    native: Arc<Mutex<magnitide_core::Library>>,
+    catalog: Mutex<Arc<Catalog>>,
+    /// Written since the catalog was loaded.
+    dirty: AtomicBool,
+    /// The last status line, repeated with the progress.
+    status: Mutex<String>,
+}
+
+impl AppLibrary {
+    fn catalog(&self) -> Result<Arc<Catalog>, String> {
+        if self.dirty.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            let fresh =
+                self.native.lock().unwrap_or_else(|e| e.into_inner()).load_catalog().map_err(|e| e.to_string())?;
+            *self.catalog.lock().unwrap_or_else(|e| e.into_inner()) = Arc::new(fresh);
+        }
+        Ok(self.catalog.lock().unwrap_or_else(|e| e.into_inner()).clone())
+    }
+
+    fn write<T>(&self, f: impl FnOnce(&mut magnitide_core::Library) -> magnitide_core::Result<T>) -> Result<T, String> {
+        let out = f(&mut self.native.lock().unwrap_or_else(|e| e.into_inner())).map_err(|e| e.to_string())?;
+        self.dirty.store(true, std::sync::atomic::Ordering::SeqCst);
+        Ok(out)
+    }
+
+    fn say(&self, message: String) {
+        let _ = self
+            .app
+            .emit(PLUGIN_MESSAGE_EVENT, PluginMessage { plugin: Some(self.plugin.clone()), message, error: false });
+    }
+}
+
+impl LibraryAccess for AppLibrary {
+    fn fields(&self) -> Result<Vec<magnitide_core::custom::CustomField>, String> {
+        self.native.lock().unwrap_or_else(|e| e.into_inner()).custom_fields().map_err(|e| e.to_string())
+    }
+
+    fn book(&self, id: BookId) -> Option<magnitide_catalog::Book> {
+        self.catalog().ok()?.get(id).cloned()
+    }
+
+    fn all_ids(&self) -> Vec<BookId> {
+        self.catalog().map(|c| c.books.iter().map(|b| b.id).collect()).unwrap_or_default()
+    }
+
+    fn search(&self, query: &str) -> Result<Vec<BookId>, String> {
+        let q = magnitide_catalog::Query::parse(query).map_err(|e| e.to_string())?;
+        Ok(self.catalog()?.books.iter().filter(|b| q.matches(b)).map(|b| b.id).collect())
+    }
+
+    fn book_edit(&self, id: BookId) -> Result<magnitide_core::BookEdit, String> {
+        self.native.lock().unwrap_or_else(|e| e.into_inner()).book_edit(id).map_err(|e| e.to_string())
+    }
+
+    fn update_book(&self, id: BookId, edit: &magnitide_core::BookEdit) -> Result<(), String> {
+        self.write(|lib| lib.update_book(id, edit).map(|_| ()))
+    }
+
+    fn set_cover(&self, id: BookId, image: &[u8]) -> Result<(), String> {
+        self.write(|lib| lib.set_cover(id, image))
+    }
+
+    fn format_path(&self, id: BookId, format: &str) -> Result<PathBuf, String> {
+        let catalog = self.catalog()?;
+        let book = catalog.get(id).ok_or_else(|| format!("no book {id}"))?;
+        let f =
+            book.formats.iter().find(|f| f.format == format).ok_or_else(|| format!("the book has no {format} file"))?;
+        Ok(book.format_path(&self.root, f))
+    }
+
+    fn add_format(&self, id: BookId, format: &str, file: &Path) -> Result<(), String> {
+        let has = self.catalog()?.get(id).is_some_and(|b| b.formats.iter().any(|f| f.format == format));
+        self.write(
+            |lib| if has { lib.replace_format_file(id, format, file) } else { lib.add_format_file(id, format, file) },
+        )
+    }
+
+    fn status(&self, text: &str) {
+        *self.status.lock().unwrap_or_else(|e| e.into_inner()) = text.to_owned();
+        self.say(text.to_owned());
+    }
+
+    fn progress(&self, done: u32, total: u32) {
+        if total == 0 {
+            return;
+        }
+        let status = self.status.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let percent = (u64::from(done) * 100 / u64::from(total)).min(100);
+        self.say(if status.is_empty() { format!("{percent}%") } else { format!("{status} ({percent}%)") });
+    }
 }
 
 /// Open a plugin's own settings (its dialog, in the host) and wait for it

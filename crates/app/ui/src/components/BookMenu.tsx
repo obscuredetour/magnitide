@@ -21,7 +21,7 @@ import {
 } from '../transfer';
 import { activeShelf, addToShelf, newShelfFor, removeFromShelf, shelves } from '../shelves';
 import { writeBookFiles } from '../writeback';
-import { guiPlugins } from '../plugins';
+import { hasPluginMenus } from '../plugins';
 import { ContextMenu, MenuItem, MenuSeparator, SubMenu } from './Menu';
 import { PluginItems } from './PluginMenus';
 import { deleteKeys, keys } from '../keys';
@@ -76,7 +76,7 @@ function BookMenu(props: { request: Request; onClose(): void }) {
         <MenuItem onSelect={() => findMetadataFor(ids)}>
           {one() ? 'Find Metadata…' : `Find Metadata for ${ids.length} Books…`}
         </MenuItem>
-        <Show when={guiPlugins().length}>
+        <Show when={hasPluginMenus()}>
           <SubMenu label="Plugins">
             <PluginItems ids={() => ids} />
           </SubMenu>
