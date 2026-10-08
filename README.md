@@ -20,8 +20,8 @@ core with a Tauri desktop app, built to stay quick with 50,000 books and more.
   on a Kobo, for Kobo's own app and KOReader alike.
 - **On your network.** An optional library server with an OPDS catalogue for reading apps, a simple page for
   e-reader browsers, and KOReader progress sync.
-- **calibre plugins.** The plugins you rely on run unchanged, without calibre installed: Magnitide downloads its
-  own plugin runtime once (Settings → Plugins) and provides the parts of calibre that plugins use. Metadata sources
+- **calibre plugins.** The plugins you rely on run unchanged: in your installed calibre when you have one, or
+  without calibre at all through Magnitide's own plugin runtime, downloaded once (Settings → Plugins). Metadata sources
   join Find Metadata. Toolbar plugins work on the selected books from the Plugins button or the book menu; their
   windows open as in calibre, and what they change comes back into the library through Magnitide's own editing.
   File-type plugins run when books are added, metadata readers and writers handle their formats, and plugins'
@@ -39,7 +39,7 @@ and the decisions behind them: [docs/architecture.md](docs/architecture.md).
 | [`core`](crates/core)                     | `magnitide-core`: the native Magnitide library (schema, migrations, edits), calibre import, adding book files with EPUB metadata. No Tauri code, so the planned server can share it |
 | [`catalog`](crates/catalog)               | `magnitide-catalog`: the in-memory book model, search and sort that every kind of library loads into                                                                                |
 | [`sources`](crates/sources)               | `magnitide-sources`: metadata lookup from Open Library and Google Books, on request only                                                                                            |
-| [`plugins`](crates/plugins)               | `magnitide-plugins`: runs calibre plugins in Magnitide's own plugin runtime (CPython + PyQt6, downloaded once) with a calibre compatibility package of its own (`crates/plugins/python`) |
+| [`plugins`](crates/plugins)               | `magnitide-plugins`: runs calibre plugins in an installed calibre or in Magnitide's own plugin runtime (CPython + PyQt6, downloaded once, with a calibre compatibility package of its own) |
 | [`server`](crates/server)                 | `magnitide-server`: serves a library read-only on the local network, as a plain web page for e-reader browsers and an OPDS catalogue for reading apps                               |
 | [`calibre-compat`](crates/calibre-compat) | Read-only access to calibre libraries (`metadata.db` + book folders), plus a CLI to inspect them                                                                                    |
 

@@ -47,8 +47,9 @@ fn plugins_in(dir: &Path) -> Option<Plugins> {
             assert!(install.is_some(), "MAGNITIDE_PLUGIN_HOST=calibre but no calibre is installed");
             plugins.set_host_choice(HostChoice::Calibre).unwrap();
         }
-        Ok("runtime") => plugins.set_host_choice(HostChoice::Runtime).unwrap(),
-        _ => {}
+        // Explicit, so a machine with calibre installed doesn't change what
+        // `cargo test` covers (Auto would pick calibre there).
+        _ => plugins.set_host_choice(HostChoice::Runtime).unwrap(),
     }
     Some(plugins)
 }

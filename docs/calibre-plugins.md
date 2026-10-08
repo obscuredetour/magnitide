@@ -61,11 +61,26 @@ and utility modules, no GUI or library.
 
 ## Design
 
-Plugins run in **Magnitide's own plugin runtime** with a `calibre` package
-written for Magnitide; calibre needn't be installed. Only the parts that
-touch the user's library and window are Magnitide's; the rest mirrors
-calibre's API closely enough that plugins written for calibre 5 to 9 load
-and run.
+Plugins run in one of two hosts, chosen in Settings › Plugins, behind the
+same protocol, shadow library, window stand-in and hooks:
+
+- **An installed calibre** (the default when one is found): its
+  `calibre-debug` runs the host package (`crates/plugins/python/host`) on
+  calibre's own code, with plugin settings kept in Magnitide's folder, never
+  calibre's. Plugins get the real calibre API; what's Magnitide's is only
+  the library and window stand-in. calibre 6 or later.
+- **Magnitide's own plugin runtime** (the fallback, and the choice for
+  people without calibre): the same host package on a downloaded CPython +
+  PyQt6, with a `calibre` package written for Magnitide
+  (`crates/plugins/python/compat`) that mirrors calibre's API closely enough
+  that plugins written for calibre 5 to 9 load and run.
+
+The host tests and the plugin corpus run under both
+(`MAGNITIDE_PLUGIN_HOST=calibre|runtime`), which makes the installed
+calibre the oracle for the compat package: a plugin that works there and
+fails on ours points at a gap. A third option, calibre downloaded by
+Magnitide (its official builds, pinned by hash), is planned on the same
+mechanism as the runtime download.
 
 1. **Runtime: Magnitide's own.** A CPython 3.14 from python-build-standalone
    with PyQt6 (Core, Gui, Widgets, Network, PrintSupport, Svg, OpenGL, DBus),
@@ -174,6 +189,9 @@ plugins do).
 - `cargo test -p magnitide-plugins --test host` runs the host end to end
   with the fixture plugins (skipped without a runtime;
   `MAGNITIDE_REQUIRE_PLUGIN_RUNTIME=1` makes that a failure, as on CI).
+  `MAGNITIDE_PLUGIN_HOST=calibre` runs the same tests inside an installed
+  calibre (CI installs calibre's Linux build for it); the corpus honours it
+  too and then writes `docs/calibre-plugins-coverage-calibre.md`.
 - `crates/plugins/python-tests/` is the compat package's own pytest suite
   (`QT_QPA_PLATFORM=offscreen pytest crates/plugins/python-tests`, with the
   runtime's wheels on the path); `ruff` lints and formats the Python.

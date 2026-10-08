@@ -83,10 +83,11 @@ def build_gui():
 
     try:
         from calibre.gui2.ui import set_gui
-    except ImportError:  # a real calibre: get_gui() reads the module global
+    except ImportError:  # a real calibre: get_gui() reads an attribute on itself
         import calibre.gui2.ui as _ui
 
         def set_gui(gui):
+            _ui.get_gui.ans = gui
             _ui._gui = gui
 
     from qt.core import (
