@@ -136,8 +136,17 @@ pub mod prelude {
     pub use crate::library_action_bindings::magnitide::plugin::library::{
         self, Book, BookEdit, CustomEdit, CustomField, CustomValue, FieldValue, SeriesValue,
     };
-    pub use crate::library_action_bindings::magnitide::plugin::ui;
-    pub use crate::{http, log};
+    pub use crate::{http, log, ui};
+}
+
+/// What the user sees of a running library action: progress, and questions.
+pub mod ui {
+    pub use crate::library_action_bindings::magnitide::plugin::ui::{ask, ask_text, progress, status};
+
+    /// A yes-or-no question; false when dismissed.
+    pub fn confirm(question: &str) -> bool {
+        ask(question, &["Yes".to_owned(), "No".to_owned()]) == Some(0)
+    }
 }
 
 /// HTTP through Magnitide (the `network` capability).

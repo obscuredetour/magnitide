@@ -283,6 +283,12 @@ interface ui {
     status: func(text: string);
     /// How far along (shown with the status).
     progress: func(done: u32, total: u32);
+    /// Ask the user to choose: the index of the choice taken, or none when
+    /// they dismissed the question. Waiting doesn't count against the
+    /// plugin's time. On a server, answered by policy.
+    ask: func(question: string, choices: list<string>) -> option<u32>;
+    /// Ask for a line of text; none when dismissed.
+    ask-text: func(question: string, placeholder: string) -> option<string>;
 }
 
 /// A library action: menu items on the selected books (calibre's

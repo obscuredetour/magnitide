@@ -28,7 +28,7 @@ use magnitide_core::metadata::{Author, BookMetadata};
 use magnitide_sources::{Lookup, SourceRecord};
 use serde::{Deserialize, Serialize};
 use wasmtime::component::{Component, HasSelf, Linker, ResourceTable};
-use wasmtime::{Engine, Store, StoreLimits, StoreLimitsBuilder};
+use wasmtime::{Engine, Store, StoreLimits, StoreLimitsBuilder, UpdateDeadline};
 use wasmtime_wasi::{FsPerms, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 mod bindings {
@@ -284,6 +284,9 @@ struct State {
     library: Option<Arc<dyn LibraryAccess>>,
     /// Books the action edited.
     touched: Vec<BookId>,
+    /// Epoch ticks spent waiting on the user (questions): given back to the
+    /// deadline, so waiting isn't the plugin's time.
+    waited: u64,
 }
 
 impl WasiView for State {
@@ -696,10 +699,16 @@ impl WasmPlugins {
             sandbox: sandbox.map(|s| s.dir.clone()),
             library,
             touched: Vec::new(),
+            waited: 0,
         };
         let mut store = Store::new(&self.engine, state);
         store.limiter(|s| &mut s.limits);
         store.set_epoch_deadline((timeout.as_millis() / EPOCH_TICK.as_millis()).max(1) as u64);
+        // At the deadline: time spent waiting on the user is given back; else stop.
+        store.epoch_deadline_callback(|mut ctx| {
+            let waited = std::mem::take(&mut ctx.data_mut().waited);
+            Ok(if waited > 0 { UpdateDeadline::Continue(waited) } else { UpdateDeadline::Interrupt })
+        });
         Ok(store)
     }
 
@@ -1007,6 +1016,14 @@ pub trait LibraryAccess: Send + Sync {
     /// A line of progress from the plugin, and how far along it is.
     fn status(&self, _text: &str) {}
     fn progress(&self, _done: u32, _total: u32) {}
+    /// A question for the user: the index of the choice taken, or None when
+    /// dismissed (or when nobody can answer, as on a server without a policy).
+    fn ask(&self, _question: &str, _choices: &[String]) -> Option<u32> {
+        None
+    }
+    fn ask_text(&self, _question: &str, _placeholder: &str) -> Option<String> {
+        None
+    }
 }
 
 /// What a library action did.
@@ -1114,6 +1131,46 @@ impl ui::Host for State {
         if let Some(lib) = &self.library {
             lib.progress(done, total);
         }
+    }
+
+    fn ask(&mut self, question: String, choices: Vec<String>) -> Option<u32> {
+        let lib = self.library.clone()?;
+        let choices: Vec<String> = choices.into_iter().filter(|c| !c.trim().is_empty()).collect();
+        if question.trim().is_empty() || choices.is_empty() {
+            return None;
+        }
+        let started = std::time::Instant::now();
+        let answer = lib.ask(&question, &choices).filter(|i| (*i as usize) < choices.len());
+        self.waited(started);
+        self.log.push(format!(
+            "[{}] ask: {question} → {}",
+            self.plugin,
+            answer.map_or("dismissed".to_owned(), |i| choices[i as usize].clone())
+        ));
+        answer
+    }
+
+    fn ask_text(&mut self, question: String, placeholder: String) -> Option<String> {
+        let lib = self.library.clone()?;
+        if question.trim().is_empty() {
+            return None;
+        }
+        let started = std::time::Instant::now();
+        let answer = lib.ask_text(&question, &placeholder);
+        self.waited(started);
+        self.log.push(format!(
+            "[{}] ask: {question} → {}",
+            self.plugin,
+            if answer.is_some() { "answered" } else { "dismissed" }
+        ));
+        answer
+    }
+}
+
+impl State {
+    /// Count the time since `started` as waiting, not as the plugin's.
+    fn waited(&mut self, started: std::time::Instant) {
+        self.waited += (started.elapsed().as_millis() / EPOCH_TICK.as_millis()) as u64 + 1;
     }
 }
 

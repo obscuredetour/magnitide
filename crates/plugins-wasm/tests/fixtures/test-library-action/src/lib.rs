@@ -12,6 +12,8 @@ impl LibraryAction for Actions {
             MenuItem { id: "read".into(), text: "Mark as Read".into(), needs_selection: true },
             MenuItem { id: "count".into(), text: "Count Words".into(), needs_selection: true },
             MenuItem { id: "survey".into(), text: "Survey the Library".into(), needs_selection: false },
+            MenuItem { id: "ask".into(), text: "Ask First".into(), needs_selection: false },
+            MenuItem { id: "name".into(), text: "Ask a Name".into(), needs_selection: false },
             MenuItem { id: "fail".into(), text: "Fail".into(), needs_selection: false },
             MenuItem { id: "loop".into(), text: "Loop".into(), needs_selection: false },
         ]
@@ -77,6 +79,15 @@ impl LibraryAction for Actions {
                 let unread = library::search("tag:unread");
                 Ok(format!("{} books, {} unread", all.len(), unread.len()))
             }
+            "ask" => match ui::ask(&format!("Tag {} as read?", plural(selection.len() as u32)), &["Tag".into(), "Skip".into()]) {
+                Some(0) => Ok("Tagged".into()),
+                Some(_) => Ok("Skipped".into()),
+                None => Ok("No answer".into()),
+            },
+            "name" => Ok(match ui::ask_text("What's your name?", "Your name") {
+                Some(name) => format!("Hello, {name}"),
+                None => "Hello, stranger".into(),
+            }),
             "fail" => Err("This action failed on purpose.".into()),
             "loop" => loop {
                 std::hint::black_box(0);

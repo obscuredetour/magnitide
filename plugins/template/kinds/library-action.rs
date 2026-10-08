@@ -19,6 +19,10 @@ impl LibraryAction for MyAction {
             "tag" => {
                 let books = library::books(&selection);
                 let total = books.len() as u32;
+                // A question mid-run: the user answers in a dialog; waiting isn't the plugin's time.
+                if !ui::confirm(&format!("Tag {total} books as Example?")) {
+                    return Ok("Left alone".into());
+                }
                 for (i, book) in books.iter().enumerate() {
                     ui::status(&format!("Tagging {}…", book.title));
                     ui::progress(i as u32, total);

@@ -128,7 +128,13 @@ A library action imports two more interfaces:
   Magnitide's own editor (names synced, files renamed, write-back), and
   the library view reloads when the action is done.
 - `ui`: `status(text)` for a line of progress, `progress(done, total)`
-  for how far along.
+  for how far along, and questions: `ask(question, choices)` shows the
+  choices as buttons and returns the index taken, or none when dismissed;
+  `ask-text(question, placeholder)` asks for a line of text. The action
+  waits; the time it waits isn't counted against its deadline. The SDK adds
+  `ui::confirm(question)` for a yes-or-no. On a server there's nobody to
+  ask, so a question is answered by policy (today: dismissed); ask only
+  what the action can do without.
 
 ## The sandbox
 

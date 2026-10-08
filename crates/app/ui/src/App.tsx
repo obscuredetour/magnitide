@@ -13,6 +13,7 @@ import { NetworkWarning } from './components/NetworkWarning';
 import { SelectionBar } from './components/SelectionBar';
 import { SettingsDialog, type SettingsSection } from './components/Settings';
 import { StatusBar } from './components/StatusBar';
+import { QuestionHost } from './question';
 import { ConfirmHost } from './confirm';
 import { TitleBar } from './components/TitleBar';
 import { TopBar } from './components/TopBar';
@@ -292,6 +293,7 @@ export function App() {
       <BookMenuHost />
       <LookupHost />
       <ConfirmHost />
+      <QuestionHost />
       <Toast />
       {/* What's being dragged: follows the pointer. */}
       <Show when={drag()}>

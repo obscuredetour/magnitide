@@ -18,6 +18,7 @@ import {
   onPluginJob,
   onPluginMessage,
   onPluginOpenBook,
+  onPluginQuestion,
   onPluginSearch,
   onPluginSelect,
   type NativeMenuItem,
@@ -33,6 +34,7 @@ import { findMetadataFor, untilLookupDone } from './lookup';
 import { toast } from './toast';
 import { convertBooks, deleteBooks } from './transfer';
 import { confirm } from './confirm';
+import { askUser } from './question';
 
 /** The GUI plugins that are on, by name; known without starting the runtime. */
 const [guiPlugins, setGuiPlugins] = createSignal<string[]>([]);
@@ -202,6 +204,21 @@ export function initPlugins(): void {
     }
   });
   void onPluginSelect((ids) => selectBooks(ids));
+  // A library action's question: the run waits for the answer.
+  void onPluginQuestion(async (q) => {
+    const run = running.get(q.plugin);
+    run?.job.progress('Waiting for an answer…');
+    const answer = await askUser({
+      title: q.plugin,
+      question: q.question,
+      choices: q.choices,
+      placeholder: q.placeholder,
+    });
+    run?.job.progress(`${q.plugin}…`);
+    const choice = answer && 'choice' in answer ? answer.choice : null;
+    const text = answer && 'text' in answer ? answer.text : null;
+    await api.answerNativeQuestion(q.token, choice, text).catch((err) => toast(errorMessage(err), { error: true }));
+  });
   void onPluginSearch((text) => search(text));
   void onPluginOpenBook((b) => void openBook(b.id, b.format));
   // Jobs a plugin runs in the plugin runtime (calibre's job manager) show in the job bar.

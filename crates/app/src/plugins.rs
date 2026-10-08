@@ -56,6 +56,35 @@ pub const PLUGIN_SEARCH_EVENT: &str = "plugin-search";
 pub const PLUGIN_OPEN_BOOK_EVENT: &str = "plugin-open-book";
 /// A job a GUI plugin started in the host: started, progressed or done. Matches `onPluginJob`.
 pub const PLUGIN_JOB_EVENT: &str = "plugin-job";
+/// A Magnitide library action is asking the user something; it waits for
+/// `answer_native_question`. Matches `onPluginQuestion`.
+pub const PLUGIN_QUESTION_EVENT: &str = "plugin-question";
+
+/// A question from a running library action: choices to pick from, or a
+/// line of text to type (`placeholder` set).
+#[derive(Clone, Serialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeQuestion {
+    plugin: String,
+    token: u64,
+    question: String,
+    choices: Vec<String>,
+    placeholder: Option<String>,
+}
+
+/// Questions waiting for their answer, by token.
+#[derive(Default)]
+pub struct NativeQuestions(Mutex<HashMap<u64, std::sync::mpsc::Sender<Option<Answer>>>>);
+
+#[derive(Clone)]
+enum Answer {
+    Choice(u32),
+    Text(String),
+}
+
+/// How long an action waits for an answer before going on without one.
+const ANSWER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3600);
 
 /// A plugin called calibre's Edit Metadata (`edit`), Remove Books
 /// (`remove`), metadata download (`download`) or Convert Books (`convert`)
@@ -352,6 +381,7 @@ pub fn create(app: &AppHandle) -> Plugins {
     plugins.set_event_handler(Arc::new(move |e| on_event(&handle, e)));
     app.manage(PluginLibrary::default());
     app.manage(RuntimeInstall::default());
+    app.manage(NativeQuestions::default());
     plugins
 }
 
@@ -773,6 +803,30 @@ pub async fn native_plugin_log(app: AppHandle, name: String) -> CmdResult<Vec<St
     Ok(app.state::<WasmPlugins>().log(&name))
 }
 
+/// The user's answer to a library action's question (`plugin-question`):
+/// a choice, text, or nothing when dismissed.
+#[tauri::command]
+pub async fn answer_native_question(
+    state: State<'_, NativeQuestions>,
+    token: u64,
+    choice: Option<u32>,
+    text: Option<String>,
+) -> CmdResult<()> {
+    let sender = state
+        .0
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&token)
+        .ok_or("That question was answered already.")?;
+    let answer = match (choice, text) {
+        (Some(c), _) => Some(Answer::Choice(c)),
+        (None, Some(t)) => Some(Answer::Text(t)),
+        (None, None) => None,
+    };
+    let _ = sender.send(answer);
+    Ok(())
+}
+
 /// The library actions that are on, with their menus (nothing runs for this).
 #[tauri::command]
 pub async fn native_actions(app: AppHandle) -> CmdResult<Vec<NativePlugin>> {
@@ -868,6 +922,35 @@ impl AppLibrary {
     }
 }
 
+impl AppLibrary {
+    /// Put a question to the user and wait for the answer (an hour at most).
+    fn question(&self, question: &str, choices: &[String], placeholder: Option<&str>) -> Option<Answer> {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static TOKEN: AtomicU64 = AtomicU64::new(1);
+        let token = TOKEN.fetch_add(1, Ordering::SeqCst);
+        let (tx, rx) = std::sync::mpsc::channel();
+        let questions = self.app.state::<NativeQuestions>();
+        questions.0.lock().unwrap_or_else(|e| e.into_inner()).insert(token, tx);
+        let sent = self.app.emit(
+            PLUGIN_QUESTION_EVENT,
+            NativeQuestion {
+                plugin: self.plugin.clone(),
+                token,
+                question: question.to_owned(),
+                choices: choices.to_vec(),
+                placeholder: placeholder.map(str::to_owned),
+            },
+        );
+        if sent.is_err() {
+            questions.0.lock().unwrap_or_else(|e| e.into_inner()).remove(&token);
+            return None;
+        }
+        let answer = rx.recv_timeout(ANSWER_TIMEOUT).ok().flatten();
+        questions.0.lock().unwrap_or_else(|e| e.into_inner()).remove(&token);
+        answer
+    }
+}
+
 impl LibraryAccess for AppLibrary {
     fn fields(&self) -> Result<Vec<magnitide_core::custom::CustomField>, String> {
         self.native.lock().unwrap_or_else(|e| e.into_inner()).custom_fields().map_err(|e| e.to_string())
@@ -925,6 +1008,20 @@ impl LibraryAccess for AppLibrary {
         let status = self.status.lock().unwrap_or_else(|e| e.into_inner()).clone();
         let percent = (u64::from(done) * 100 / u64::from(total)).min(100);
         self.say(if status.is_empty() { format!("{percent}%") } else { format!("{status} ({percent}%)") });
+    }
+
+    fn ask(&self, question: &str, choices: &[String]) -> Option<u32> {
+        match self.question(question, choices, None)? {
+            Answer::Choice(c) => Some(c),
+            Answer::Text(_) => None,
+        }
+    }
+
+    fn ask_text(&self, question: &str, placeholder: &str) -> Option<String> {
+        match self.question(question, &[], Some(placeholder))? {
+            Answer::Text(t) => Some(t),
+            Answer::Choice(_) => None,
+        }
     }
 }
 

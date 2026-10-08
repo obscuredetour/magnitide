@@ -36,6 +36,7 @@ import type { NativeCapability } from './bindings/NativeCapability';
 import type { NativeKind } from './bindings/NativeKind';
 import type { NativeMenuItem } from './bindings/NativeMenuItem';
 import type { NativeActionDone } from './bindings/NativeActionDone';
+import type { NativeQuestion } from './bindings/NativeQuestion';
 import type { PluginKind } from './bindings/PluginKind';
 import type { PluginsStatus } from './bindings/PluginsStatus';
 import type { PluginMenus } from './bindings/PluginMenus';
@@ -99,6 +100,7 @@ export type {
   NativeKind,
   NativeMenuItem,
   NativeActionDone,
+  NativeQuestion,
   PluginAsk,
   PluginOpenBook,
   PluginJob,
@@ -415,6 +417,10 @@ export const api = {
   runNativeAction: (plugin: string, item: string, selection: number[]) =>
     invoke<NativeActionDone>('run_native_action', { plugin, item, selection }),
 
+  /** Answer a library action's question (`onPluginQuestion`): a choice, text, or neither when dismissed. */
+  answerNativeQuestion: (token: number, choice: number | null, text: string | null) =>
+    invoke<void>('answer_native_question', { token, choice, text }),
+
   async chooseNativePlugin(): Promise<string | null> {
     const picked = await open({
       title: 'Choose a Magnitide plugin',
@@ -593,6 +599,11 @@ export function onPluginSearch(handler: (text: string) => void): Promise<Unliste
 /** A GUI plugin opened a book (calibre's View). */
 export function onPluginOpenBook(handler: (b: PluginOpenBook) => void): Promise<UnlistenFn> {
   return listen<PluginOpenBook>('plugin-open-book', (e) => handler(e.payload));
+}
+
+/** A Magnitide library action is asking the user something; it waits for `answerNativeQuestion`. */
+export function onPluginQuestion(handler: (q: NativeQuestion) => void): Promise<UnlistenFn> {
+  return listen<NativeQuestion>('plugin-question', (e) => handler(e.payload));
 }
 
 /** A job a GUI plugin started in the plugin runtime: started, progressed or done. */

@@ -329,6 +329,11 @@ struct FakeLibrary {
     dir: PathBuf,
     status: std::sync::Mutex<Vec<String>>,
     formats_added: std::sync::Mutex<Vec<(i64, String, String)>>,
+    /// Questions asked, and the scripted answers (a choice index) to give, in order.
+    questions: std::sync::Mutex<Vec<String>>,
+    answers: std::sync::Mutex<std::collections::VecDeque<Option<u32>>>,
+    /// How long each answer takes.
+    answer_delay: Duration,
 }
 
 impl FakeLibrary {
@@ -357,6 +362,9 @@ impl FakeLibrary {
             dir: dir.to_path_buf(),
             status: Default::default(),
             formats_added: Default::default(),
+            questions: Default::default(),
+            answers: Default::default(),
+            answer_delay: Duration::ZERO,
         }
     }
 }
@@ -437,6 +445,48 @@ impl magnitide_plugins_wasm::LibraryAccess for FakeLibrary {
     fn status(&self, text: &str) {
         self.status.lock().unwrap().push(text.to_owned());
     }
+
+    fn ask(&self, question: &str, choices: &[String]) -> Option<u32> {
+        self.questions.lock().unwrap().push(format!("{question} [{}]", choices.join("/")));
+        std::thread::sleep(self.answer_delay);
+        self.answers.lock().unwrap().pop_front().flatten()
+    }
+
+    fn ask_text(&self, question: &str, placeholder: &str) -> Option<String> {
+        self.questions.lock().unwrap().push(format!("{question} ({placeholder})"));
+        self.answers.lock().unwrap().pop_front().flatten().map(|_| "Jamie".to_owned())
+    }
+}
+
+#[test]
+fn a_library_action_can_ask_the_user() {
+    use std::sync::Arc;
+
+    let dir = tempfile::tempdir().unwrap();
+    let mut plugins = WasmPlugins::new(dir.path().join("plugins")).unwrap();
+    // Short: the action's deadline is 60 of these, 1.2 s.
+    plugins.set_call_timeout(Duration::from_millis(20));
+    plugins.install(&mgp_of(dir.path(), "test-library-action", "library-action", "Asker", "[]")).unwrap();
+    let mut fake = FakeLibrary::new(&dir.path().join("library"));
+    // Answering takes longer than the whole deadline: waiting isn't the plugin's time.
+    fake.answer_delay = Duration::from_millis(1500);
+    let lib = Arc::new(fake);
+    lib.answers.lock().unwrap().extend([Some(0), Some(1), None, Some(0), None]);
+    let ask = |item: &str| plugins.run_action("Asker", item, &[1, 2], lib.clone()).map(|r| r.summary);
+    assert_eq!(ask("ask").unwrap(), "Tagged");
+    assert_eq!(ask("ask").unwrap(), "Skipped");
+    assert_eq!(ask("ask").unwrap(), "No answer");
+    assert_eq!(ask("name").unwrap(), "Hello, Jamie");
+    assert_eq!(ask("name").unwrap(), "Hello, stranger");
+    let asked = lib.questions.lock().unwrap().clone();
+    assert_eq!(asked[0], "Tag 2 books as read? [Tag/Skip]");
+    assert_eq!(asked[3], "What's your name? (Your name)");
+    let log = plugins.log("Asker");
+    assert!(log.iter().any(|l| l.contains("ask: Tag 2 books as read? → Tag")), "{log:?}");
+    assert!(log.iter().any(|l| l.contains("→ dismissed")), "{log:?}");
+    // The deadline still holds for the plugin's own time.
+    let looped = plugins.run_action("Asker", "loop", &[], lib.clone()).unwrap_err();
+    assert!(looped.contains("took too long"), "{looped}");
 }
 
 #[test]
