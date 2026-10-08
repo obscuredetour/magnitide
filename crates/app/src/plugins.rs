@@ -715,6 +715,9 @@ async fn install_runtime_with(
             }
         };
         let status = install(&plugins, &cancel, &mut report)?;
+        if status.host.as_deref() != Some("runtime") {
+            return Ok(status);
+        }
         Ok(plugins
             .check_runtime()
             .problem
@@ -734,6 +737,19 @@ pub async fn cancel_plugin_runtime_install(state: State<'_, RuntimeInstall>) -> 
 #[tauri::command]
 pub async fn remove_plugin_runtime(app: AppHandle) -> CmdResult<RuntimeStatus> {
     blocking(app, |p| p.remove_runtime().map(|()| p.runtime_status())).await
+}
+
+/// Download calibre's own build as a plugin host, with `plugin-runtime-progress`
+/// events meanwhile (the same install flag and Cancel as the runtime).
+#[tauri::command]
+pub async fn install_plugin_calibre(app: AppHandle) -> CmdResult<RuntimeStatus> {
+    install_runtime_with(app, |plugins, cancel, report| plugins.install_calibre(cancel, report)).await
+}
+
+/// Remove the calibre Magnitide downloaded (plugins and settings are kept).
+#[tauri::command]
+pub async fn remove_plugin_calibre(app: AppHandle) -> CmdResult<RuntimeStatus> {
+    blocking(app, |p| p.remove_calibre().map(|()| p.runtime_status())).await
 }
 
 /// Choose where plugins run: an installed calibre, Magnitide's runtime, or

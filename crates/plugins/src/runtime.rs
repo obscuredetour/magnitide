@@ -255,7 +255,7 @@ impl Runtime {
         let dest = base.join(VERSION);
         let archive = match source {
             Source::Url(url) => {
-                fetch(url, &download, size, cancel, progress)?;
+                fetch(url, &download, size, cancel, progress, "the plugin runtime")?;
                 download.clone()
             }
             Source::File(path) => path.clone(),
@@ -375,7 +375,7 @@ fn now_iso() -> String {
     format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", t / 3600, (t % 3600) / 60, t % 60)
 }
 
-fn dir_size(dir: &Path) -> u64 {
+pub(crate) fn dir_size(dir: &Path) -> u64 {
     let mut total = 0;
     if let Ok(entries) = std::fs::read_dir(dir) {
         for e in entries.flatten() {
@@ -390,7 +390,23 @@ fn dir_size(dir: &Path) -> u64 {
     total
 }
 
-fn sha256_file(path: &Path) -> Result<String, String> {
+pub(crate) fn sha512_file(path: &Path) -> Result<String, String> {
+    use sha2::Sha512;
+
+    let mut f = std::fs::File::open(path).map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
+    let mut h = Sha512::new();
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        let n = f.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        h.update(&buf[..n]);
+    }
+    Ok(format!("{:x}", h.finalize()))
+}
+
+pub(crate) fn sha256_file(path: &Path) -> Result<String, String> {
     let mut f = std::fs::File::open(path).map_err(|e| format!("couldn't read {}: {e}", path.display()))?;
     let mut h = Sha256::new();
     let mut buf = vec![0u8; 1 << 20];
@@ -405,13 +421,15 @@ fn sha256_file(path: &Path) -> Result<String, String> {
 }
 
 /// Download `url` to `dest`, resuming a partial file there if the server
-/// allows (GitHub does), reporting progress against `expected` bytes.
-fn fetch(
+/// allows (GitHub does), reporting progress against `expected` bytes;
+/// `what` names the thing in errors ("the plugin runtime", "calibre").
+pub(crate) fn fetch(
     url: &str,
     dest: &Path,
     expected: u64,
     cancel: &AtomicBool,
     progress: &mut dyn FnMut(Progress),
+    what: &str,
 ) -> Result<(), String> {
     let mut done = std::fs::metadata(dest).map(|m| m.len()).unwrap_or(0);
     if expected > 0 && done >= expected {
@@ -421,7 +439,7 @@ fn fetch(
     if done > 0 {
         req = req.header("Range", &format!("bytes={done}-"));
     }
-    let mut resp = req.call().map_err(|e| format!("couldn't download the plugin runtime: {e}"))?;
+    let mut resp = req.call().map_err(|e| format!("couldn't download {what}: {e}"))?;
     let status = resp.status().as_u16();
     let mut file = match status {
         206 => std::fs::OpenOptions::new().append(true).open(dest),
@@ -429,7 +447,7 @@ fn fetch(
             done = 0;
             std::fs::File::create(dest)
         }
-        s => return Err(format!("couldn't download the plugin runtime: HTTP {s}")),
+        s => return Err(format!("couldn't download {what}: HTTP {s}")),
     }
     .map_err(|e| format!("couldn't write the download: {e}"))?;
     let total = if expected > 0 {

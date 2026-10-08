@@ -61,7 +61,7 @@ and utility modules, no GUI or library.
 
 ## Design
 
-Plugins run in one of two hosts, chosen in Settings › Plugins, behind the
+Plugins run in one of three hosts, chosen in Settings › Plugins, behind the
 same protocol, shadow library, window stand-in and hooks:
 
 - **An installed calibre** (the default when one is found): its
@@ -69,18 +69,28 @@ same protocol, shadow library, window stand-in and hooks:
   calibre's own code, with plugin settings kept in Magnitide's folder, never
   calibre's. Plugins get the real calibre API; what's Magnitide's is only
   the library and window stand-in. calibre 6 or later.
-- **Magnitide's own plugin runtime** (the fallback, and the choice for
-  people without calibre): the same host package on a downloaded CPython +
-  PyQt6, with a `calibre` package written for Magnitide
-  (`crates/plugins/python/compat`) that mirrors calibre's API closely enough
-  that plugins written for calibre 5 to 9 load and run.
+- **calibre downloaded by Magnitide**: calibre's own release for this
+  computer (`scripts/calibre-release/calibre.json` pins the version, the
+  file per target and the SHA-512 calibre publishes at
+  calibre-ebook.com/signatures/), fetched from calibre's GitHub release
+  with download.calibre-ebook.com as the fallback, unpacked under the app's
+  data folder (tar.xz on Linux; the disk image through hdiutil on macOS;
+  the MSI through msiexec's administrative install on Windows, which needs
+  no elevation) and run exactly like an installed calibre. About 180 to
+  350 MB. `scripts/calibre-release/pin.py <version>` moves to a newer
+  calibre; `--rust-table` prints the table for `calibre.rs`.
+- **Magnitide's own plugin runtime** (for people who want nothing of
+  calibre): the same host package on a downloaded CPython + PyQt6, with a
+  `calibre` package written for Magnitide (`crates/plugins/python/compat`)
+  that mirrors calibre's API closely enough that plugins written for
+  calibre 5 to 9 load and run.
 
-The host tests and the plugin corpus run under both
-(`MAGNITIDE_PLUGIN_HOST=calibre|runtime`), which makes the installed
-calibre the oracle for the compat package: a plugin that works there and
-fails on ours points at a gap. A third option, calibre downloaded by
-Magnitide (its official builds, pinned by hash), is planned on the same
-mechanism as the runtime download.
+"Whichever is there" (the default) takes them in that order. The host
+tests and the plugin corpus run under the calibre hosts and the runtime
+(`MAGNITIDE_PLUGIN_HOST=calibre|runtime`), which makes calibre the oracle
+for the compat package: a plugin that works there and fails on ours points
+at a gap. `MAGNITIDE_TEST_CALIBRE_DOWNLOAD=1` runs a test that downloads
+calibre and hosts a plugin in it.
 
 1. **Runtime: Magnitide's own.** A CPython 3.14 from python-build-standalone
    with PyQt6 (Core, Gui, Widgets, Network, PrintSupport, Svg, OpenGL, DBus),

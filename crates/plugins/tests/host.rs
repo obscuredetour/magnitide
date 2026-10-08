@@ -721,3 +721,44 @@ fn jobs_search_view_download_and_convert_from_a_gui_plugin() {
     assert_eq!(formats, ["AZW3", "EPUB"]);
     assert!(!plugins.gui_busy());
 }
+
+/// calibre's own build, downloaded by Magnitide, as the host: a large
+/// download (calibre's release for this computer), so only with
+/// MAGNITIDE_TEST_CALIBRE_DOWNLOAD set. The download is cached in
+/// target/calibre-download/ between runs.
+#[test]
+fn downloaded_calibre_hosts_plugins() {
+    if std::env::var_os("MAGNITIDE_TEST_CALIBRE_DOWNLOAD").is_none() {
+        eprintln!("skipped: set MAGNITIDE_TEST_CALIBRE_DOWNLOAD to download calibre and run the host in it");
+        return;
+    }
+    let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/calibre-download");
+    let dir = tempfile::tempdir().unwrap();
+    let plugins = Plugins::new(dir.path().join("calibre-plugins"), base.clone());
+    unsafe { std::env::set_var("MAGNITIDE_COMPAT_DIR", Path::new(env!("CARGO_MANIFEST_DIR")).join("python")) };
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    let mut last = String::new();
+    let status = plugins
+        .install_calibre(&cancel, &mut |p| {
+            let line = format!("{p:?}");
+            if line != last {
+                eprintln!("{line}");
+                last = line;
+            }
+        })
+        .unwrap();
+    assert!(status.calibre_download.installed, "{status:?}");
+    assert_eq!(status.calibre_download.version, magnitide_plugins::calibre::CALIBRE_VERSION);
+    let install = magnitide_plugins::calibre::locate_downloaded(&base).unwrap();
+    assert_eq!(install.problem, None, "{install:?}");
+    assert!(install.version.starts_with(&magnitide_plugins::calibre::CALIBRE_VERSION[..4]), "{install:?}");
+
+    // Plugins run in it.
+    plugins.set_host_choice(HostChoice::Downloaded).unwrap();
+    assert!(matches!(plugins.launcher(), Ok(magnitide_plugins::Launcher::Calibre(_))));
+    plugins.install(&test_plugin_zip(dir.path())).unwrap();
+    let answers = plugins.identify(&Lookup { title: "Project Hail Mary".into(), ..Default::default() });
+    assert_eq!(answers[0].1.as_ref().unwrap()[0].title, "Project Hail Mary");
+    let hello = plugins.host().unwrap().call("hello", json!({}), Duration::from_secs(30)).unwrap();
+    assert_eq!(hello["runtime"], "calibre");
+}

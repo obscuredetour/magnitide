@@ -20,8 +20,9 @@ core with a Tauri desktop app, built to stay quick with 50,000 books and more.
   on a Kobo, for Kobo's own app and KOReader alike.
 - **On your network.** An optional library server with an OPDS catalogue for reading apps, a simple page for
   e-reader browsers, and KOReader progress sync.
-- **calibre plugins.** The plugins you rely on run unchanged: in your installed calibre when you have one, or
-  without calibre at all through Magnitide's own plugin runtime, downloaded once (Settings → Plugins). Metadata sources
+- **calibre plugins.** The plugins you rely on run unchanged: in your installed calibre when you have one, in a
+  calibre Magnitide downloads for you, or without calibre at all through Magnitide's own plugin runtime (Settings →
+  Plugins). Metadata sources
   join Find Metadata. Toolbar plugins work on the selected books from the Plugins button or the book menu; their
   windows open as in calibre, and what they change comes back into the library through Magnitide's own editing.
   File-type plugins run when books are added, metadata readers and writers handle their formats, and plugins'

@@ -31,7 +31,7 @@ use include_dir::{Dir, include_dir};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-pub use calibre::{CalibreInstall, HostChoice};
+pub use calibre::{CalibreDownloadStatus, CalibreInstall, HostChoice};
 pub use filetype::Hook;
 pub use gui::{DEFAULT_OUTPUT_FORMAT, MenuItem, PluginMenu, PluginMenus};
 pub use host::{EventHandler, Host, Transport};
@@ -171,6 +171,7 @@ pub struct Plugins {
     /// Where the runtime is installed (`<base>/<runtime::VERSION>/`).
     runtime_base: PathBuf,
     installing: AtomicBool,
+    installing_calibre: AtomicBool,
     host: Mutex<Option<Arc<dyn Transport>>>,
     list: Mutex<()>,
     on_event: Mutex<Option<EventHandler>>,
@@ -188,6 +189,8 @@ pub enum Launcher {
 
 pub const CALIBRE_MISSING: &str =
     "No installed calibre was found. Install calibre, or choose Magnitide's plugin runtime in Settings › Plugins.";
+pub const CALIBRE_DOWNLOAD_MISSING: &str =
+    "Magnitide hasn't downloaded calibre yet. Download it in Settings › Plugins, or choose another host there.";
 pub const RUNTIME_OR_CALIBRE_MISSING: &str =
     "calibre plugins need an installed calibre or Magnitide's plugin runtime. Install either in Settings › Plugins.";
 
@@ -204,6 +207,8 @@ pub struct RuntimeStatus {
     pub host_problem: Option<String>,
     /// The installed calibre, when one was found.
     pub calibre: Option<CalibreInstall>,
+    /// The calibre Magnitide downloads.
+    pub calibre_download: CalibreDownloadStatus,
     pub installed: bool,
     pub installing: bool,
     /// Whether a runtime is published for this computer.
@@ -232,6 +237,7 @@ impl Plugins {
             dir,
             runtime_base,
             installing: AtomicBool::new(false),
+            installing_calibre: AtomicBool::new(false),
             host: Mutex::new(None),
             list: Mutex::new(()),
             on_event: Mutex::new(None),
@@ -334,20 +340,74 @@ impl Plugins {
     /// now, so a calibre installed since is picked up), or the runtime.
     pub fn launcher(&self) -> Result<Launcher, String> {
         let choice = self.host_choice();
-        let calibre = if choice == HostChoice::Runtime { None } else { calibre::find_installed() };
-        match (choice, calibre) {
-            (HostChoice::Runtime, _) | (HostChoice::Auto, None) => {
-                self.runtime().map(Launcher::Runtime).ok_or_else(|| {
-                    if choice == HostChoice::Auto { RUNTIME_OR_CALIBRE_MISSING } else { RUNTIME_MISSING }.to_owned()
-                })
-            }
-            (HostChoice::Calibre, None) => Err(CALIBRE_MISSING.to_owned()),
-            (_, Some(install)) => match &install.problem {
-                Some(problem) if choice == HostChoice::Calibre => Err(problem.clone()),
-                Some(_) => self.runtime().map(Launcher::Runtime).ok_or_else(|| RUNTIME_OR_CALIBRE_MISSING.to_owned()),
-                None => Ok(Launcher::Calibre(install)),
+        let usable = |c: Option<CalibreInstall>| c.filter(|c| c.problem.is_none());
+        match choice {
+            HostChoice::Runtime => self.runtime().map(Launcher::Runtime).ok_or_else(|| RUNTIME_MISSING.to_owned()),
+            HostChoice::Calibre => match calibre::find_installed() {
+                Some(install) => match install.problem {
+                    Some(problem) => Err(problem),
+                    None => Ok(Launcher::Calibre(install)),
+                },
+                None => Err(CALIBRE_MISSING.to_owned()),
             },
+            HostChoice::Downloaded => calibre::locate_downloaded(&self.runtime_base)
+                .map(Launcher::Calibre)
+                .ok_or_else(|| CALIBRE_DOWNLOAD_MISSING.to_owned()),
+            HostChoice::Auto => {
+                // An installed calibre, else the one Magnitide downloaded, else the runtime.
+                if let Some(install) = usable(calibre::find_installed()) {
+                    return Ok(Launcher::Calibre(install));
+                }
+                if let Some(install) = calibre::locate_downloaded(&self.runtime_base) {
+                    return Ok(Launcher::Calibre(install));
+                }
+                self.runtime().map(Launcher::Runtime).ok_or_else(|| RUNTIME_OR_CALIBRE_MISSING.to_owned())
+            }
         }
+    }
+
+    /// The calibre Magnitide downloads, for Settings.
+    pub fn calibre_download_status(&self) -> CalibreDownloadStatus {
+        let release = calibre::calibre_release();
+        let installed = calibre::locate_downloaded(&self.runtime_base);
+        CalibreDownloadStatus {
+            version: calibre::CALIBRE_VERSION.into(),
+            available: release.is_some(),
+            installed: installed.is_some(),
+            installing: self.installing_calibre.load(Ordering::SeqCst),
+            path: installed.as_ref().map(|i| {
+                Path::new(&i.calibre_debug)
+                    .ancestors()
+                    .nth(if cfg!(target_os = "macos") { 3 } else { 1 })
+                    .map_or_else(|| i.calibre_debug.clone(), |p| p.display().to_string())
+            }),
+            size: installed.as_ref().map(|_| calibre::downloaded_size(&self.runtime_base)),
+            download_size: if installed.is_none() { release.map(|r| r.size) } else { None },
+        }
+    }
+
+    /// Download and install calibre's own build as a plugin host.
+    pub fn install_calibre(
+        &self,
+        cancel: &AtomicBool,
+        progress: &mut dyn FnMut(Progress),
+    ) -> Result<RuntimeStatus, String> {
+        if self.installing_calibre.swap(true, Ordering::SeqCst) {
+            return Err("calibre is already being downloaded.".into());
+        }
+        let result = calibre::install_downloaded(&self.runtime_base, cancel, progress);
+        self.installing_calibre.store(false, Ordering::SeqCst);
+        result?;
+        Ok(self.runtime_status())
+    }
+
+    /// Remove the downloaded calibre. Refused while a plugin is working.
+    pub fn remove_calibre(&self) -> Result<(), String> {
+        if self.gui_busy() {
+            return Err("A plugin is still working. Finish in its window first, then try again.".into());
+        }
+        *self.host.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        calibre::remove_downloaded(&self.runtime_base)
     }
 
     /// The installed plugins as the host's registry wants them.
@@ -410,6 +470,7 @@ impl Plugins {
                 host,
                 host_problem,
                 calibre,
+                calibre_download: self.calibre_download_status(),
                 installed: true,
                 installing,
                 available: release.is_some(),
@@ -429,6 +490,7 @@ impl Plugins {
                 host,
                 host_problem,
                 calibre,
+                calibre_download: self.calibre_download_status(),
                 installed: false,
                 installing,
                 available: release.is_some(),

@@ -1444,6 +1444,14 @@ function PluginSettings() {
               description={
                 <>
                   <Switch>
+                    <Match when={s().runtime.host === 'calibre' && s().runtime.hostChoice === 'downloaded'}>
+                      The calibre {s().runtime.calibreDownload.version} Magnitide downloaded: plugins run on calibre's
+                      own code.
+                    </Match>
+                    <Match when={s().runtime.host === 'calibre' && !s().runtime.calibre}>
+                      The calibre {s().runtime.calibreDownload.version} Magnitide downloaded: plugins run on calibre's
+                      own code.
+                    </Match>
                     <Match when={s().runtime.host === 'calibre'}>
                       Your installed calibre {s().runtime.calibre?.version}: plugins run on calibre's own code.
                     </Match>
@@ -1476,15 +1484,24 @@ function PluginSettings() {
                   );
                 }}
               >
-                <option value="auto">Installed calibre, else the runtime</option>
-                <option value="calibre">Installed calibre</option>
+                <option value="auto">Whichever is there</option>
+                <option value="calibre">Your installed calibre</option>
+                <option value="downloaded">calibre downloaded by Magnitide</option>
                 <option value="runtime">Magnitide's runtime</option>
               </Select>
               <button class={button} disabled={!s().runtime.host || busy()} onClick={() => void add()}>
                 {busy() ? 'Adding…' : 'Add Plugin…'}
               </button>
             </Row>
-            <Show when={s().runtime.hostChoice !== 'calibre'}>
+            <Show when={s().runtime.hostChoice === 'auto' || s().runtime.hostChoice === 'downloaded'}>
+              <Row
+                label="Downloaded calibre"
+                description={
+                  <PluginCalibreDownload status={s().runtime} onChange={(runtime) => mutate({ ...s(), runtime })} />
+                }
+              />
+            </Show>
+            <Show when={s().runtime.hostChoice === 'auto' || s().runtime.hostChoice === 'runtime'}>
               <Row
                 label="Plugin runtime"
                 description={<PluginRuntime status={s().runtime} onChange={(runtime) => mutate({ ...s(), runtime })} />}
@@ -1595,6 +1612,94 @@ function PluginSettings() {
         )}
       </Show>
     </>
+  );
+}
+
+/** calibre's own build, downloaded by Magnitide as a plugin host. */
+function PluginCalibreDownload(props: { status: RuntimeStatus; onChange(r: RuntimeStatus): void }) {
+  const [working, setWorking] = createSignal<'install' | 'remove' | null>(null);
+  const mb = (bytes: number | null | undefined) => (bytes == null ? '' : `${Math.max(1, Math.round(bytes / 1e6))} MB`);
+  const d = () => props.status.calibreDownload;
+
+  const install = async () => {
+    setWorking('install');
+    const job = startJob('calibre download', `Downloading calibre ${d().version}…`);
+    const unlisten = await onPluginRuntimeProgress((p) => {
+      if (p.phase === 'downloading') {
+        job.progress(p.total ? `Downloading calibre: ${mb(p.done)} of ${mb(p.total)}` : 'Downloading calibre…');
+      } else if (p.phase === 'verifying') job.progress('Checking the download…');
+      else if (p.phase === 'extracting') job.progress('Unpacking calibre…');
+    });
+    try {
+      props.onChange(await api.installPluginCalibre());
+      job.finish(`calibre ${d().version} downloaded`);
+      void refreshGuiPlugins();
+    } catch (err) {
+      job.finish(errorMessage(err), { error: true });
+    } finally {
+      unlisten();
+      setWorking(null);
+    }
+  };
+
+  const remove = async () => {
+    const ok = await confirm({
+      title: 'Remove the downloaded calibre?',
+      message: () => `Plugins and their settings are kept; calibre (${mb(d().size)}) can be downloaded again.`,
+      confirm: 'Remove',
+      danger: true,
+    });
+    if (!ok) return;
+    setWorking('remove');
+    try {
+      props.onChange(await api.removePluginCalibre());
+      void refreshGuiPlugins();
+    } catch (err) {
+      toast(errorMessage(err), { error: true });
+    } finally {
+      setWorking(null);
+    }
+  };
+
+  return (
+    <Switch>
+      <Match when={d().installed}>
+        <span>
+          calibre {d().version}
+          {d().size != null ? `, ${mb(d().size)}` : ''} at <span class="break-all">{d().path}</span>.{' '}
+          <button class="cursor-pointer text-link hover:underline" disabled={!!working()} onClick={() => void remove()}>
+            {working() === 'remove' ? 'Removing…' : 'Remove'}
+          </button>
+        </span>
+      </Match>
+      <Match when={d().installing || working() === 'install'}>
+        <span>
+          Downloading… the progress is in the status bar.{' '}
+          <button
+            class="cursor-pointer text-link hover:underline"
+            onClick={() => void api.cancelPluginRuntimeInstall()}
+          >
+            Cancel
+          </button>
+        </span>
+      </Match>
+      <Match when={!d().available}>
+        <span class="text-warning">calibre publishes no build for this computer.</span>
+      </Match>
+      <Match when={true}>
+        <span>
+          Not downloaded. calibre's own build ({mb(d().downloadSize)}, from its GitHub release) runs plugins on
+          calibre's code and converts books too.{' '}
+          <button
+            class="cursor-pointer text-link hover:underline"
+            disabled={!!working()}
+            onClick={() => void install()}
+          >
+            Download
+          </button>
+        </span>
+      </Match>
+    </Switch>
   );
 }
 

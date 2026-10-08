@@ -417,6 +417,12 @@ export const api = {
   /** Where plugins run: an installed calibre, Magnitide's runtime, or whichever is there. */
   setPluginHost: (choice: PluginHostChoice) => invoke<RuntimeStatus>('set_plugin_host', { choice }),
 
+  /** Download calibre's own build as a plugin host; `onPluginRuntimeProgress` reports meanwhile. */
+  installPluginCalibre: () => invoke<RuntimeStatus>('install_plugin_calibre'),
+
+  /** Remove the calibre Magnitide downloaded. */
+  removePluginCalibre: () => invoke<RuntimeStatus>('remove_plugin_calibre'),
+
   /** What books are converted to when a plugin asks (calibre's output format). */
   setPluginOutputFormat: (format: string) => invoke<void>('set_plugin_output_format', { format }),
 

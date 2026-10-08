@@ -3,4 +3,4 @@
 /**
  * Which host runs plugins: Settings' choice.
  */
-export type HostChoice = "auto" | "calibre" | "runtime";
+export type HostChoice = "auto" | "calibre" | "downloaded" | "runtime";
