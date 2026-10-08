@@ -16,10 +16,8 @@ ts-rs = { version = "12.0.1", optional = true }
 ureq = "3"
 wasmtime = { version = "49", default-features = false, features = ["component-model", "cranelift", "runtime", "std", "parallel-compilation"] }
 wasmtime-wasi = { version = "49", default-features = false }
-zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
-
-[dev-dependencies]
 tempfile = "3.27.0"
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 
 [features]
 ts = ["dep:ts-rs", "magnitide-sources/ts"]

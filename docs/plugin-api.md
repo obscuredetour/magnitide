@@ -208,12 +208,33 @@ impl MetadataSource for OpenLibrary {
 magnitide_plugin_sdk::export_metadata_source!(OpenLibrary);
 ```
 
-Build and pack:
+Start from the template, build and pack:
 
 ```bash
 rustup target add wasm32-wasip2
-scripts/build-plugin.sh plugins/openlibrary-source   # → target/plugins/openlibrary-source.mgp
+scripts/new-plugin.sh plugins/my-source "My Source" metadata-source   # or import-hook, file-metadata, library-action
+scripts/build-plugin.sh plugins/my-source                             # → target/plugins/my-source.mgp
+scripts/build-plugin.sh plugins/openlibrary-source                    # → target/plugins/openlibrary-source.mgp
 ```
+
+The template ([`plugins/template`](../plugins/template)) holds a manifest,
+a skeleton of each kind under `kinds/`, a README for the plugin's own
+repository and a GitHub workflow that builds the `.mgp` on every push and
+attaches it to a release on a `v*` tag. Outside this repository, the SDK
+is a git dependency on it (see the template's `Cargo.toml`).
+
+To check and run a package without the app, the host crate's `mgp` tool:
+
+```bash
+cargo run -p magnitide-plugins-wasm --bin mgp -- check target/plugins/my-source.mgp
+cargo run -p magnitide-plugins-wasm --bin mgp -- identify target/plugins/my-source.mgp "Dune" "Frank Herbert"
+cargo run -p magnitide-plugins-wasm --bin mgp -- read target/plugins/my-format.mgp book.cbz
+cargo run -p magnitide-plugins-wasm --bin mgp -- hook target/plugins/my-hook.mgp book.epub
+```
+
+It installs the package into a temporary folder with the capabilities its
+manifest asks for, prints the manifest and what the component handles
+(`check`), or runs it, with the plugin's log after the answer.
 
 An import hook or a file-metadata plugin implements `ImportHook` or
 `FileMetadata` from the same prelude and is exported with

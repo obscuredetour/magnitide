@@ -65,6 +65,12 @@ jobs:
           echo "MAGNITIDE_COMPAT_DIR=$PWD/crates/plugins/python" >> "$GITHUB_ENV"
           echo "MAGNITIDE_REQUIRE_PLUGIN_RUNTIME=1" >> "$GITHUB_ENV"
       - run: xvfb-run -a cargo test --workspace
+      # The example plugin and the template build and pack (the SDK changes with them).
+      - name: Plugins build
+        run: |
+          scripts/build-plugin.sh plugins/openlibrary-source
+          scripts/build-plugin.sh plugins/template
+          cargo run -q -p magnitide-plugins-wasm --bin mgp -- check target/plugins/my-plugin.mgp
       # The same host tests inside an installed calibre (the oracle for the
       # compat package): calibre's own Linux build, isolated in the runner.
       - name: Install calibre

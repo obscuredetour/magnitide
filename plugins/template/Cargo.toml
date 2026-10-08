@@ -1,0 +1,27 @@
+# A Magnitide plugin, from the template (plugins/template in the Magnitide
+# repository; `scripts/new-plugin.sh` copies it). One crate, one plugin.
+[package]
+name = "my-plugin"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Inside the Magnitide repository the SDK is a path dependency. Outside it,
+# depend on the repository instead, pinned to a commit or tag:
+# magnitide-plugin-sdk = { git = "https://github.com/obscuredetour/magnitide", tag = "v0.5.0" }
+magnitide-plugin-sdk = { path = "../../crates/plugin-sdk" }
+# Common companions; remove what the plugin doesn't use.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Its own workspace, so cargo doesn't fold it into a parent's.
+[workspace]
+
+# Small components start fast and download fast.
+[profile.release]
+opt-level = "s"
+strip = true
