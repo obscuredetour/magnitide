@@ -92,6 +92,8 @@ fn parse_search(v: &Value) -> Vec<SourceRecord> {
                 description_html: None,
                 cover_url: cover.map(|id| format!("https://covers.openlibrary.org/b/id/{id}-L.jpg?default=false")),
                 pages: None,
+                series: None,
+                series_index: None,
                 has_details: true,
             })
         })

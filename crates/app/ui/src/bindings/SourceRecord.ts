@@ -38,6 +38,11 @@ identifiers: { [key in string]: string }, tags: Array<string>,
  */
 descriptionHtml: string | null, coverUrl: string | null, pages: number | null, 
 /**
+ * The series the book belongs to, and its number in it (sources that
+ * know series: calibre plugins, Magnitide plugins such as Goodreads).
+ */
+series: string | null, seriesIndex: number | null, 
+/**
  * More (the description) can be fetched with [`details`].
  */
 hasDetails: boolean, };

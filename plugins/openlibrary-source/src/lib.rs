@@ -89,6 +89,8 @@ fn record(doc: Doc) -> Option<BookRecord> {
         description_html: None,
         cover_url: doc.cover_i.filter(|i| *i > 0).map(|i| format!("https://covers.openlibrary.org/b/id/{i}-L.jpg")),
         pages: doc.number_of_pages_median,
+        series: None,
+        series_index: None,
     })
 }
 

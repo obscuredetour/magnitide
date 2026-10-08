@@ -1,0 +1,8 @@
+name = "Goodreads"
+version = "0.1.0"
+author = "Magnitide"
+description = "Looks books up on Goodreads: title, authors, publisher, date, ISBN, genres as tags, description and cover"
+api = "0.1"
+kind = "metadata-source"
+capabilities = ["network"]
+component = "plugin.wasm"

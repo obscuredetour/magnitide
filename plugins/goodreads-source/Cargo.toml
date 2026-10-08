@@ -1,0 +1,21 @@
+# Goodreads as a Magnitide plugin: the calibre Goodreads metadata source
+# (kiwidude's) ported to the plugin API. Its own workspace. The parsing is
+# in src/parse.rs and tested natively (`cargo test` here) on saved pages.
+[package]
+name = "goodreads-source"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+magnitide-plugin-sdk = { path = "../../crates/plugin-sdk" }
+serde_json = "1"
+
+[workspace]
+
+[profile.release]
+opt-level = "s"
+strip = true

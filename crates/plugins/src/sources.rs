@@ -85,6 +85,8 @@ fn to_record(plugin: &str, v: &Value) -> SourceRecord {
         description_html: text("descriptionHtml"),
         cover_url,
         pages: None,
+        series: text("series"),
+        series_index: v.get("seriesIndex").and_then(Value::as_f64),
         has_details: false,
     }
 }
@@ -228,6 +230,7 @@ mod tests {
             "identifier types lower-cased"
         );
         assert_eq!(r.link, None, "only web links");
+        assert_eq!((r.series.as_deref(), r.series_index), (Some("S"), Some(2.0)));
         let cover = parse_cover_url(r.cover_url.as_deref().unwrap()).unwrap();
         assert_eq!(
             (cover.plugin.as_str(), cover.identifiers.get("test").map(String::as_str)),

@@ -65,7 +65,8 @@ Imports every world gets:
 `publisher`, `published` (ISO date or a year), `languages` (ISO 639-2),
 `identifiers` (`isbn` as an ISBN-13, or the source's own kind such as
 `openlibrary`), `tags`, `description-html` (sanitized by Magnitide),
-`cover-url` and `pages`. Everything but the title is optional.
+`cover-url`, `pages`, and `series` with `series-index`. Everything but
+the title is optional.
 
 `import-hook` exports:
 
@@ -250,6 +251,24 @@ The plugin's `Cargo.toml` is its own workspace (`[workspace]`), with
 that compiles for `wasm32-wasip2` without threads or sockets is usable
 (`serde_json`, `scraper`, `regex`…). `opt-level = "s"` and `strip = true`
 keep the component small (the example is 64 KB zipped).
+
+## Porting a calibre plugin
+
+[`plugins/goodreads-source`](../plugins/goodreads-source) is the calibre
+Goodreads metadata source (kiwidude's) ported: the same search on
+goodreads.com, the same book data read from the page's embedded JSON, in
+a few hundred lines of Rust instead of a plugin that needs calibre's
+`Source`, `browser()`, lxml and a worker thread per result. What carried
+over is the knowledge (the search URL, which results to trust, where the
+data sits on the page); what fell away is the framework. Two habits from
+the port:
+
+- keep the parsing in a module with no bindings in it, tested natively
+  with `cargo test` on saved pages (`tests/fixtures`), and gate the
+  export macro on `target_arch = "wasm32"` so the native build links;
+- rank the search results yourself (title words, author, popularity):
+  Magnitide ranks records across sources, but which pages to fetch is the
+  plugin's call.
 
 Other languages: anything that produces a component from the WIT
 (`componentize-py`, `jco` for JavaScript, TinyGo's `wit-bindgen-go`) works

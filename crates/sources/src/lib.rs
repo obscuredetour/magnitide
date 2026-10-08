@@ -89,6 +89,10 @@ pub struct SourceRecord {
     pub description_html: Option<String>,
     pub cover_url: Option<String>,
     pub pages: Option<u32>,
+    /// The series the book belongs to, and its number in it (sources that
+    /// know series: calibre plugins, Magnitide plugins such as Goodreads).
+    pub series: Option<String>,
+    pub series_index: Option<f64>,
     /// More (the description) can be fetched with [`details`].
     pub has_details: bool,
 }

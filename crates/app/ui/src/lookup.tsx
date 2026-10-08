@@ -32,6 +32,7 @@ function load(id: number): Promise<Loaded> {
       const current: Current = {
         title: edit.title,
         authors: edit.authors,
+        series: edit.series ? { name: edit.series, index: edit.seriesIndex } : null,
         publisher: edit.publisher,
         published: edit.published,
         languages: edit.languages,
@@ -110,6 +111,10 @@ async function save(book: Loaded, a: Applied): Promise<void> {
     edit.titleSort = ''; // derived again from the new title
   }
   if (a.authors) edit.authors = a.authors;
+  if (a.series) {
+    edit.series = a.series.name;
+    edit.seriesIndex = a.series.index ?? 1;
+  }
   if (a.publisher !== undefined) edit.publisher = a.publisher;
   if (a.published !== undefined) edit.published = a.published;
   if (a.languages) edit.languages = a.languages;

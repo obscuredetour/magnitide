@@ -284,6 +284,45 @@ fn a_file_metadata_plugin_reads_and_writes() {
     assert_eq!(plugins.errors().get("Headers").map(String::as_str), Some("This reader failed on purpose."));
 }
 
+/// The Goodreads plugin (plugins/goodreads-source, the calibre plugin's
+/// lookup ported) finds a real book by title and by ISBN. Needs the
+/// network: only with `MAGNITIDE_PLUGIN_NETWORK=1`.
+#[test]
+fn the_goodreads_plugin_finds_a_book() {
+    if std::env::var("MAGNITIDE_PLUGIN_NETWORK").is_err() {
+        eprintln!("skipped: set MAGNITIDE_PLUGIN_NETWORK=1 to ask Goodreads through the plugin");
+        return;
+    }
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let status = std::process::Command::new("sh")
+        .arg(root.join("scripts/build-plugin.sh"))
+        .arg("plugins/goodreads-source")
+        .status()
+        .expect("sh runs");
+    assert!(status.success(), "the Goodreads plugin builds");
+    let dir = tempfile::tempdir().unwrap();
+    let plugins = WasmPlugins::new(dir.path().join("plugins")).unwrap();
+    plugins.install(&root.join("target/plugins/goodreads-source.mgp")).unwrap();
+    let by_title =
+        plugins.identify(&Lookup { title: "Project Hail Mary".into(), authors: vec!["Andy Weir".into()], isbn: None });
+    if let Err(e) = &by_title[0].1
+        && e.contains("browser check")
+    {
+        eprintln!("skipped: {e}");
+        return;
+    }
+    let records = by_title[0].1.as_ref().unwrap_or_else(|e| panic!("{e}\n{:?}", plugins.log("Goodreads")));
+    let book = &records[0];
+    assert_eq!((book.title.as_str(), book.authors.as_slice()), ("Project Hail Mary", &["Andy Weir".to_owned()][..]));
+    assert_eq!(book.identifiers.get("goodreads").map(String::as_str), Some("54493401"));
+    assert!(book.cover_url.is_some() && book.description_html.is_some());
+    let by_isbn =
+        plugins.identify(&Lookup { title: String::new(), authors: vec![], isbn: Some("9780593135204".into()) });
+    let records = by_isbn[0].1.as_ref().unwrap_or_else(|e| panic!("{e}\n{:?}", plugins.log("Goodreads")));
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].identifiers.get("isbn").map(String::as_str), Some("9780593135204"));
+}
+
 /// A library of three books in memory, as a library action sees it.
 struct FakeLibrary {
     books: std::sync::Mutex<Vec<magnitide_catalog::Book>>,

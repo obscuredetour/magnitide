@@ -69,7 +69,9 @@ jobs:
       - name: Plugins build
         run: |
           scripts/build-plugin.sh plugins/openlibrary-source
+          scripts/build-plugin.sh plugins/goodreads-source
           scripts/build-plugin.sh plugins/template
+          cargo test -q --manifest-path plugins/goodreads-source/Cargo.toml --target-dir target/plugins/native-test
           cargo run -q -p magnitide-plugins-wasm --bin mgp -- check target/plugins/my-plugin.mgp
       # The same host tests inside an installed calibre (the oracle for the
       # compat package): calibre's own Linux build, isolated in the runner.

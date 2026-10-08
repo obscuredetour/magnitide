@@ -34,6 +34,8 @@ impl MetadataSource for MySource {
             description_html: None,
             cover_url: None,
             pages: None,
+            series: None,
+            series_index: None,
         }])
     }
 }

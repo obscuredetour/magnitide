@@ -93,6 +93,10 @@ export function EditDialog(props: { editing: Editing }) {
       if (!sortTouched()) setForm('titleSort', '');
     }
     if (a.authors) setAuthors(joinAuthors(a.authors));
+    if (a.series) {
+      setForm('series', a.series.name);
+      setForm('seriesIndex', a.series.index ?? 1);
+    }
     if (a.publisher !== undefined) setForm('publisher', a.publisher);
     if (a.published !== undefined) setForm('published', a.published);
     if (a.languages) setLanguages(joinList(a.languages));
@@ -514,6 +518,7 @@ export function EditDialog(props: { editing: Editing }) {
           current={{
             title: form.title,
             authors: splitAuthors(authors()).filter(Boolean),
+            series: form.series ? { name: form.series, index: form.seriesIndex } : null,
             publisher: form.publisher,
             published: form.published,
             languages: splitList(languages()).filter(Boolean),

@@ -39,6 +39,8 @@ impl MetadataSource for TestSource {
             description_html: Some("A lone astronaut & a mission.".into()),
             cover_url: Some("https://example.invalid/cover/42.jpg".into()),
             pages: Some(496),
+            series: None,
+            series_index: None,
         }])
     }
 }
@@ -58,6 +60,8 @@ fn empty(key: &str) -> BookRecord {
         description_html: None,
         cover_url: None,
         pages: None,
+        series: None,
+        series_index: None,
     }
 }
 

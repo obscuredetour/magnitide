@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! mgp check <plugin.mgp>                      the manifest, and what the component handles
-//! mgp identify <plugin.mgp> <title> [author]  ask a metadata source
+//! mgp identify <plugin.mgp> <title> [author]  ask a metadata source (a title "isbn:978…" asks by ISBN)
 //! mgp read <plugin.mgp> <book file>           read a file's metadata through a file-metadata plugin
 //! mgp hook <plugin.mgp> <book file>           run an import hook on a file
 //! ```
@@ -69,7 +69,10 @@ fn run(args: &[String]) -> Result<(), String> {
             Ok(())
         }
         ("identify", [title, rest @ ..]) => {
-            let lookup = Lookup { title: title.clone(), authors: rest.to_vec(), isbn: None };
+            let lookup = match title.strip_prefix("isbn:") {
+                Some(isbn) => Lookup { title: String::new(), authors: rest.to_vec(), isbn: Some(isbn.to_owned()) },
+                None => Lookup { title: title.clone(), authors: rest.to_vec(), isbn: None },
+            };
             for (name, answer) in plugins.identify(&lookup) {
                 match answer {
                     Ok(records) => {
@@ -137,4 +140,4 @@ fn book(file: &str) -> Result<(PathBuf, String), String> {
     Ok((path, format))
 }
 
-const USAGE: &str = "usage: mgp check <plugin.mgp> | identify <plugin.mgp> <title> [author…] | read <plugin.mgp> <book file> | hook <plugin.mgp> <book file>";
+const USAGE: &str = "usage: mgp check <plugin.mgp> | identify <plugin.mgp> <title or isbn:…> [author…] | read <plugin.mgp> <book file> | hook <plugin.mgp> <book file>";

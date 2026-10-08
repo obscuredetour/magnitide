@@ -38,6 +38,9 @@ interface types {
         description-html: option<string>,
         cover-url: option<string>,
         pages: option<u32>,
+        /// The series the book belongs to, and its number in it.
+        series: option<string>,
+        series-index: option<f64>,
     }
 
     record author {

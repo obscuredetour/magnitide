@@ -358,6 +358,8 @@ impl http::Host for State {
             .limit(HTTP_BODY_LIMIT)
             .read_to_vec()
             .map_err(|e| format!("couldn't read the response from {}: {e}", req.url))?;
+        // So a plugin's log shows what the network gave it.
+        self.log.push(format!("[{}] http: {method} {} → {status}, {} bytes", self.plugin, req.url, body.len()));
         Ok(http::Response { status, headers, body })
     }
 }
@@ -1383,6 +1385,8 @@ fn to_record(r: types::BookRecord, source_name: &str) -> SourceRecord {
         description_html: r.description_html,
         cover_url: r.cover_url,
         pages: r.pages,
+        series: r.series.filter(|s| !s.trim().is_empty()),
+        series_index: r.series_index.filter(|i| i.is_finite()),
         has_details: false,
     }
 }
@@ -1473,6 +1477,8 @@ capabilities = ["network"]"#,
                 description_html: None,
                 cover_url: None,
                 pages: Some(412),
+                series: Some("Dune".into()),
+                series_index: Some(1.0),
             },
             "S",
         );
