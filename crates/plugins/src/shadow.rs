@@ -105,7 +105,11 @@ impl Shadow {
             };
             // calibre stamps every metadata change; files are checked regardless,
             // since a plugin can rewrite a file without touching the database.
-            let fields = if a.last_modified != b.last_modified { book_changes(b, a) } else { BookChanges::default() };
+            // Stamps are compared as the database keeps them (microseconds): a
+            // catalog's own may be finer, as `Utc::now()` is on Linux.
+            let stamped =
+                a.last_modified.map(|d| d.timestamp_micros()) != b.last_modified.map(|d| d.timestamp_micros());
+            let fields = if stamped { book_changes(b, a) } else { BookChanges::default() };
             let files = file_changes(b, a, library_root, &root)?;
             let cover = cover_change(b, a, library_root, &root)?;
             if !fields.is_empty() || !files.is_empty() || cover.is_some() {
@@ -354,7 +358,8 @@ mod tests {
         let link = b.format_path(&shadow.library(), &b.formats[0]);
         assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
         assert_eq!(fs::read_link(&link).unwrap(), b.format_path(&root, &b.formats[0]));
-        assert!(shadow.changes(&catalog, &root).unwrap().is_empty());
+        let changes = shadow.changes(&catalog, &root).unwrap();
+        assert!(changes.is_empty(), "{changes:#?}");
     }
 
     #[test]
@@ -392,7 +397,7 @@ mod tests {
         assert_eq!(c.files, [FileChange::Replaced { format: "EPUB".into(), path: epub }]);
         assert_eq!(c.cover, Some(CoverChange::Set(cover)));
         let c = &changes.books[1];
-        assert!(c.fields.is_empty(), "files only: last_modified unchanged");
+        assert!(c.fields.is_empty(), "files only: last_modified unchanged: {c:#?}");
         assert_eq!(c.files, [FileChange::Removed { format: "PDF".into() }]);
         // The library's own files are untouched.
         assert_eq!(fs::read_to_string(one.format_path(&root, &one.formats[0])).unwrap(), "epub");

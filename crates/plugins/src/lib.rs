@@ -292,6 +292,12 @@ impl Plugins {
             }
             return Ok(dir);
         }
+        self.extract_compat()
+    }
+
+    /// The embedded compat package, unpacked under `<dir>/compat/<hash>/`
+    /// once (earlier hashes are removed).
+    fn extract_compat(&self) -> Result<PathBuf, String> {
         let root = self.dir.join("compat");
         let dir = root.join(COMPAT_HASH);
         if !dir.join(".complete").is_file() {
@@ -758,7 +764,8 @@ mod tests {
         assert_eq!(COMPAT_HASH.len(), 16);
         let dir = tempfile::tempdir().unwrap();
         let plugins = Plugins::new(dir.path().into(), dir.path().join("runtime"));
-        let compat = plugins.compat_dir().unwrap();
+        // The embedded copy itself, whatever MAGNITIDE_COMPAT_DIR says (CI sets it).
+        let compat = plugins.extract_compat().unwrap();
         assert!(compat.join("host/magnitide_host/__init__.py").is_file());
         assert!(compat.ends_with(COMPAT_HASH));
         let text = std::fs::read_to_string(compat.join("host/magnitide_host/__init__.py")).unwrap();
