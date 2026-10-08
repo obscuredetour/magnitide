@@ -7,6 +7,12 @@
 //! names, installed into `<dir>/<slug>/`. Each call gets a fresh store with
 //! a memory cap and a deadline, so a misbehaving plugin is an error for
 //! that call, not a crash.
+//!
+//! Three kinds, one world each: metadata sources (asked in Find Metadata),
+//! import hooks and file-metadata plugins (readers and writers), the latter
+//! two as `core::hooks`' traits. A plugin that works on a file gets it
+//! through a per-call sandbox: the file linked into a scratch folder
+//! preopened read-only as `/in`, and a writable `/out` for what it makes.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -14,11 +20,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use magnitide_core::hooks::{ImportHooks, ImportOutcome, MetadataPlugins, Precedence};
+use magnitide_core::metadata::{Author, BookMetadata};
 use magnitide_sources::{Lookup, SourceRecord};
 use serde::{Deserialize, Serialize};
 use wasmtime::component::{Component, HasSelf, Linker, ResourceTable};
 use wasmtime::{Engine, Store, StoreLimits, StoreLimitsBuilder};
-use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
+use wasmtime_wasi::{FsPerms, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 mod bindings {
     wasmtime::component::bindgen!({
@@ -27,8 +35,36 @@ mod bindings {
     });
 }
 
+/// The other worlds share the first one's imports (types, log, http).
+mod import_hook_bindings {
+    wasmtime::component::bindgen!({
+        world: "import-hook-plugin",
+        path: "../plugin-sdk/wit",
+        with: {
+            "magnitide:plugin/log": crate::bindings::magnitide::plugin::log,
+            "magnitide:plugin/http": crate::bindings::magnitide::plugin::http,
+        },
+    });
+}
+
+mod file_metadata_bindings {
+    wasmtime::component::bindgen!({
+        world: "file-metadata-plugin",
+        path: "../plugin-sdk/wit",
+        with: {
+            "magnitide:plugin/types": crate::bindings::magnitide::plugin::types,
+            "magnitide:plugin/log": crate::bindings::magnitide::plugin::log,
+            "magnitide:plugin/http": crate::bindings::magnitide::plugin::http,
+        },
+    });
+}
+
 use bindings::MetadataSourcePlugin;
 use bindings::magnitide::plugin::{http, log, types};
+use file_metadata_bindings::FileMetadataPlugin;
+use file_metadata_bindings::exports::magnitide::plugin::file_metadata as wit_file_metadata;
+use import_hook_bindings::ImportHookPlugin;
+use import_hook_bindings::exports::magnitide::plugin::import_hook as wit_import_hook;
 
 /// The API version this host provides; a plugin's manifest names the one it targets.
 pub const API_VERSION: &str = "0.1";
@@ -37,6 +73,8 @@ pub const API_VERSION: &str = "0.1";
 const MEMORY_LIMIT: usize = 256 * 1024 * 1024;
 /// Wall-clock allowed per call unless set otherwise (epoch ticks are every 100 ms).
 const CALL_TIMEOUT: Duration = Duration::from_secs(60);
+/// An import hook may rewrite a whole book: this many call timeouts.
+const ON_IMPORT_TIMEOUTS: u32 = 5;
 const EPOCH_TICK: Duration = Duration::from_millis(100);
 const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 const HTTP_BODY_LIMIT: u64 = 20 * 1024 * 1024;
@@ -56,7 +94,12 @@ pub enum Capability {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export, rename = "NativeKind"))]
 #[serde(rename_all = "kebab-case")]
 pub enum Kind {
+    /// Asked in Find Metadata (world `metadata-source-plugin`).
     MetadataSource,
+    /// Runs on files being added (world `import-hook-plugin`).
+    ImportHook,
+    /// Reads and writes metadata in book files (world `file-metadata-plugin`).
+    FileMetadata,
 }
 
 /// `manifest.toml` in a `.mgp`.
@@ -93,6 +136,36 @@ pub struct Installed {
     /// Folder name under the plugins folder.
     pub slug: String,
     pub enabled: bool,
+    /// What the component said it handles when it was installed.
+    #[serde(default)]
+    pub handles: Handles,
+}
+
+/// What an import-hook or file-metadata plugin handles, asked of the
+/// component at install so no plugin runs just to know.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export, rename = "NativeHandles"))]
+#[serde(rename_all = "camelCase")]
+pub struct Handles {
+    /// Lower-case extensions an import hook runs on; "*" for every file.
+    #[serde(default)]
+    pub file_types: Vec<String>,
+    /// Upper-case formats a file-metadata plugin reads, with whether it
+    /// beats Magnitide's own reader.
+    #[serde(default)]
+    pub reads: Vec<ReadsFormat>,
+    /// Upper-case formats it writes.
+    #[serde(default)]
+    pub writes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export, rename = "NativeReadsFormat"))]
+#[serde(rename_all = "camelCase")]
+pub struct ReadsFormat {
+    pub format: String,
+    /// True when the plugin's reader is used before Magnitide's own.
+    pub overrides: bool,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -119,6 +192,38 @@ pub struct WasmPlugins {
 impl Drop for WasmPlugins {
     fn drop(&mut self) {
         self.ticking.store(false, Ordering::SeqCst);
+    }
+}
+
+/// A call's scratch folders: `in/` (the file, read-only in the sandbox as
+/// `/in`) and `out/` (writable, `/out`). Removed when the call is done,
+/// but for a file the plugin made that the caller takes over.
+struct Sandbox {
+    dir: PathBuf,
+}
+
+impl Sandbox {
+    fn input(&self) -> PathBuf {
+        self.dir.join("in")
+    }
+
+    fn output(&self) -> PathBuf {
+        self.dir.join("out")
+    }
+
+    /// The host path of a `/out/...` path the plugin named, if it's one.
+    fn host_path(&self, guest: &str) -> Option<PathBuf> {
+        let rest = guest.strip_prefix("/out/")?;
+        if rest.is_empty() || rest.split('/').any(|c| c.is_empty() || c == "." || c == "..") {
+            return None;
+        }
+        Some(self.output().join(rest))
+    }
+}
+
+impl Drop for Sandbox {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
 
@@ -215,6 +320,8 @@ impl WasmPlugins {
         config.wasm_component_model(true);
         config.epoch_interruption(true);
         let engine = Engine::new(&config).map_err(|e| format!("couldn't start the plugin engine: {e}"))?;
+        // Scratch folders of calls that never finished (a crash mid-import).
+        let _ = std::fs::remove_dir_all(dir.join("tmp"));
         let ticking = Arc::new(AtomicBool::new(true));
         let (e, t) = (engine.clone(), ticking.clone());
         std::thread::Builder::new()
@@ -311,8 +418,8 @@ impl WasmPlugins {
         };
         let component = Component::new(&self.engine, &component_bytes)
             .map_err(|e| format!("The plugin's component can't be loaded: {}", first_line(&e.to_string())))?;
-        // It must implement the world: instantiate once, with no call.
-        self.instantiate(&component, &manifest.name, &[]).map(|_| ())?;
+        // It must implement its kind's world, and say what it handles.
+        let handles = self.handles(&component, &manifest)?;
 
         let _guard = self.list.lock().unwrap_or_else(|e| e.into_inner());
         let mut reg = self.read_registry();
@@ -349,6 +456,7 @@ impl WasmPlugins {
             slug,
             // An update keeps the user's choice.
             enabled: previous.is_none_or(|i| reg.plugins[i].enabled),
+            handles,
         };
         match previous {
             Some(i) => reg.plugins[i] = installed.clone(),
@@ -404,8 +512,7 @@ impl WasmPlugins {
 
     fn identify_with(&self, plugin: &Installed, lookup: &Lookup) -> Result<Vec<SourceRecord>, String> {
         let component = self.component(plugin)?;
-        let (mut store, instance) =
-            self.instantiate(&component, &plugin.manifest.name, &plugin.manifest.capabilities)?;
+        let (mut store, instance) = self.source(&component, &plugin.manifest.name, self.call_timeout)?;
         let wit_lookup =
             types::Lookup { title: lookup.title.clone(), authors: lookup.authors.clone(), isbn: lookup.isbn.clone() };
         let answer = instance.magnitide_plugin_metadata_source().call_identify(&mut store, &wit_lookup);
@@ -422,8 +529,7 @@ impl WasmPlugins {
     /// The plugin's info as the component reports it (a check that it answers).
     pub fn info(&self, plugin: &Installed) -> Result<(String, String, String), String> {
         let component = self.component(plugin)?;
-        let (mut store, instance) =
-            self.instantiate(&component, &plugin.manifest.name, &plugin.manifest.capabilities)?;
+        let (mut store, instance) = self.source(&component, &plugin.manifest.name, self.call_timeout)?;
         let info = instance.magnitide_plugin_metadata_source().call_info(&mut store).map_err(|e| describe_trap(&e))?;
         Ok((info.name, info.description, info.version))
     }
@@ -444,19 +550,77 @@ impl WasmPlugins {
         Ok(c)
     }
 
-    fn instantiate(
+    /// What a component handles, by asking it (and so that it implements
+    /// its kind's world).
+    fn handles(&self, component: &Component, m: &Manifest) -> Result<Handles, String> {
+        let timeout = self.call_timeout;
+        match m.kind {
+            Kind::MetadataSource => {
+                self.source(component, &m.name, timeout)?;
+                Ok(Handles::default())
+            }
+            Kind::ImportHook => {
+                let (mut store, hook) = self.import_hook(component, &m.name, None, timeout)?;
+                let types =
+                    hook.magnitide_plugin_import_hook().call_file_types(&mut store).map_err(|e| describe_trap(&e))?;
+                let file_types: Vec<String> = types
+                    .iter()
+                    .map(|t| t.trim().trim_start_matches('.').to_lowercase())
+                    .filter(|t| !t.is_empty())
+                    .collect();
+                if file_types.is_empty() {
+                    return Err(format!("{} names no file types to run on.", m.name));
+                }
+                Ok(Handles { file_types, ..Default::default() })
+            }
+            Kind::FileMetadata => {
+                let (mut store, plugin) = self.file_metadata(component, &m.name, None, timeout)?;
+                let api = plugin.magnitide_plugin_file_metadata();
+                let reads = api
+                    .call_reads(&mut store)
+                    .map_err(|e| describe_trap(&e))?
+                    .into_iter()
+                    .filter(|r| !r.format.trim().is_empty())
+                    .map(|r| ReadsFormat {
+                        format: r.format.trim().to_uppercase(),
+                        overrides: r.precedence == wit_file_metadata::Precedence::Override,
+                    })
+                    .collect();
+                let writes = api
+                    .call_writes(&mut store)
+                    .map_err(|e| describe_trap(&e))?
+                    .into_iter()
+                    .map(|f| f.trim().to_uppercase())
+                    .filter(|f| !f.is_empty())
+                    .collect();
+                let handles = Handles { file_types: Vec::new(), reads, writes };
+                if handles.reads.is_empty() && handles.writes.is_empty() {
+                    return Err(format!("{} names no formats it reads or writes.", m.name));
+                }
+                Ok(handles)
+            }
+        }
+    }
+
+    /// A fresh store for one call: the sandbox (a memory cap, a deadline,
+    /// no environment; the scratch folders when the call works on a file).
+    fn store(
         &self,
-        component: &Component,
         name: &str,
         capabilities: &[Capability],
-    ) -> Result<(Store<State>, MetadataSourcePlugin), String> {
-        let mut linker = Linker::new(&self.engine);
-        wasmtime_wasi::p2::add_to_linker_sync(&mut linker).map_err(|e| e.to_string())?;
-        MetadataSourcePlugin::add_to_linker::<_, HasSelf<_>>(&mut linker, |s: &mut State| s)
-            .map_err(|e| e.to_string())?;
+        sandbox: Option<&Sandbox>,
+        timeout: Duration,
+    ) -> Result<Store<State>, String> {
+        let mut wasi = WasiCtxBuilder::new();
+        if let Some(s) = sandbox {
+            std::fs::create_dir_all(s.input())
+                .and_then(|()| std::fs::create_dir_all(s.output()))
+                .map_err(|e| e.to_string())?;
+            wasi.preopened_dir(s.input(), "/in", FsPerms::ReadOnly).map_err(|e| e.to_string())?;
+            wasi.preopened_dir(s.output(), "/out", FsPerms::ReadWrite).map_err(|e| e.to_string())?;
+        }
         let state = State {
-            // No preopened directories, no network, no environment: the sandbox.
-            wasi: WasiCtxBuilder::new().build(),
+            wasi: wasi.build(),
             table: ResourceTable::new(),
             limits: StoreLimitsBuilder::new().memory_size(MEMORY_LIMIT).build(),
             plugin: name.to_owned(),
@@ -465,11 +629,293 @@ impl WasmPlugins {
         };
         let mut store = Store::new(&self.engine, state);
         store.limiter(|s| &mut s.limits);
-        store.set_epoch_deadline((self.call_timeout.as_millis() / EPOCH_TICK.as_millis()).max(1) as u64);
+        store.set_epoch_deadline((timeout.as_millis() / EPOCH_TICK.as_millis()).max(1) as u64);
+        Ok(store)
+    }
+
+    fn linker(&self) -> Result<Linker<State>, String> {
+        let mut linker = Linker::new(&self.engine);
+        wasmtime_wasi::p2::add_to_linker_sync(&mut linker).map_err(|e| e.to_string())?;
+        Ok(linker)
+    }
+
+    fn source(
+        &self,
+        component: &Component,
+        name: &str,
+        timeout: Duration,
+    ) -> Result<(Store<State>, MetadataSourcePlugin), String> {
+        let mut linker = self.linker()?;
+        MetadataSourcePlugin::add_to_linker::<_, HasSelf<_>>(&mut linker, |s: &mut State| s)
+            .map_err(|e| e.to_string())?;
+        let mut store = self.store(name, &self.capabilities_of(name), None, timeout)?;
         let instance = MetadataSourcePlugin::instantiate(&mut store, component, &linker)
             .map_err(|e| format!("{name} doesn't implement the metadata-source API: {}", first_line(&e.to_string())))?;
         Ok((store, instance))
     }
+
+    fn import_hook(
+        &self,
+        component: &Component,
+        name: &str,
+        sandbox: Option<&Sandbox>,
+        timeout: Duration,
+    ) -> Result<(Store<State>, ImportHookPlugin), String> {
+        let mut linker = self.linker()?;
+        ImportHookPlugin::add_to_linker::<_, HasSelf<_>>(&mut linker, |s: &mut State| s).map_err(|e| e.to_string())?;
+        let mut store = self.store(name, &self.capabilities_of(name), sandbox, timeout)?;
+        let instance = ImportHookPlugin::instantiate(&mut store, component, &linker)
+            .map_err(|e| format!("{name} doesn't implement the import-hook API: {}", first_line(&e.to_string())))?;
+        Ok((store, instance))
+    }
+
+    fn file_metadata(
+        &self,
+        component: &Component,
+        name: &str,
+        sandbox: Option<&Sandbox>,
+        timeout: Duration,
+    ) -> Result<(Store<State>, FileMetadataPlugin), String> {
+        let mut linker = self.linker()?;
+        FileMetadataPlugin::add_to_linker::<_, HasSelf<_>>(&mut linker, |s: &mut State| s)
+            .map_err(|e| e.to_string())?;
+        let mut store = self.store(name, &self.capabilities_of(name), sandbox, timeout)?;
+        let instance = FileMetadataPlugin::instantiate(&mut store, component, &linker)
+            .map_err(|e| format!("{name} doesn't implement the file-metadata API: {}", first_line(&e.to_string())))?;
+        Ok((store, instance))
+    }
+
+    /// The capabilities an installed plugin was granted; none while it's
+    /// being installed (the install-time calls get no capability).
+    fn capabilities_of(&self, name: &str) -> Vec<Capability> {
+        self.read_registry()
+            .plugins
+            .into_iter()
+            .find(|p| p.manifest.name == name)
+            .map(|p| p.manifest.capabilities)
+            .unwrap_or_default()
+    }
+
+    /// A scratch folder for one call, under `<dir>/tmp`.
+    fn sandbox(&self) -> Result<Sandbox, String> {
+        use std::sync::atomic::AtomicU64;
+        static N: AtomicU64 = AtomicU64::new(0);
+        let dir = self.dir.join("tmp").join(format!("{}-{}", std::process::id(), N.fetch_add(1, Ordering::SeqCst)));
+        std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't make a scratch folder for the plugin: {e}"))?;
+        Ok(Sandbox { dir })
+    }
+
+    /// Put `path` in the sandbox's `in/` (a hard link, or a copy across
+    /// volumes); the plugin sees `/in/<name>`.
+    fn stage(sandbox: &Sandbox, path: &Path) -> Result<String, String> {
+        let name = file_name(path);
+        let dest = sandbox.input().join(&name);
+        std::fs::create_dir_all(sandbox.input()).map_err(|e| e.to_string())?;
+        if std::fs::hard_link(path, &dest).is_err() {
+            std::fs::copy(path, &dest).map_err(|e| format!("couldn't give the plugin {}: {e}", path.display()))?;
+        }
+        Ok(format!("/in/{name}"))
+    }
+
+    /// Enabled import hooks that run on `format` (upper case).
+    fn hooks_for(&self, format: &str) -> Vec<Installed> {
+        let ext = format.to_lowercase();
+        self.list()
+            .into_iter()
+            .filter(|p| p.enabled && p.manifest.kind == Kind::ImportHook)
+            .filter(|p| p.handles.file_types.iter().any(|t| t == "*" || *t == ext))
+            .collect()
+    }
+
+    /// Enabled file-metadata plugins reading `format`, overriding ones first.
+    fn readers_for(&self, format: &str) -> Vec<(Installed, bool)> {
+        let mut ans: Vec<(Installed, bool)> = self
+            .list()
+            .into_iter()
+            .filter(|p| p.enabled && p.manifest.kind == Kind::FileMetadata)
+            .filter_map(|p| {
+                let overrides = p.handles.reads.iter().find(|r| r.format == format)?.overrides;
+                Some((p, overrides))
+            })
+            .collect();
+        ans.sort_by_key(|(_, overrides)| !overrides);
+        ans
+    }
+
+    fn writers_for(&self, format: &str) -> Vec<Installed> {
+        self.list()
+            .into_iter()
+            .filter(|p| p.enabled && p.manifest.kind == Kind::FileMetadata)
+            .filter(|p| p.handles.writes.iter().any(|w| w == format))
+            .collect()
+    }
+
+    /// Run one import hook on `path`: unchanged, or a file it wrote (moved
+    /// out of the sandbox, to be deleted by the caller once stored).
+    fn run_hook(&self, plugin: &Installed, path: &Path, format: &str) -> Result<Option<PathBuf>, String> {
+        let component = self.component(plugin)?;
+        let sandbox = self.sandbox()?;
+        let guest = Self::stage(&sandbox, path)?;
+        let timeout = self.call_timeout * ON_IMPORT_TIMEOUTS;
+        let (mut store, hook) = self.import_hook(&component, &plugin.manifest.name, Some(&sandbox), timeout)?;
+        let answer = hook.magnitide_plugin_import_hook().call_on_import(&mut store, &guest, format);
+        let lines = std::mem::take(&mut store.data_mut().log);
+        drop(store);
+        let result = match answer {
+            Ok(Ok(wit_import_hook::Outcome::Unchanged)) => Ok(None),
+            Ok(Ok(wit_import_hook::Outcome::Replaced(out))) => sandbox.take(&out).map(Some),
+            Ok(Err(e)) => Err(e),
+            Err(e) => Err(describe_trap(&e)),
+        };
+        self.note(&plugin.manifest.name, lines, result.as_ref().err().map(String::as_str));
+        result
+    }
+}
+
+impl Sandbox {
+    /// Move the file the plugin named (`/out/...`) beside the call's
+    /// folder, so the folder can go while the file lives on.
+    fn take(&self, out: &str) -> Result<PathBuf, String> {
+        let made = self.host_path(out).ok_or_else(|| format!("the plugin named {out}, which isn't under /out/"))?;
+        if !made.is_file() {
+            return Err(format!("the plugin named {out}, which it didn't write"));
+        }
+        let call = self.dir.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        let kept = self.dir.with_file_name(format!("{call}-{}", file_name(&made)));
+        std::fs::rename(&made, &kept).map_err(|e| e.to_string())?;
+        Ok(kept)
+    }
+}
+
+impl ImportHooks for WasmPlugins {
+    fn file_types(&self) -> Vec<String> {
+        let mut types: Vec<String> = self
+            .list()
+            .into_iter()
+            .filter(|p| p.enabled && p.manifest.kind == Kind::ImportHook)
+            .flat_map(|p| p.handles.file_types)
+            .filter(|t| t != "*")
+            .collect();
+        types.sort();
+        types.dedup();
+        types
+    }
+
+    /// The hooks in turn, each on what the one before made of the file.
+    fn on_import(&self, path: &Path, format: &str) -> ImportOutcome {
+        let mut current = path.to_path_buf();
+        let mut format = format.to_owned();
+        let mut temporary: Option<PathBuf> = None;
+        let mut failures = Vec::new();
+        for plugin in self.hooks_for(&format) {
+            match self.run_hook(&plugin, &current, &format) {
+                Ok(Some(new)) => {
+                    if let Some(old) = temporary.replace(new.clone()) {
+                        let _ = std::fs::remove_file(old);
+                    }
+                    if let Some(ext) = new.extension().and_then(|e| e.to_str()) {
+                        format = ext.to_uppercase();
+                    }
+                    current = new;
+                }
+                Ok(None) => {}
+                Err(e) => failures.push(format!("{}: {e}", plugin.manifest.name)),
+            }
+        }
+        match (temporary, failures.is_empty()) {
+            (Some(path), _) => ImportOutcome::Replaced { path, temporary: true },
+            (None, true) => ImportOutcome::Unchanged,
+            (None, false) => ImportOutcome::Failed(failures.join("; ")),
+        }
+    }
+}
+
+impl MetadataPlugins for WasmPlugins {
+    fn reads(&self, format: &str) -> Option<Precedence> {
+        let readers = self.readers_for(format);
+        let overrides = readers.iter().any(|(_, o)| *o);
+        (!readers.is_empty()).then_some(if overrides { Precedence::Override } else { Precedence::Fallback })
+    }
+
+    /// The readers in turn; the first that answers.
+    fn read(&self, path: &Path, format: &str) -> Result<BookMetadata, String> {
+        let readers = self.readers_for(format);
+        if readers.is_empty() {
+            return Err(format!("no plugin reads {format}"));
+        }
+        let mut last = String::new();
+        for (plugin, _) in readers {
+            let result = (|| {
+                let component = self.component(&plugin)?;
+                let sandbox = self.sandbox()?;
+                let guest = Self::stage(&sandbox, path)?;
+                let (mut store, p) =
+                    self.file_metadata(&component, &plugin.manifest.name, Some(&sandbox), self.call_timeout)?;
+                let answer = p.magnitide_plugin_file_metadata().call_read(&mut store, &guest, format);
+                let lines = std::mem::take(&mut store.data_mut().log);
+                let result = match answer {
+                    Ok(Ok(meta)) => Ok(from_wit_metadata(meta)),
+                    Ok(Err(e)) => Err(e),
+                    Err(e) => Err(describe_trap(&e)),
+                };
+                self.note(&plugin.manifest.name, lines, result.as_ref().err().map(String::as_str));
+                result
+            })();
+            match result {
+                Ok(meta) => return Ok(meta),
+                Err(e) => last = format!("{}: {e}", plugin.manifest.name),
+            }
+        }
+        Err(last)
+    }
+
+    fn writes(&self, format: &str) -> bool {
+        !self.writers_for(format).is_empty()
+    }
+
+    /// Every writer in turn, each on the file as the one before left it;
+    /// the file at `path` is replaced only when all succeeded.
+    fn write(&self, path: &Path, format: &str, meta: &BookMetadata) -> Result<(), String> {
+        let writers = self.writers_for(format);
+        if writers.is_empty() {
+            return Err(format!("no plugin writes {format}"));
+        }
+        let sandbox = self.sandbox()?;
+        let name = file_name(path);
+        std::fs::create_dir_all(sandbox.output()).map_err(|e| e.to_string())?;
+        let copy = sandbox.output().join(&name);
+        std::fs::copy(path, &copy).map_err(|e| format!("couldn't give the plugin {}: {e}", path.display()))?;
+        let guest = format!("/out/{name}");
+        let wit_meta = to_wit_metadata(meta);
+        for plugin in writers {
+            let component = self.component(&plugin)?;
+            let (mut store, p) =
+                self.file_metadata(&component, &plugin.manifest.name, Some(&sandbox), self.call_timeout)?;
+            let answer = p.magnitide_plugin_file_metadata().call_write(&mut store, &guest, format, &wit_meta);
+            let lines = std::mem::take(&mut store.data_mut().log);
+            let result = match answer {
+                Ok(Ok(())) => Ok(()),
+                Ok(Err(e)) => Err(e),
+                Err(e) => Err(describe_trap(&e)),
+            };
+            self.note(&plugin.manifest.name, lines, result.as_ref().err().map(String::as_str));
+            result.map_err(|e| format!("{}: {e}", plugin.manifest.name))?;
+        }
+        // Over the original in one step: beside it, then renamed.
+        let beside = path.with_file_name(format!(".{name}.plugin"));
+        std::fs::copy(&copy, &beside).and_then(|_| std::fs::rename(&beside, path)).map_err(|e| {
+            let _ = std::fs::remove_file(&beside);
+            format!("couldn't put the written file back: {e}")
+        })
+    }
+}
+
+/// A file's name, or "book" when the path has none.
+fn file_name(path: &Path) -> String {
+    path.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| "book".into())
 }
 
 fn validate(m: &Manifest) -> Result<(), String> {
@@ -553,6 +999,43 @@ fn to_record(r: types::BookRecord, source_name: &str) -> SourceRecord {
         cover_url: r.cover_url,
         pages: r.pages,
         has_details: false,
+    }
+}
+
+fn from_wit_metadata(m: types::BookMetadata) -> BookMetadata {
+    BookMetadata {
+        title: m.title.filter(|t| !t.trim().is_empty()),
+        authors: m.authors.into_iter().map(|a| Author { name: a.name, sort: a.sort }).collect(),
+        series: m.series.filter(|s| !s.trim().is_empty()).map(|s| (s, m.series_index.unwrap_or(1.0))),
+        publisher: m.publisher,
+        published: m.published.as_deref().and_then(magnitide_core::metadata::parse_date),
+        languages: m.languages,
+        identifiers: m.identifiers.into_iter().map(|i| (i.key, i.value)).collect(),
+        description: m.description,
+        tags: m.tags,
+        cover: m.cover.filter(|c| !c.is_empty()),
+        uuids: m.uuids.into_iter().map(|u| u.to_lowercase()).collect(),
+    }
+}
+
+fn to_wit_metadata(m: &BookMetadata) -> types::BookMetadata {
+    types::BookMetadata {
+        title: m.title.clone(),
+        authors: m.authors.iter().map(|a| types::Author { name: a.name.clone(), sort: a.sort.clone() }).collect(),
+        series: m.series.as_ref().map(|(s, _)| s.clone()),
+        series_index: m.series.as_ref().map(|(_, i)| *i),
+        publisher: m.publisher.clone(),
+        published: m.published.map(|d| d.to_string()),
+        languages: m.languages.clone(),
+        identifiers: m
+            .identifiers
+            .iter()
+            .map(|(k, v)| types::Identifier { key: k.clone(), value: v.clone() })
+            .collect(),
+        description: m.description.clone(),
+        tags: m.tags.clone(),
+        cover: m.cover.clone(),
+        uuids: m.uuids.clone(),
     }
 }
 

@@ -22,6 +22,11 @@
 //! magnitide_plugin_sdk::export_metadata_source!(MySource);
 //! ```
 //!
+//! An import hook (`ImportHook`) or a file-metadata plugin (`FileMetadata`)
+//! is written the same way, exported with `export_import_hook!` or
+//! `export_file_metadata!`. They get the file through the sandbox: read it
+//! at the `/in/...` path given, write under `/out/`, with `std::fs`.
+//!
 //! Build with `cargo build --release --target wasm32-wasip2`, then package
 //! the `.wasm` with a `manifest.toml` into a `.mgp` (see docs/plugin-api.md).
 
@@ -36,6 +41,37 @@ pub mod bindings {
     });
 }
 
+/// The import-hook world; its imports are the ones above.
+pub mod import_hook_bindings {
+    wit_bindgen::generate!({
+        world: "import-hook-plugin",
+        path: "wit",
+        pub_export_macro: true,
+        export_macro_name: "export_import_hook",
+        default_bindings_module: "magnitide_plugin_sdk::import_hook_bindings",
+        with: {
+            "magnitide:plugin/log@0.1.0": crate::bindings::magnitide::plugin::log,
+            "magnitide:plugin/http@0.1.0": crate::bindings::magnitide::plugin::http,
+        },
+    });
+}
+
+/// The file-metadata world; its imports and types are the ones above.
+pub mod file_metadata_bindings {
+    wit_bindgen::generate!({
+        world: "file-metadata-plugin",
+        path: "wit",
+        pub_export_macro: true,
+        export_macro_name: "export_file_metadata",
+        default_bindings_module: "magnitide_plugin_sdk::file_metadata_bindings",
+        with: {
+            "magnitide:plugin/types@0.1.0": crate::bindings::magnitide::plugin::types,
+            "magnitide:plugin/log@0.1.0": crate::bindings::magnitide::plugin::log,
+            "magnitide:plugin/http@0.1.0": crate::bindings::magnitide::plugin::http,
+        },
+    });
+}
+
 /// Export a metadata source: `export_metadata_source!(MyType)`.
 #[macro_export]
 macro_rules! export_metadata_source {
@@ -44,10 +80,32 @@ macro_rules! export_metadata_source {
     };
 }
 
-/// What a metadata source needs.
+/// Export an import hook: `export_import_hook!(MyType)`.
+#[macro_export]
+macro_rules! export_import_hook {
+    ($t:ident) => {
+        $crate::import_hook_bindings::export_import_hook!($t with_types_in $crate::import_hook_bindings);
+    };
+}
+
+/// Export a file-metadata plugin: `export_file_metadata!(MyType)`.
+#[macro_export]
+macro_rules! export_file_metadata {
+    ($t:ident) => {
+        $crate::file_metadata_bindings::export_file_metadata!($t with_types_in $crate::file_metadata_bindings);
+    };
+}
+
+/// What a plugin of any kind needs.
 pub mod prelude {
     pub use crate::bindings::exports::magnitide::plugin::metadata_source::{self, Guest as MetadataSource, SourceInfo};
-    pub use crate::bindings::magnitide::plugin::types::{BookRecord, Identifier, Lookup};
+    pub use crate::bindings::magnitide::plugin::types::{Author, BookMetadata, BookRecord, Identifier, Lookup};
+    pub use crate::file_metadata_bindings::exports::magnitide::plugin::file_metadata::{
+        self, Guest as FileMetadata, Precedence, ReadsFormat,
+    };
+    pub use crate::import_hook_bindings::exports::magnitide::plugin::import_hook::{
+        self, Guest as ImportHook, Outcome,
+    };
     pub use crate::{http, log};
 }
 

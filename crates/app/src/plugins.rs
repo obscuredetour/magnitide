@@ -177,35 +177,102 @@ pub struct PluginsStatus {
     native_errors: BTreeMap<String, String>,
 }
 
-/// The plugin runtime as core's extension points: file-type plugins on
-/// books being added, and metadata readers and writers.
+/// Both plugin runtimes as core's extension points: hooks on books being
+/// added, and metadata readers and writers. Magnitide's own plugins go
+/// first (they're in-process and quick); calibre plugins see what they
+/// made of a file.
 pub struct AppHooks(pub AppHandle);
+
+impl AppHooks {
+    fn native(&self) -> State<'_, WasmPlugins> {
+        self.0.state::<WasmPlugins>()
+    }
+
+    fn calibre(&self) -> State<'_, Plugins> {
+        self.0.state::<Plugins>()
+    }
+}
 
 impl ImportHooks for AppHooks {
     fn file_types(&self) -> Vec<String> {
-        ImportHooks::file_types(&*self.0.state::<Plugins>())
+        let mut types = ImportHooks::file_types(&*self.native());
+        types.extend(ImportHooks::file_types(&*self.calibre()));
+        types.sort();
+        types.dedup();
+        types
     }
 
     fn on_import(&self, path: &Path, format: &str) -> ImportOutcome {
-        ImportHooks::on_import(&*self.0.state::<Plugins>(), path, format)
+        let first = ImportHooks::on_import(&*self.native(), path, format);
+        let (current, format_now, failed) = match &first {
+            ImportOutcome::Replaced { path: p, .. } => {
+                let f = p.extension().and_then(|e| e.to_str()).map_or(format.to_owned(), str::to_uppercase);
+                (p.clone(), f, None)
+            }
+            ImportOutcome::Unchanged => (path.to_path_buf(), format.to_owned(), None),
+            ImportOutcome::Failed(why) => (path.to_path_buf(), format.to_owned(), Some(why.clone())),
+        };
+        match ImportHooks::on_import(&*self.calibre(), &current, &format_now) {
+            ImportOutcome::Unchanged => first,
+            ImportOutcome::Replaced { path: new, temporary } => {
+                if let ImportOutcome::Replaced { path: ours, temporary: true } = &first {
+                    let _ = std::fs::remove_file(ours);
+                }
+                ImportOutcome::Replaced { path: new, temporary }
+            }
+            ImportOutcome::Failed(why) => match (first, failed) {
+                (replaced @ ImportOutcome::Replaced { .. }, _) => replaced,
+                (_, Some(earlier)) => ImportOutcome::Failed(format!("{earlier}; {why}")),
+                _ => ImportOutcome::Failed(why),
+            },
+        }
     }
 }
 
 impl MetadataPlugins for AppHooks {
     fn reads(&self, format: &str) -> Option<Precedence> {
-        MetadataPlugins::reads(&*self.0.state::<Plugins>(), format)
+        match (MetadataPlugins::reads(&*self.native(), format), MetadataPlugins::reads(&*self.calibre(), format)) {
+            (Some(Precedence::Override), _) | (_, Some(Precedence::Override)) => Some(Precedence::Override),
+            (Some(p), _) | (None, Some(p)) => Some(p),
+            (None, None) => None,
+        }
     }
 
     fn read(&self, path: &Path, format: &str) -> Result<BookMetadata, String> {
-        MetadataPlugins::read(&*self.0.state::<Plugins>(), path, format)
+        let native = self.native();
+        let calibre = self.calibre();
+        let mut errors = Vec::new();
+        for (reads, read) in [
+            (MetadataPlugins::reads(&*native, format), &*native as &dyn MetadataPlugins),
+            (MetadataPlugins::reads(&*calibre, format), &*calibre as &dyn MetadataPlugins),
+        ] {
+            if reads.is_some() {
+                match read.read(path, format) {
+                    Ok(meta) => return Ok(meta),
+                    Err(e) => errors.push(e),
+                }
+            }
+        }
+        Err(if errors.is_empty() { format!("no plugin reads {format}") } else { errors.join("; ") })
     }
 
     fn writes(&self, format: &str) -> bool {
-        MetadataPlugins::writes(&*self.0.state::<Plugins>(), format)
+        MetadataPlugins::writes(&*self.native(), format) || MetadataPlugins::writes(&*self.calibre(), format)
     }
 
     fn write(&self, path: &Path, format: &str, meta: &BookMetadata) -> Result<(), String> {
-        MetadataPlugins::write(&*self.0.state::<Plugins>(), path, format, meta)
+        let native = self.native();
+        let calibre = self.calibre();
+        let mut any = false;
+        if MetadataPlugins::writes(&*native, format) {
+            MetadataPlugins::write(&*native, path, format, meta)?;
+            any = true;
+        }
+        if MetadataPlugins::writes(&*calibre, format) {
+            MetadataPlugins::write(&*calibre, path, format, meta)?;
+            any = true;
+        }
+        if any { Ok(()) } else { Err(format!("no plugin writes {format}")) }
     }
 }
 

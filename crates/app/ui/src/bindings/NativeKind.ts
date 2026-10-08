@@ -3,4 +3,4 @@
 /**
  * What kind of plugin, by the world it implements.
  */
-export type NativeKind = "metadata-source";
+export type NativeKind = "metadata-source" | "import-hook" | "file-metadata";

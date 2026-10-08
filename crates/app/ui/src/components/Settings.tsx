@@ -1332,7 +1332,22 @@ function sentence(s: string): string {
 
 const NATIVE_KINDS: Record<NativeKind, string> = {
   'metadata-source': 'Metadata source',
+  'import-hook': 'Runs on files being added',
+  'file-metadata': 'Reads and writes metadata in book files',
 };
+
+/** What an import-hook or file-metadata plugin handles, as Settings lines. */
+function nativeHandlesLines(p: NativePlugin): string[] {
+  const lines: string[] = [];
+  const types = (v: string[]) => v.map((t) => (t === '*' ? 'every file' : t.toUpperCase())).join(', ');
+  if (p.handles.fileTypes.length) lines.push(`Runs when adding: ${types(p.handles.fileTypes)}`);
+  if (p.handles.reads.length)
+    lines.push(
+      `Reads metadata from: ${p.handles.reads.map((r) => r.format + (r.overrides ? ' (before Magnitide)' : '')).join(', ')}`,
+    );
+  if (p.handles.writes.length) lines.push(`Writes metadata into: ${p.handles.writes.join(', ')}`);
+  return lines;
+}
 
 /** What a capability lets a plugin do, as Settings shows it. */
 const NATIVE_CAPABILITIES: Record<NativeCapability, string> = {
@@ -1474,8 +1489,9 @@ function PluginSettings() {
       <Heading>Plugins</Heading>
       <p class="mb-4 text-xs text-muted">
         Magnitide plugins are .mgp packages: small, sandboxed programs that can do only what their package declares (the
-        network, say), and that Magnitide stops if they misbehave. Metadata sources join Find Metadata. Nothing else
-        needs to be installed. Writing one is described in docs/plugin-api.md.
+        network, say), and that Magnitide stops if they misbehave. Metadata sources join Find Metadata; import hooks run
+        on files you add, and see only that file; metadata plugins read and write book formats. Nothing else needs to be
+        installed. Writing one is described in docs/plugin-api.md.
       </p>
       <Show when={status()} fallback={<p class="text-xs text-muted">Checking the plugins…</p>}>
         {(s) => (
@@ -1693,7 +1709,13 @@ function NativePlugins(props: {
     try {
       const p = await api.installNativePlugin(path);
       props.onInstalled();
-      toast(`Added ${p.manifest.name}: it's now asked in Find Metadata`);
+      toast(
+        p.manifest.kind === 'metadata-source'
+          ? `Added ${p.manifest.name}: it's now asked in Find Metadata`
+          : p.manifest.kind === 'import-hook'
+            ? `Added ${p.manifest.name}: it runs on files you add`
+            : `Added ${p.manifest.name}: it reads and writes metadata in the formats it handles`,
+      );
     } catch (err) {
       toast(errorMessage(err), { error: true });
     } finally {
@@ -1747,6 +1769,7 @@ function NativePlugins(props: {
                       {NATIVE_KINDS[p.manifest.kind]}
                       <Show when={p.manifest.author}> · by {p.manifest.author}</Show> · {capabilities(p)}
                     </span>
+                    <For each={nativeHandlesLines(p)}>{(line) => <span class="mt-0.5 block">{line}</span>}</For>
                     <Show when={props.errors[p.manifest.name]}>
                       {(error) => <span class="mt-0.5 block text-danger select-text">Last error: {error()}</span>}
                     </Show>

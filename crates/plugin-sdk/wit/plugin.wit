@@ -39,6 +39,35 @@ interface types {
         cover-url: option<string>,
         pages: option<u32>,
     }
+
+    record author {
+        name: string,
+        /// The sort form ("Weir, Andy") when the file gives one.
+        sort: option<string>,
+    }
+
+    /// Metadata as a book file carries it (Magnitide's `BookMetadata`).
+    /// Everything is optional: leave out what the file doesn't say.
+    record book-metadata {
+        title: option<string>,
+        authors: list<author>,
+        series: option<string>,
+        series-index: option<f64>,
+        publisher: option<string>,
+        /// ISO date, "YYYY-MM-DD"; a year alone is allowed.
+        published: option<string>,
+        /// ISO 639-2 codes ("eng").
+        languages: list<string>,
+        identifiers: list<identifier>,
+        /// HTML or plain text; Magnitide sanitizes it.
+        description: option<string>,
+        tags: list<string>,
+        /// The cover image's bytes, in whatever format the file stores.
+        cover: option<list<u8>>,
+        /// Book uuids the file carries (calibre writes its own), lower case.
+        /// Read only: Magnitide uses them to recognize a book's copies.
+        uuids: list<string>,
+    }
 }
 
 /// Lines for the plugin log Magnitide shows in Settings.
@@ -85,9 +114,80 @@ interface metadata-source {
     identify: func(lookup: lookup) -> result<list<book-record>, string>;
 }
 
+/// A hook on files being added to the library (calibre's
+/// `FileTypePlugin.on_import`). The file is at `/in/<name>` in the
+/// plugin's sandbox, read-only; a rewritten file goes under `/out/`.
+interface import-hook {
+    /// What `on-import` made of the file.
+    variant outcome {
+        /// Add the file as it is.
+        unchanged,
+        /// Add this file instead: a path under `/out/` the plugin wrote.
+        /// Its extension decides the format it's added as.
+        replaced(string),
+    }
+
+    /// Lower-case extensions the hook runs on ("epub"); "*" for every file.
+    /// Extensions Magnitide doesn't know become addable.
+    file-types: func() -> list<string>;
+
+    /// Run on a file before its metadata is read. `file` is its path in the
+    /// sandbox (`/in/book.epub`), `format` its upper-case format ("EPUB").
+    /// An error means the file is added as it is and the reason reported.
+    on-import: func(file: string, format: string) -> result<outcome, string>;
+}
+
+/// Metadata readers and writers for book formats (calibre's
+/// `MetadataReaderPlugin` and `MetadataWriterPlugin`). The file is at
+/// `/in/<name>` for reading; for writing, a copy at `/out/<name>` that
+/// Magnitide moves over the original when the plugin succeeds.
+interface file-metadata {
+    use types.{book-metadata};
+
+    /// Whether a plugin reader beats Magnitide's own for a format.
+    enum precedence {
+        /// Used only for formats Magnitide can't read itself.
+        fallback,
+        /// Used first; Magnitide's reader on failure.
+        override,
+    }
+
+    record reads-format {
+        /// Upper case ("EPUB", "CBZ").
+        format: string,
+        precedence: precedence,
+    }
+
+    /// The formats this plugin reads metadata from.
+    reads: func() -> list<reads-format>;
+
+    /// Metadata from the file at `file` (`/in/book.cbz`), format `format`.
+    read: func(file: string, format: string) -> result<book-metadata, string>;
+
+    /// The formats this plugin writes metadata into (upper case).
+    writes: func() -> list<string>;
+
+    /// Write `meta` into the file at `file` (`/out/book.cbz`, writable).
+    write: func(file: string, format: string, meta: book-metadata) -> result<_, string>;
+}
+
 /// What a metadata-source plugin exports and may import.
 world metadata-source-plugin {
     import log;
     import http;
     export metadata-source;
+}
+
+/// What an import-hook plugin exports and may import.
+world import-hook-plugin {
+    import log;
+    import http;
+    export import-hook;
+}
+
+/// What a file-metadata plugin exports and may import.
+world file-metadata-plugin {
+    import log;
+    import http;
+    export file-metadata;
 }
