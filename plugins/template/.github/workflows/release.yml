@@ -1,0 +1,38 @@
+# For a plugin in its own repository: build the .mgp on every push, and
+# attach it to the release when a tag is pushed. Needs `zip` (present on
+# GitHub's runners) and the wasm32-wasip2 target.
+name: Plugin
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --target wasm32-wasip2
+      - name: Package
+        run: |
+          name="$(grep -E '^name *= *"' Cargo.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+          mkdir -p dist/pkg
+          cp manifest.toml dist/pkg/manifest.toml
+          cp "target/wasm32-wasip2/release/$(echo "$name" | tr '-' '_').wasm" dist/pkg/plugin.wasm
+          [ -d resources ] && cp -R resources dist/pkg/resources
+          (cd dist/pkg && zip -q -r "../$name.mgp" .)
+          ls -l dist/*.mgp
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin
+          path: dist/*.mgp
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.mgp

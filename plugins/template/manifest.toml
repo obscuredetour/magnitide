@@ -1,0 +1,11 @@
+# What Magnitide reads when the plugin is added. `kind` must match the world
+# the component implements (src/lib.rs); `capabilities` lists what it may do:
+# "network" (http), "write-library" and "read-files" (library actions).
+name = "My Plugin"
+version = "0.1.0"
+author = ""
+description = "What it does, in a line"
+api = "0.1"
+kind = "metadata-source"
+capabilities = ["network"]
+component = "plugin.wasm"

@@ -7,6 +7,7 @@ mod devices;
 mod lookup;
 #[cfg(target_os = "macos")]
 mod menu;
+mod plugins;
 mod server;
 mod themes;
 
@@ -101,6 +102,8 @@ fn main() {
         .setup(|app| {
             devices::watch(app.handle().clone());
             server::start_if_enabled(app.handle());
+            tauri::Manager::manage(app, plugins::create(app.handle()));
+            tauri::Manager::manage(app, plugins::create_native(app.handle()));
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
@@ -169,8 +172,40 @@ fn main() {
             commands::convert_targets,
             commands::convert_books,
             server::server_status,
-            server::set_server
+            server::set_server,
+            plugins::plugins_status,
+            plugins::install_native_plugin,
+            plugins::remove_native_plugin,
+            plugins::set_native_plugin_enabled,
+            plugins::native_plugin_log,
+            plugins::native_actions,
+            plugins::run_native_action,
+            plugins::answer_native_question,
+            plugins::install_plugin,
+            plugins::remove_plugin,
+            plugins::set_plugin_enabled,
+            plugins::plugin_log,
+            plugins::gui_plugin_names,
+            plugins::plugin_menus,
+            plugins::run_plugin,
+            plugins::plugin_answer,
+            plugins::configure_plugin,
+            plugins::set_plugin_output_format,
+            plugins::set_plugin_host,
+            plugins::install_plugin_calibre,
+            plugins::remove_plugin_calibre,
+            plugins::plugin_runtime_status,
+            plugins::install_plugin_runtime,
+            plugins::install_plugin_runtime_from_file,
+            plugins::cancel_plugin_runtime_install,
+            plugins::remove_plugin_runtime
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Magnitide");
+        .build(tauri::generate_context!())
+        .expect("error while running Magnitide")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                // Library-closed plugins run, and the plugin host shuts down with us.
+                plugins::library_closing(app);
+            }
+        });
 }

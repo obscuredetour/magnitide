@@ -22,4 +22,8 @@ skipped: Array<string>,
 /**
  * Books that couldn't be added, with the reason. Nothing was left behind for them.
  */
-failed: Array<string>, warnings: Array<string>, };
+failed: Array<string>, warnings: Array<string>, 
+/**
+ * Every file stored: the book it went to and its format (upper case).
+ */
+formats: Array<[number, string]>, };

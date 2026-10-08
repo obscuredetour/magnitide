@@ -6,7 +6,7 @@ use crate::model::{Book, BookId, CustomColumn};
 
 /// Every book in a library, loaded into memory. Search, sort and every view
 /// work on this, whatever kind of library it came from.
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Catalog {
     /// The source library's own id, when it has one.
     pub library_uuid: Option<String>,

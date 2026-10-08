@@ -4,7 +4,15 @@ import type { SourceId } from "./SourceId";
 /**
  * One source's description of a book.
  */
-export type SourceRecord = { source: SourceId | null, 
+export type SourceRecord = { 
+/**
+ * A built-in source; None for a record from a calibre plugin.
+ */
+source: SourceId | null, 
+/**
+ * What to call the source: "Open Library", or the plugin's name.
+ */
+sourceName: string, 
 /**
  * The source's id for it (Open Library work key, Google volume id).
  */
@@ -29,6 +37,11 @@ identifiers: { [key in string]: string }, tags: Array<string>,
  * Untrusted HTML: sanitize before display or saving.
  */
 descriptionHtml: string | null, coverUrl: string | null, pages: number | null, 
+/**
+ * The series the book belongs to, and its number in it (sources that
+ * know series: calibre plugins, Magnitide plugins such as Goodreads).
+ */
+series: string | null, seriesIndex: number | null, 
 /**
  * More (the description) can be fetched with [`details`].
  */

@@ -2,7 +2,7 @@
 // another ("2 / 4"), saving each book's chosen fields as it goes. The next
 // book's search runs while the current one is reviewed.
 
-import { createResource, createSignal, Show } from 'solid-js';
+import { createEffect, createResource, createRoot, createSignal, Show } from 'solid-js';
 
 import { api, type BookEdit, coverChanged, errorMessage, type SearchResult } from './api';
 import { type Applied, type Current, MatchDialog } from './components/MatchDialog';
@@ -32,6 +32,7 @@ function load(id: number): Promise<Loaded> {
       const current: Current = {
         title: edit.title,
         authors: edit.authors,
+        series: edit.series ? { name: edit.series, index: edit.seriesIndex } : null,
         publisher: edit.publisher,
         published: edit.published,
         languages: edit.languages,
@@ -67,6 +68,20 @@ export function findMetadataFor(ids: number[]): void {
   setRun({ queue: ids, index: 0 });
 }
 
+/** Resolves once no Find Metadata run is open (a calibre plugin waits on this). */
+export function untilLookupDone(): Promise<void> {
+  return new Promise((resolve) =>
+    createRoot((dispose) =>
+      createEffect(() => {
+        if (!run()) {
+          dispose();
+          resolve();
+        }
+      }),
+    ),
+  );
+}
+
 function finish(): void {
   const r = run();
   setRun(null);
@@ -96,6 +111,10 @@ async function save(book: Loaded, a: Applied): Promise<void> {
     edit.titleSort = ''; // derived again from the new title
   }
   if (a.authors) edit.authors = a.authors;
+  if (a.series) {
+    edit.series = a.series.name;
+    edit.seriesIndex = a.series.index ?? 1;
+  }
   if (a.publisher !== undefined) edit.publisher = a.publisher;
   if (a.published !== undefined) edit.published = a.published;
   if (a.languages) edit.languages = a.languages;

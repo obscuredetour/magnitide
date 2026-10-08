@@ -9,6 +9,7 @@ import Settings from 'lucide-solid/icons/settings';
 import X from 'lucide-solid/icons/x';
 
 import type { SortKey } from '../api';
+import type { SettingsSection } from './Settings';
 import { query, queryError, search, setSort, sort, sortDir } from '../library';
 import { setSidebarOpen, setViewMode, sidebarOpen, viewMode } from '../view';
 import { CoverSizeSlider } from './CoverSizeSlider';
@@ -16,6 +17,7 @@ import { DeviceMenu } from './DeviceMenu';
 import { LibraryMenu } from './LibraryMenu';
 import { Select } from './Select';
 import { ThemeMenu } from './ThemeMenu';
+import { PluginsMenu } from './PluginMenus';
 import { Icon } from './Icon';
 import { keys } from '../keys';
 
@@ -60,7 +62,8 @@ type Props = {
   searchRef?: (el: HTMLInputElement) => void;
   /** Leave the search box (Esc on empty, Enter, ↓). */
   onLeaveSearch(): void;
-  onOpenSettings(): void;
+  /** Opens Settings, at `section` if given. */
+  onOpenSettings(section?: SettingsSection): void;
 };
 
 export function TopBar(props: Props) {
@@ -156,6 +159,7 @@ export function TopBar(props: Props) {
         >
           <Icon of={sortDir() === 'asc' ? ArrowUpNarrowWide : ArrowDownWideNarrow} />
         </button>
+        <PluginsMenu onManage={() => props.onOpenSettings('plugins')} />
         <ThemeMenu />
         <button
           class="grid size-8 place-items-center rounded-control text-muted hover:bg-hover hover:text-fg"

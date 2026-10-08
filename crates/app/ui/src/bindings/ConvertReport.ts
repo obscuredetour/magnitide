@@ -6,6 +6,10 @@ export type ConvertReport = {
  */
 converted: number, 
 /**
+ * Which ones, in order (for plugins that run after a conversion).
+ */
+convertedIds: Array<number>, 
+/**
  * Books that already had it.
  */
 already: number, 

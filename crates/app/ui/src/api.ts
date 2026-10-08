@@ -30,6 +30,30 @@ import type { ThemeAddons } from './bindings/ThemeAddons';
 import type { MergeOutcome } from './bindings/MergeOutcome';
 import type { RemoveReport } from './bindings/RemoveReport';
 import type { SendReport } from './bindings/SendReport';
+import type { Installed as InstalledPlugin } from './bindings/Installed';
+import type { NativePlugin } from './bindings/NativePlugin';
+import type { NativeCapability } from './bindings/NativeCapability';
+import type { NativeKind } from './bindings/NativeKind';
+import type { NativeMenuItem } from './bindings/NativeMenuItem';
+import type { NativeActionDone } from './bindings/NativeActionDone';
+import type { NativeQuestion } from './bindings/NativeQuestion';
+import type { PluginKind } from './bindings/PluginKind';
+import type { PluginsStatus } from './bindings/PluginsStatus';
+import type { PluginMenus } from './bindings/PluginMenus';
+import type { PluginMenu } from './bindings/PluginMenu';
+import type { MenuItem as PluginMenuItem } from './bindings/MenuItem';
+import type { PluginDone } from './bindings/PluginDone';
+import type { PluginMessage } from './bindings/PluginMessage';
+import type { PluginAsk } from './bindings/PluginAsk';
+import type { PluginOpenBook } from './bindings/PluginOpenBook';
+import type { PluginJob } from './bindings/PluginJob';
+import type { Configured as PluginConfigured } from './bindings/Configured';
+import type { Hooks as PluginHooks } from './bindings/Hooks';
+import type { RuntimeStatus } from './bindings/RuntimeStatus';
+import type { HostChoice as PluginHostChoice } from './bindings/HostChoice';
+import type { CalibreInstall } from './bindings/CalibreInstall';
+import type { RuntimeProgress } from './bindings/RuntimeProgress';
+import type { ApplyReport } from './bindings/ApplyReport';
 import type { ServerStatus } from './bindings/ServerStatus';
 import type { TransferProgress } from './bindings/TransferProgress';
 import type { Lookup } from './bindings/Lookup';
@@ -69,6 +93,30 @@ export type {
   FieldValue,
   NewField,
   AddReport,
+  ApplyReport,
+  InstalledPlugin,
+  NativePlugin,
+  NativeCapability,
+  NativeKind,
+  NativeMenuItem,
+  NativeActionDone,
+  NativeQuestion,
+  PluginAsk,
+  PluginOpenBook,
+  PluginJob,
+  PluginConfigured,
+  PluginHooks,
+  PluginDone,
+  PluginKind,
+  PluginMenu,
+  PluginMenuItem,
+  PluginMenus,
+  PluginMessage,
+  PluginsStatus,
+  RuntimeStatus,
+  PluginHostChoice,
+  CalibreInstall,
+  RuntimeProgress,
   ServerStatus,
   AuthorSort,
   BookDetails,
@@ -322,6 +370,120 @@ export const api = {
 
   openThemesFolder: () => invoke<void>('open_themes_folder'),
 
+  /** calibre plugins: the plugin runtime's state, and the plugins installed. */
+  pluginsStatus: () => invoke<PluginsStatus>('plugins_status'),
+
+  /** The plugin runtime's state, checked by running it (a missing system library shows here). */
+  pluginRuntimeStatus: () => invoke<RuntimeStatus>('plugin_runtime_status'),
+
+  /** Download and install the plugin runtime; `onPluginRuntimeProgress` reports meanwhile. */
+  installPluginRuntime: () => invoke<RuntimeStatus>('install_plugin_runtime'),
+
+  /** Install the plugin runtime from its published archive, downloaded by hand (checked by its hash). */
+  installPluginRuntimeFromFile: (path: string) => invoke<RuntimeStatus>('install_plugin_runtime_from_file', { path }),
+
+  async chooseRuntimeArchive(): Promise<string | null> {
+    const picked = await open({
+      title: 'Choose the plugin runtime archive',
+      multiple: false,
+      filters: [{ name: 'Plugin runtime archive', extensions: ['zst'] }],
+    });
+    return typeof picked === 'string' ? picked : null;
+  },
+
+  cancelPluginRuntimeInstall: () => invoke<void>('cancel_plugin_runtime_install'),
+
+  /** Remove the plugin runtime (plugins and their settings are kept). */
+  removePluginRuntime: () => invoke<RuntimeStatus>('remove_plugin_runtime'),
+
+  /** Install a Magnitide plugin (a .mgp package), or update one already installed. */
+  installNativePlugin: (path: string) => invoke<NativePlugin>('install_native_plugin', { path }),
+
+  removeNativePlugin: (name: string) => invoke<NativePlugin[]>('remove_native_plugin', { name }),
+
+  setNativePluginEnabled: (name: string, enabled: boolean) =>
+    invoke<NativePlugin[]>('set_native_plugin_enabled', { name, enabled }),
+
+  /** What a Magnitide plugin logged in its recent calls, oldest first. */
+  nativePluginLog: (name: string) => invoke<string[]>('native_plugin_log', { name }),
+
+  /** The Magnitide library actions that are on, with their menus (nothing runs for this). */
+  nativeActions: () => invoke<NativePlugin[]>('native_actions'),
+
+  /**
+   * Run a Magnitide library action's menu item on these books. Resolves when
+   * it's done; `onPluginMessage` reports its progress meanwhile.
+   */
+  runNativeAction: (plugin: string, item: string, selection: number[]) =>
+    invoke<NativeActionDone>('run_native_action', { plugin, item, selection }),
+
+  /** Answer a library action's question (`onPluginQuestion`): a choice, text, or neither when dismissed. */
+  answerNativeQuestion: (token: number, choice: number | null, text: string | null) =>
+    invoke<void>('answer_native_question', { token, choice, text }),
+
+  async chooseNativePlugin(): Promise<string | null> {
+    const picked = await open({
+      title: 'Choose a Magnitide plugin',
+      multiple: false,
+      filters: [{ name: 'Magnitide plugins', extensions: ['mgp'] }],
+    });
+    return typeof picked === 'string' ? picked : null;
+  },
+
+  /** Install a calibre plugin zip, or update one already installed. */
+  installPlugin: (path: string) => invoke<InstalledPlugin>('install_plugin', { path }),
+
+  removePlugin: (name: string) => invoke<InstalledPlugin[]>('remove_plugin', { name }),
+
+  setPluginEnabled: (name: string, enabled: boolean) =>
+    invoke<InstalledPlugin[]>('set_plugin_enabled', { name, enabled }),
+
+  /** The names of the GUI plugins that are on (doesn't start the plugin runtime). */
+  guiPluginNames: () => invoke<string[]>('gui_plugin_names'),
+
+  /** The GUI plugins' menus for the open library (starts the plugin runtime if needed). */
+  pluginMenus: () => invoke<PluginMenus>('plugin_menus'),
+
+  /**
+   * Run a GUI plugin's menu item (or, with an empty path, its toolbar button) on
+   * these books. Resolves once it has started; `onPluginDone` follows.
+   */
+  runPlugin: (plugin: string, path: number[], texts: string[], selection: number[], search = '') =>
+    invoke<void>('run_plugin', { plugin, path, texts, selection, search }),
+
+  /**
+   * Magnitide's editor closed, its delete, Find Metadata or conversion
+   * finished, for a plugin waiting on it (`onPluginAsk`).
+   */
+  pluginAnswer: (token: number, kind: string, ids: number[]) => invoke<void>('plugin_answer', { token, kind, ids }),
+
+  /** Open a plugin's own settings (its dialog, in the plugin runtime) and wait for it to close. */
+  configurePlugin: (name: string) => invoke<PluginConfigured>('configure_plugin', { name }),
+
+  /** Where plugins run: an installed calibre, Magnitide's runtime, or whichever is there. */
+  setPluginHost: (choice: PluginHostChoice) => invoke<RuntimeStatus>('set_plugin_host', { choice }),
+
+  /** Download calibre's own build as a plugin host; `onPluginRuntimeProgress` reports meanwhile. */
+  installPluginCalibre: () => invoke<RuntimeStatus>('install_plugin_calibre'),
+
+  /** Remove the calibre Magnitide downloaded. */
+  removePluginCalibre: () => invoke<RuntimeStatus>('remove_plugin_calibre'),
+
+  /** What books are converted to when a plugin asks (calibre's output format). */
+  setPluginOutputFormat: (format: string) => invoke<void>('set_plugin_output_format', { format }),
+
+  /** The plugin host's recent output (what plugins printed, tracebacks). */
+  pluginLog: () => invoke<string[]>('plugin_log'),
+
+  async choosePluginZip(): Promise<string | null> {
+    const picked = await open({
+      title: 'Choose a calibre plugin',
+      multiple: false,
+      filters: [{ name: 'calibre plugins', extensions: ['zip'] }],
+    });
+    return typeof picked === 'string' ? picked : null;
+  },
+
   async chooseThemeFile(): Promise<string | null> {
     const picked = await open({
       title: 'Choose a theme file',
@@ -409,6 +571,64 @@ export function onOpenSettings(handler: () => void): Promise<UnlistenFn> {
 }
 
 /** View › Zoom In / Zoom Out / Actual Size in the macOS menu bar. Matches `ZOOM_EVENT` in menu.rs. */
+/** A GUI plugin finished; its changes (if any) are in the library. */
+export function onPluginDone(handler: (d: PluginDone) => void): Promise<UnlistenFn> {
+  return listen<PluginDone>('plugin-done', (e) => handler(e.payload));
+}
+
+/** A GUI plugin's status message, or an error in it. */
+export function onPluginMessage(handler: (m: PluginMessage) => void): Promise<UnlistenFn> {
+  return listen<PluginMessage>('plugin-message', (e) => handler(e.payload));
+}
+
+/** A GUI plugin called calibre's Edit Metadata or Remove Books, and waits for Magnitide's. */
+export function onPluginAsk(handler: (a: PluginAsk) => void): Promise<UnlistenFn> {
+  return listen<PluginAsk>('plugin-ask', (e) => handler(e.payload));
+}
+
+/** A GUI plugin selected books. */
+export function onPluginSelect(handler: (ids: number[]) => void): Promise<UnlistenFn> {
+  return listen<number[]>('plugin-select', (e) => handler(e.payload));
+}
+
+/** A GUI plugin searched the library (calibre's search box). */
+export function onPluginSearch(handler: (text: string) => void): Promise<UnlistenFn> {
+  return listen<string>('plugin-search', (e) => handler(e.payload));
+}
+
+/** A GUI plugin opened a book (calibre's View). */
+export function onPluginOpenBook(handler: (b: PluginOpenBook) => void): Promise<UnlistenFn> {
+  return listen<PluginOpenBook>('plugin-open-book', (e) => handler(e.payload));
+}
+
+/** A Magnitide library action is asking the user something; it waits for `answerNativeQuestion`. */
+export function onPluginQuestion(handler: (q: NativeQuestion) => void): Promise<UnlistenFn> {
+  return listen<NativeQuestion>('plugin-question', (e) => handler(e.payload));
+}
+
+/** A job a GUI plugin started in the plugin runtime: started, progressed or done. */
+export function onPluginJob(handler: (j: PluginJob) => void): Promise<UnlistenFn> {
+  return listen<PluginJob>('plugin-job', (e) => handler(e.payload));
+}
+
+/** The plugin runtime's install, as it goes. Matches `PLUGIN_RUNTIME_PROGRESS_EVENT` in plugins.rs. */
+export function onPluginRuntimeProgress(handler: (p: RuntimeProgress) => void): Promise<UnlistenFn> {
+  return listen<RuntimeProgress>('plugin-runtime-progress', (e) => handler(e.payload));
+}
+
+/** The errors the backend gives when plugins are used with no host to run them (the plugins crate's constants). */
+export const RUNTIME_MISSING = "The plugin runtime isn't installed. Install it in Settings › Plugins.";
+export const CALIBRE_MISSING =
+  "No installed calibre was found. Install calibre, or choose Magnitide's plugin runtime in Settings › Plugins.";
+export const RUNTIME_OR_CALIBRE_MISSING =
+  "calibre plugins need an installed calibre or Magnitide's plugin runtime. Install either in Settings › Plugins.";
+
+/** Whether an error means there's nothing to run plugins in (Settings › Plugins sorts it out). */
+export function isRuntimeMissing(err: unknown): boolean {
+  const m = errorMessage(err);
+  return m === RUNTIME_MISSING || m === CALIBRE_MISSING || m === RUNTIME_OR_CALIBRE_MISSING;
+}
+
 export function onZoomMenu(handler: (action: 'in' | 'out' | 'reset') => void): Promise<UnlistenFn> {
   return listen<'in' | 'out' | 'reset'>('zoom', (e) => handler(e.payload));
 }

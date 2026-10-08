@@ -1,0 +1,11 @@
+{
+  "_comment": "The calibre release Magnitide downloads for the 'calibre downloaded by Magnitide' plugin host: calibre's official builds, from its GitHub release first and download.calibre-ebook.com second, checked against the SHA-512 calibre publishes at calibre-ebook.com/signatures/. Written by pin.py; CALIBRE_RELEASES in crates/plugins/src/calibre.rs must match (a unit test checks).",
+  "version": "9.15.0",
+  "files": {
+    "aarch64-apple-darwin": {"file": "calibre-9.15.0.dmg", "size": 350293492, "sha512": "6475fa3deadd4cc9cd2d0eac14ef7fb042c0e2d10837cd304151997d699401cd6d37334c189e311198b84e0b4db1f4438d8ae32cebbf758957b0208b7523a4f4"},
+    "x86_64-apple-darwin": {"file": "calibre-9.15.0.dmg", "size": 350293492, "sha512": "6475fa3deadd4cc9cd2d0eac14ef7fb042c0e2d10837cd304151997d699401cd6d37334c189e311198b84e0b4db1f4438d8ae32cebbf758957b0208b7523a4f4"},
+    "x86_64-pc-windows-msvc": {"file": "calibre-64bit-9.15.0.msi", "size": 226549760, "sha512": "960ec56105a08952a8c03cd0dccacd82a19e7045c5e10ed1a9977d118a64bcf16491e3e9cedc4a08268dc714547a41910a34f2beb247f8f4a5ce3bcd5d145ebe"},
+    "x86_64-unknown-linux-gnu": {"file": "calibre-9.15.0-x86_64.txz", "size": 194998300, "sha512": "77fb209188906a1be5ca1e8147339bd06242414ffbfe7dbc54e65667c8d6057fdc6e709efff0c415c42fb95ca5f53359ae041d5089cd9927a0d1d74d9fc8f4a5"},
+    "aarch64-unknown-linux-gnu": {"file": "calibre-9.15.0-arm64.txz", "size": 182488416, "sha512": "725bae1ccbc5501df9cb92c1df4df9d335cd470dd8681c099bf7c1c7a0c05845f139a066c22dc38374c58fde0c4c2df21e9139e1a25d4917e0fd2183f2fcbafb"}
+  }
+}

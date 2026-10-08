@@ -1,5 +1,7 @@
-//! Metadata lookup ("Find Metadata"): searching online sources, previewing
-//! their covers, and the per-user source settings. The network is only used
+//! Metadata lookup ("Find Metadata"): searching online sources (built-in,
+//! Magnitide's own metadata-source plugins and calibre ones), previewing
+//! their covers, and the
+//! per-user source settings. The network is only used
 //! from these commands, which only run when the user asks; the webview never
 //! contacts the sources itself (covers are proxied through `cover://remote/`).
 
@@ -9,6 +11,9 @@ use std::hash::{Hash, Hasher};
 use std::io::Cursor;
 use std::path::PathBuf;
 
+use magnitide_plugins::Plugins;
+use magnitide_plugins::sources::is_plugin_cover;
+use magnitide_plugins_wasm::WasmPlugins;
 use magnitide_sources::{Lookup, SearchResult, Settings, SourceId, SourceRecord};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
@@ -101,16 +106,36 @@ pub async fn set_metadata_source(
     Ok(statuses(&s))
 }
 
-/// Search every active source. Descriptions come back sanitized.
+/// Search every active source at once: the built-in ones, Magnitide's own
+/// plugins and calibre plugins. Descriptions come back sanitized.
 #[tauri::command]
 pub async fn find_metadata(app: AppHandle, lookup: Lookup) -> CmdResult<SearchResult> {
     let settings = load_settings(&app);
-    if !SourceId::ALL.iter().any(|s| settings.enabled(*s)) {
+    let any_plugin = !app.state::<Plugins>().metadata_sources().is_empty()
+        || !app.state::<WasmPlugins>().metadata_sources().is_empty();
+    if !SourceId::ALL.iter().any(|s| settings.enabled(*s)) && !any_plugin {
         return Err("Every metadata source is turned off. Turn one on in Settings → Metadata Sources.".into());
     }
-    let mut result = tauri::async_runtime::spawn_blocking(move || magnitide_sources::search(&lookup, &settings))
-        .await
-        .map_err(|e| e.to_string())?;
+    let app2 = app.clone();
+    let mut result = tauri::async_runtime::spawn_blocking(move || {
+        let plugins = app2.state::<Plugins>();
+        let native = app2.state::<WasmPlugins>();
+        let ((mut records, mut errors), from_plugins, from_native) = std::thread::scope(|scope| {
+            let plugins = scope.spawn(|| plugins.identify(&lookup));
+            let native = scope.spawn(|| native.identify(&lookup));
+            let built_in = magnitide_sources::search_records(&lookup, &settings);
+            (built_in, plugins.join().unwrap_or_default(), native.join().unwrap_or_default())
+        });
+        for (name, answer) in from_native.into_iter().chain(from_plugins) {
+            match answer {
+                Ok(r) => records.extend(r),
+                Err(e) => errors.push(format!("{name}: {e}")),
+            }
+        }
+        magnitide_sources::rank(&lookup, records, errors)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
     for m in &mut result.matches {
         m.records.iter_mut().for_each(clean);
     }
@@ -136,8 +161,9 @@ fn clean(r: &mut SourceRecord) {
 #[tauri::command]
 pub async fn cover_preview(app: AppHandle, url: String) -> CmdResult<CoverPreview> {
     let dir = remote_dir(&app)?;
+    let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let (key, bytes) = cached_cover(&dir, &url)?;
+        let (key, bytes) = cached_cover(&app, &dir, &url)?;
         let (width, height) = image::ImageReader::new(Cursor::new(&bytes))
             .with_guessed_format()
             .map_err(|e| e.to_string())?
@@ -153,7 +179,7 @@ pub async fn cover_preview(app: AppHandle, url: String) -> CmdResult<CoverPrevie
 #[tauri::command]
 pub async fn set_cover_from_url(app: AppHandle, state: State<'_, AppState>, id: i64, url: String) -> CmdResult<()> {
     let dir = remote_dir(&app)?;
-    let bytes = tauri::async_runtime::spawn_blocking(move || cached_cover(&dir, &url).map(|(_, b)| b))
+    let bytes = tauri::async_runtime::spawn_blocking(move || cached_cover(&app, &dir, &url).map(|(_, b)| b))
         .await
         .map_err(|e| e.to_string())??;
     write_library(&state, move |lib| lib.set_cover(id, &bytes)).await
@@ -163,9 +189,10 @@ pub fn remote_dir(app: &AppHandle) -> CmdResult<PathBuf> {
     Ok(thumbs_root(app)?.join("remote"))
 }
 
-/// The cover at `url`, from the cache or downloaded into it. The key is
-/// a hash of the URL (only ever hex, so safe as a file name).
-fn cached_cover(dir: &std::path::Path, url: &str) -> CmdResult<(String, Vec<u8>)> {
+/// The cover at `url`, from the cache or downloaded into it (a plugin's
+/// cover, from the plugin). The key is a hash of the URL (only ever hex, so
+/// safe as a file name).
+fn cached_cover(app: &AppHandle, dir: &std::path::Path, url: &str) -> CmdResult<(String, Vec<u8>)> {
     let mut h = DefaultHasher::new();
     url.hash(&mut h);
     let key = format!("{:016x}", h.finish());
@@ -173,7 +200,11 @@ fn cached_cover(dir: &std::path::Path, url: &str) -> CmdResult<(String, Vec<u8>)
     if let Ok(bytes) = fs::read(&path) {
         return Ok((key, bytes));
     }
-    let bytes = magnitide_sources::download_cover(url).map_err(|e| format!("Couldn't download the cover: {e}"))?;
+    let bytes = if is_plugin_cover(url) {
+        app.state::<Plugins>().cover(url).map_err(|e| format!("Couldn't get the cover: {e}"))?
+    } else {
+        magnitide_sources::download_cover(url).map_err(|e| format!("Couldn't download the cover: {e}"))?
+    };
     fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let tmp = dir.join(format!(".{key}.tmp"));
     fs::write(&tmp, &bytes).and_then(|()| fs::rename(&tmp, &path)).map_err(|e| e.to_string())?;

@@ -84,6 +84,15 @@ export function selectRange(id: number, list: readonly BookRow[]): void {
   });
 }
 
+/** Select exactly these books (the first becomes the primary one). */
+export function selectBooks(ids: readonly number[]): void {
+  batch(() => {
+    setSelection(new Set(ids));
+    setPrimary(ids[0] ?? null);
+  });
+  anchor = ids[0] ?? null;
+}
+
 export function selectAll(list: readonly BookRow[]): void {
   if (!list.length) return;
   batch(() => {

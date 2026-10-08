@@ -1,6 +1,6 @@
 [package]
 name = "magnitide"
-version = "0.2.0"
+version = "0.4.0"
 edition = "2024"
 description = "A fast ebook library manager that works with your calibre library"
 license = "GPL-3.0-or-later"
@@ -22,6 +22,8 @@ ts-rs = "12.0.1"
 magnitide-core = { version = "0.1.0", path = "../core", features = ["ts"] }
 magnitide-sources = { version = "0.1.0", path = "../sources", features = ["ts"] }
 magnitide-server = { version = "0.1.0", path = "../server" }
+magnitide-plugins = { version = "0.1.0", path = "../plugins", features = ["ts"] }
+magnitide-plugins-wasm = { version = "0.1.0", path = "../plugins-wasm", features = ["ts"] }
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 trash = "5.2.9"
 

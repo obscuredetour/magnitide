@@ -91,6 +91,13 @@ pub async fn open_library(app: AppHandle, state: State<'_, AppState>, path: Opti
     .map_err(|e| e.to_string())?
     .map_err(|e| format!("{e:#}"))?;
 
+    if let Some(prev) = state.current().filter(|prev| !same_path(&prev.root, &loaded.root)) {
+        drop(prev);
+        let handle = app.clone();
+        tauri::async_runtime::spawn_blocking(move || crate::plugins::library_closing(&handle))
+            .await
+            .map_err(|e| e.to_string())?;
+    }
     state.replace(loaded);
     Ok(info)
 }
@@ -108,19 +115,32 @@ pub async fn add_books(
     paths: Vec<String>,
 ) -> CmdResult<magnitide_core::import::AddReport> {
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    write_library(&state, move |lib| {
+    let hooks = crate::plugins::AppHooks(app.clone());
+    let handle = app.clone();
+    let report = write_library(&state, move |lib| {
         let mut last = Instant::now();
-        magnitide_core::import::add_files(lib, &paths, |p| {
+        magnitide_core::import::add_files_with(lib, &paths, &hooks, &hooks, |p| {
             if p.done == 0 || p.done == p.total || last.elapsed().as_millis() >= 50 {
                 last = Instant::now();
-                let _ = app.emit(
+                let _ = handle.emit(
                     ADD_PROGRESS_EVENT,
                     ImportProgress { done: p.done, total: p.total, title: p.title.to_owned() },
                 );
             }
         })
     })
-    .await
+    .await?;
+    // File-type plugins that run after an add (on the shadow library).
+    let mut items: Vec<(i64, Vec<String>)> = Vec::new();
+    for &(id, ref format) in &report.formats {
+        match items.iter_mut().find(|(b, _)| *b == id) {
+            Some((_, formats)) => formats.push(format.clone()),
+            None => items.push((id, vec![format.clone()])),
+        }
+    }
+    crate::plugins::post_hooks(&app, magnitide_plugins::Hook::Postimport, items.clone()).await;
+    crate::plugins::post_hooks(&app, magnitide_plugins::Hook::Postadd, items).await;
+    Ok(report)
 }
 
 /// How many books "Tidy file names" would rename.
@@ -142,41 +162,56 @@ pub async fn tidy_file_names(state: State<'_, AppState>) -> CmdResult<magnitide_
 /// Whether a book's files hold its current metadata; null for calibre libraries.
 #[tauri::command]
 pub async fn file_metadata_status(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: i64,
 ) -> CmdResult<Option<magnitide_core::writeback::FileMetadataStatus>> {
     let Some(native) = state.current().ok_or("No library is open")?.native.clone() else { return Ok(None) };
+    let hooks = crate::plugins::AppHooks(app);
     tauri::async_runtime::spawn_blocking(move || {
-        native.lock().unwrap_or_else(|e| e.into_inner()).file_metadata_status(id).map(Some)
+        native.lock().unwrap_or_else(|e| e.into_inner()).file_metadata_status_with(id, &hooks).map(Some)
     })
     .await
     .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())
 }
 
-/// Write a book's metadata and cover into its EPUB files (those that differ).
+/// Write a book's metadata and cover into its files that differ (EPUB, and
+/// formats a metadata writer plugin handles).
 #[tauri::command]
 pub async fn write_metadata_to_files(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: i64,
 ) -> CmdResult<magnitide_core::writeback::WriteReport> {
-    write_library(&state, move |lib| lib.write_metadata_to_files(id)).await
+    let hooks = crate::plugins::AppHooks(app);
+    write_library(&state, move |lib| lib.write_metadata_to_files_with(id, &hooks)).await
 }
 
 /// How many books "Write metadata to files" would rewrite.
 #[tauri::command]
-pub async fn writeback_preview(state: State<'_, AppState>) -> CmdResult<magnitide_core::writeback::WritebackPreview> {
+pub async fn writeback_preview(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> CmdResult<magnitide_core::writeback::WritebackPreview> {
     let native = native(&state)?;
-    tauri::async_runtime::spawn_blocking(move || native.lock().unwrap_or_else(|e| e.into_inner()).writeback_preview())
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())
+    let hooks = crate::plugins::AppHooks(app);
+    tauri::async_runtime::spawn_blocking(move || {
+        native.lock().unwrap_or_else(|e| e.into_inner()).writeback_preview_with(&hooks)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
 }
 
-/// Write every book's metadata into its EPUB files that differ from the library.
+/// Write every book's metadata into its files that differ from the library.
 #[tauri::command]
-pub async fn write_all_metadata(state: State<'_, AppState>) -> CmdResult<magnitide_core::writeback::WriteReport> {
-    write_library(&state, |lib| lib.write_all_metadata(|_, _| {})).await
+pub async fn write_all_metadata(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> CmdResult<magnitide_core::writeback::WriteReport> {
+    let hooks = crate::plugins::AppHooks(app);
+    write_library(&state, move |lib| lib.write_all_metadata_with(|_, _| {}, &hooks)).await
 }
 
 /// Names already used in the library, for autocomplete in the edit form.
@@ -321,13 +356,18 @@ pub async fn convert_books(
     book_ids: Vec<i64>,
     to: String,
 ) -> CmdResult<magnitide_core::convert::ConvertReport> {
-    write_library(&state, move |lib| {
+    let handle = app.clone();
+    let format = to.clone();
+    let report = write_library(&state, move |lib| {
         let converter = magnitide_core::convert::Converter::detect();
         lib.convert_books(&book_ids, &to, &converter, |done, total, title| {
-            let _ = app.emit(CONVERT_PROGRESS_EVENT, ImportProgress { done, total, title: title.to_owned() });
+            let _ = handle.emit(CONVERT_PROGRESS_EVENT, ImportProgress { done, total, title: title.to_owned() });
         })
     })
-    .await
+    .await?;
+    let items = report.converted_ids.iter().map(|&id| (id, vec![format.clone()])).collect();
+    crate::plugins::post_hooks(&app, magnitide_plugins::Hook::Postconvert, items).await;
+    Ok(report)
 }
 
 /// Merge book `other` into book `keep` (formats, missing cover, tags and
@@ -368,14 +408,17 @@ pub async fn delete_books(
 
 /// Remove one format from a book, moving its file to the Trash.
 #[tauri::command]
-pub async fn remove_format(state: State<'_, AppState>, id: i64, format: String) -> CmdResult<()> {
+pub async fn remove_format(app: AppHandle, state: State<'_, AppState>, id: i64, format: String) -> CmdResult<()> {
+    let removed = format.clone();
     write_library(&state, move |lib| {
         lib.remove_format(id, &format, |path| trash::delete(path).map_err(std::io::Error::other))
     })
-    .await
+    .await?;
+    crate::plugins::post_hooks(&app, magnitide_plugins::Hook::Postdelete, vec![(id, vec![removed])]).await;
+    Ok(())
 }
 
-const READ_ONLY: &str =
+pub(crate) const READ_ONLY: &str =
     "This calibre library is read-only. Import it into a Magnitide library (library menu) to change it.";
 
 /// The open Magnitide library, or an error for calibre libraries.

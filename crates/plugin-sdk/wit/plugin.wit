@@ -1,0 +1,341 @@
+/// Magnitide's native plugin API: WebAssembly components, any language with
+/// a WIT toolchain. Versioned apart from the app; a plugin names the version
+/// it was built for in its manifest.
+package magnitide:plugin@0.1.0;
+
+/// Book data, as Magnitide's metadata lookup uses it.
+interface types {
+    /// What Find Metadata knows about the book being looked up.
+    record lookup {
+        title: string,
+        authors: list<string>,
+        isbn: option<string>,
+    }
+
+    record identifier {
+        /// "isbn" (an ISBN-13), or the source's own kind ("openlibrary", "goodreads").
+        key: string,
+        value: string,
+    }
+
+    /// One source's description of a book. Everything but `title` is optional.
+    record book-record {
+        /// The source's own id for it, unique within the source.
+        source-key: string,
+        /// The book's page on the source's website.
+        link: option<string>,
+        title: string,
+        subtitle: option<string>,
+        authors: list<string>,
+        publisher: option<string>,
+        /// ISO date, "YYYY-MM-DD"; a year alone is allowed ("1965").
+        published: option<string>,
+        /// ISO 639-2 codes ("eng").
+        languages: list<string>,
+        identifiers: list<identifier>,
+        tags: list<string>,
+        /// HTML or plain text; Magnitide sanitizes it.
+        description-html: option<string>,
+        cover-url: option<string>,
+        pages: option<u32>,
+        /// The series the book belongs to, and its number in it.
+        series: option<string>,
+        series-index: option<f64>,
+    }
+
+    record author {
+        name: string,
+        /// The sort form ("Weir, Andy") when the file gives one.
+        sort: option<string>,
+    }
+
+    /// Metadata as a book file carries it (Magnitide's `BookMetadata`).
+    /// Everything is optional: leave out what the file doesn't say.
+    record book-metadata {
+        title: option<string>,
+        authors: list<author>,
+        series: option<string>,
+        series-index: option<f64>,
+        publisher: option<string>,
+        /// ISO date, "YYYY-MM-DD"; a year alone is allowed.
+        published: option<string>,
+        /// ISO 639-2 codes ("eng").
+        languages: list<string>,
+        identifiers: list<identifier>,
+        /// HTML or plain text; Magnitide sanitizes it.
+        description: option<string>,
+        tags: list<string>,
+        /// The cover image's bytes, in whatever format the file stores.
+        cover: option<list<u8>>,
+        /// Book uuids the file carries (calibre writes its own), lower case.
+        /// Read only: Magnitide uses them to recognize a book's copies.
+        uuids: list<string>,
+    }
+}
+
+/// Lines for the plugin log Magnitide shows in Settings.
+interface log {
+    enum level { debug, info, warn, error }
+    log: func(level: level, text: string);
+}
+
+/// HTTP through Magnitide. Needs the `network` capability in the manifest;
+/// without it every call fails. Responses are capped at 20 MB and 30 s.
+interface http {
+    record header { name: string, value: string }
+    record request {
+        /// "GET", "POST", …
+        method: string,
+        url: string,
+        headers: list<header>,
+        body: option<list<u8>>,
+    }
+    record response {
+        status: u16,
+        headers: list<header>,
+        body: list<u8>,
+    }
+    fetch: func(req: request) -> result<response, string>;
+}
+
+/// A metadata source: asked in Find Metadata beside Magnitide's own.
+interface metadata-source {
+    use types.{lookup, book-record};
+
+    record source-info {
+        /// Shown to the user ("Open Library").
+        name: string,
+        description: string,
+        /// The plugin's own version ("1.2.0").
+        version: string,
+    }
+
+    info: func() -> source-info;
+
+    /// Records for the lookup, best first; an empty list when nothing
+    /// matched, an error only when the source couldn't be asked.
+    identify: func(lookup: lookup) -> result<list<book-record>, string>;
+}
+
+/// A hook on files being added to the library (calibre's
+/// `FileTypePlugin.on_import`). The file is at `/in/<name>` in the
+/// plugin's sandbox, read-only; a rewritten file goes under `/out/`.
+interface import-hook {
+    /// What `on-import` made of the file.
+    variant outcome {
+        /// Add the file as it is.
+        unchanged,
+        /// Add this file instead: a path under `/out/` the plugin wrote.
+        /// Its extension decides the format it's added as.
+        replaced(string),
+    }
+
+    /// Lower-case extensions the hook runs on ("epub"); "*" for every file.
+    /// Extensions Magnitide doesn't know become addable.
+    file-types: func() -> list<string>;
+
+    /// Run on a file before its metadata is read. `file` is its path in the
+    /// sandbox (`/in/book.epub`), `format` its upper-case format ("EPUB").
+    /// An error means the file is added as it is and the reason reported.
+    on-import: func(file: string, format: string) -> result<outcome, string>;
+}
+
+/// Metadata readers and writers for book formats (calibre's
+/// `MetadataReaderPlugin` and `MetadataWriterPlugin`). The file is at
+/// `/in/<name>` for reading; for writing, a copy at `/out/<name>` that
+/// Magnitide moves over the original when the plugin succeeds.
+interface file-metadata {
+    use types.{book-metadata};
+
+    /// Whether a plugin reader beats Magnitide's own for a format.
+    enum precedence {
+        /// Used only for formats Magnitide can't read itself.
+        fallback,
+        /// Used first; Magnitide's reader on failure.
+        override,
+    }
+
+    record reads-format {
+        /// Upper case ("EPUB", "CBZ").
+        format: string,
+        precedence: precedence,
+    }
+
+    /// The formats this plugin reads metadata from.
+    reads: func() -> list<reads-format>;
+
+    /// Metadata from the file at `file` (`/in/book.cbz`), format `format`.
+    read: func(file: string, format: string) -> result<book-metadata, string>;
+
+    /// The formats this plugin writes metadata into (upper case).
+    writes: func() -> list<string>;
+
+    /// Write `meta` into the file at `file` (`/out/book.cbz`, writable).
+    write: func(file: string, format: string, meta: book-metadata) -> result<_, string>;
+}
+
+/// The open library, for library actions. Reading is free; editing needs
+/// the `write-library` capability and book files the `read-files` one.
+interface library {
+    use types.{identifier};
+
+    /// A custom field's value (`key` without the '#': "pages").
+    variant field-value {
+        boolean(bool),
+        number(f64),
+        /// Text, a choice, or a date ("YYYY-MM-DD").
+        text(string),
+        text-list(list<string>),
+        series(series-value),
+    }
+
+    record series-value {
+        name: string,
+        index: f64,
+    }
+
+    record custom-value {
+        key: string,
+        value: field-value,
+    }
+
+    /// A book as the library has it.
+    record book {
+        id: u64,
+        title: string,
+        authors: list<string>,
+        series: option<string>,
+        series-index: f64,
+        publisher: option<string>,
+        /// ISO date.
+        published: option<string>,
+        /// 1–10, half stars.
+        rating: option<u8>,
+        /// ISO 639-2 codes.
+        languages: list<string>,
+        identifiers: list<identifier>,
+        tags: list<string>,
+        /// Sanitized HTML.
+        description-html: option<string>,
+        /// Upper case ("EPUB").
+        formats: list<string>,
+        has-cover: bool,
+        custom: list<custom-value>,
+    }
+
+    /// A custom field the library has.
+    record custom-field {
+        /// Without the '#'.
+        key: string,
+        name: string,
+        /// "text", "long-text", "integer", "number", "bool", "date", "rating", "series", "choice".
+        kind: string,
+        /// Text only: several values per book.
+        multiple: bool,
+    }
+
+    /// A custom field to set; no value clears it.
+    record custom-edit {
+        key: string,
+        value: option<field-value>,
+    }
+
+    /// Changes to a book: only what's set changes. An empty string clears
+    /// an optional text (publisher, description); a series with an empty
+    /// name clears the series; `rating` 0 clears it.
+    record book-edit {
+        title: option<string>,
+        authors: option<list<string>>,
+        series: option<series-value>,
+        publisher: option<string>,
+        /// ISO date, "YYYY-MM-DD"; empty clears.
+        published: option<string>,
+        rating: option<u8>,
+        tags: option<list<string>>,
+        languages: option<list<string>>,
+        /// Replaces them all.
+        identifiers: option<list<identifier>>,
+        description-html: option<string>,
+        custom: list<custom-edit>,
+    }
+
+    fields: func() -> list<custom-field>;
+    /// Books by id; ids that aren't in the library are left out.
+    books: func(ids: list<u64>) -> list<book>;
+    all-books: func() -> list<u64>;
+    /// Magnitide's search syntax ("tag:unread author:weir").
+    search: func(query: string) -> list<u64>;
+    /// Needs `write-library`.
+    edit: func(id: u64, changes: book-edit) -> result<_, string>;
+    /// Set the cover from an image (any common format). Needs `write-library`.
+    set-cover: func(id: u64, image: list<u8>) -> result<_, string>;
+    /// A book's file in the plugin's sandbox: its `/in/...` path, read-only.
+    /// Needs `read-files`.
+    open-format: func(id: u64, format: string) -> result<string, string>;
+    /// Add a format from a file the plugin wrote under `/out/`, replacing
+    /// one the book already has. Needs `write-library`.
+    add-format: func(id: u64, format: string, file: string) -> result<_, string>;
+}
+
+/// What the user sees of a running action.
+interface ui {
+    /// A line of progress ("Counting words in Dune…"), shown in the job bar.
+    status: func(text: string);
+    /// How far along (shown with the status).
+    progress: func(done: u32, total: u32);
+    /// Ask the user to choose: the index of the choice taken, or none when
+    /// they dismissed the question. Waiting doesn't count against the
+    /// plugin's time. On a server, answered by policy.
+    ask: func(question: string, choices: list<string>) -> option<u32>;
+    /// Ask for a line of text; none when dismissed.
+    ask-text: func(question: string, placeholder: string) -> option<string>;
+}
+
+/// A library action: menu items on the selected books (calibre's
+/// `InterfaceAction`, as Magnitide's book menu and Plugins button show it).
+interface library-action {
+    record menu-item {
+        /// Given back to `run`.
+        id: string,
+        text: string,
+        /// Greyed out when no books are selected.
+        needs-selection: bool,
+    }
+
+    /// Asked once, when the plugin is installed.
+    menu: func() -> list<menu-item>;
+
+    /// Run the item on the selected books (in list order). Returns a line
+    /// to show when done ("Tagged 12 books"); an error is shown as one.
+    run: func(item: string, selection: list<u64>) -> result<string, string>;
+}
+
+/// What a metadata-source plugin exports and may import.
+world metadata-source-plugin {
+    import log;
+    import http;
+    export metadata-source;
+}
+
+/// What an import-hook plugin exports and may import.
+world import-hook-plugin {
+    import log;
+    import http;
+    export import-hook;
+}
+
+/// What a file-metadata plugin exports and may import.
+world file-metadata-plugin {
+    import log;
+    import http;
+    export file-metadata;
+}
+
+/// What a library-action plugin exports and may import.
+world library-action-plugin {
+    import log;
+    import http;
+    import library;
+    import ui;
+    export library-action;
+}

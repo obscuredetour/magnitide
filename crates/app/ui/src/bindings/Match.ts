@@ -7,7 +7,7 @@ import type { SourceRecord } from "./SourceRecord";
  */
 export type Match = { 
 /**
- * In source order (Open Library, Google Books).
+ * In source order (Open Library, Google Books, then plugins).
  */
 records: Array<SourceRecord>, 
 /**

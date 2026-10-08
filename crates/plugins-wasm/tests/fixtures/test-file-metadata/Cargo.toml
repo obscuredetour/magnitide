@@ -1,0 +1,19 @@
+# A fixture plugin for magnitide-plugins-wasm's tests. Its own workspace,
+# so cargo builds it apart from Magnitide's.
+[package]
+name = "magnitide-test-file-metadata"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+magnitide-plugin-sdk = { path = "../../../../plugin-sdk" }
+
+[workspace]
+
+[profile.release]
+opt-level = "s"
+strip = true

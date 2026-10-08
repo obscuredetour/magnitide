@@ -1,6 +1,6 @@
 // Editing a book's metadata (Magnitide libraries only).
 
-import { createSignal } from 'solid-js';
+import { createEffect, createRoot, createSignal } from 'solid-js';
 
 import { api, type BookEdit, coverChanged, errorMessage } from './api';
 import { library, refresh, setEditRevision } from './library';
@@ -46,6 +46,20 @@ export function editBooks(ids: number[]): void {
 export function editOneByOne(ids: number[]): void {
   setBulkIds(null);
   if (ids.length) void openEditor(ids[0]!, ids);
+}
+
+/** Resolves once neither editor is open (a calibre plugin waits on this). */
+export function untilEditorsClosed(): Promise<void> {
+  return new Promise((resolve) =>
+    createRoot((dispose) =>
+      createEffect(() => {
+        if (!editing() && !bulkIds()) {
+          dispose();
+          resolve();
+        }
+      }),
+    ),
+  );
 }
 
 export function closeBulkEditor(): void {

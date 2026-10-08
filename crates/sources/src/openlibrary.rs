@@ -72,6 +72,7 @@ fn parse_search(v: &Value) -> Vec<SourceRecord> {
             }
             Some(SourceRecord {
                 source: Some(SourceId::OpenLibrary),
+                source_name: SourceId::OpenLibrary.name().to_owned(),
                 source_key: work.to_owned(),
                 link: Some(format!("https://openlibrary.org{}", edition["key"].as_str().unwrap_or(work))),
                 subtitle: doc["subtitle"].as_str().map(str::to_owned),
@@ -91,6 +92,8 @@ fn parse_search(v: &Value) -> Vec<SourceRecord> {
                 description_html: None,
                 cover_url: cover.map(|id| format!("https://covers.openlibrary.org/b/id/{id}-L.jpg?default=false")),
                 pages: None,
+                series: None,
+                series_index: None,
                 has_details: true,
             })
         })

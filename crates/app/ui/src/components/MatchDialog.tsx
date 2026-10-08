@@ -19,10 +19,14 @@ import { Select } from './Select';
 import { primaryButton, secondaryButton } from '../buttons';
 import { keys } from '../keys';
 
+/** A series and the book's number in it. */
+export type Series = { name: string; index: number | null };
+
 /** The edit form's values, to compare against. */
 export type Current = {
   title: string;
   authors: string[];
+  series: Series | null;
   publisher: string | null;
   published: string | null;
   languages: string[];
@@ -37,6 +41,7 @@ export type Current = {
 export type Applied = {
   title?: string;
   authors?: string[];
+  series?: Series;
   publisher?: string;
   published?: string;
   languages?: string[];
@@ -63,13 +68,15 @@ export type Step = {
 };
 
 const SOURCE_NAME: Record<SourceId, string> = { openLibrary: 'Open Library', google: 'Google Books' };
+/** What to call a record's source: a built-in one, or the calibre plugin it came from. */
+const sourceName = (r: SourceRecord) => r.sourceName || (r.source ? SOURCE_NAME[r.source] : 'Plugin');
 const KIND_LABEL: Record<MatchKind, string> = {
   isbn: 'ISBN match',
   strong: 'Strong match',
   possible: 'Possible match',
 };
 
-type Value = string | string[] | Record<string, string>;
+type Value = string | string[] | Record<string, string> | Series;
 
 /** One row of the comparison. `from` reads a record; `text` is how a value displays and compares. */
 type Field = {
@@ -82,6 +89,13 @@ type Field = {
 
 const list = (v: Value) => (v as string[]).join(', ');
 const nonEmpty = <T extends { length: number }>(v: T | null | undefined) => (v && v.length ? v : null);
+/** "Dune #1", "Dune #2.5", or just the name. */
+const seriesText = (v: Value) => {
+  const s = v as Series;
+  if (s.index === null) return s.name;
+  const n = Number.isInteger(s.index) ? String(s.index) : s.index.toFixed(2).replace(/0+$/, '');
+  return `${s.name} #${n}`;
+};
 const idsText = (v: Value) =>
   Object.entries(v as Record<string, string>)
     .sort(([a], [b]) => a.localeCompare(b))
@@ -96,6 +110,13 @@ const FIELDS: Field[] = [
     from: (r) => nonEmpty(r.authors),
     current: (c) => nonEmpty(c.authors),
     text: (v) => (v as string[]).join(' & '),
+  },
+  {
+    key: 'series',
+    label: 'Series',
+    from: (r) => (r.series ? { name: r.series, index: r.seriesIndex } : null),
+    current: (c) => c.series,
+    text: seriesText,
   },
   { key: 'publisher', label: 'Publisher', from: (r) => r.publisher, current: (c) => c.publisher, text: String },
   { key: 'published', label: 'Published', from: (r) => r.published, current: (c) => c.published, text: String },
@@ -209,9 +230,10 @@ export function MatchDialog(props: {
   const [failed, setFailed] = createSignal<string | null>(null);
   const [result, setResult] = createStore<SearchResult>({ matches: [], errors: [] });
   const [selected, setSelected] = createSignal(0);
-  // Only what the user changed; everything else follows the defaults.
-  const [checked, setChecked] = createStore<Partial<Record<string, boolean>>>({});
-  const [picked, setPicked] = createStore<Partial<Record<string, number>>>({});
+  // Only what the user changed for the selected match; everything else
+  // follows the defaults. Replaced whole when another match is selected.
+  const [checked, setChecked] = createSignal<Partial<Record<string, boolean>>>({});
+  const [picked, setPicked] = createSignal<Partial<Record<string, number>>>({});
   const [loadingDetails, setLoadingDetails] = createSignal(false);
   const [saving, setSaving] = createSignal(false);
   // The first search may have run ahead (stepping through books).
@@ -260,13 +282,13 @@ export function MatchDialog(props: {
 
   /** A field's distinct values in the selected match, with the sources giving each. */
   const options = (f: Field) => {
-    const out: { value: Value; sources: SourceId[] }[] = [];
+    const out: { value: Value; sources: string[] }[] = [];
     for (const r of match()?.records ?? []) {
       const v = f.from(r, props.current);
       if (v === null) continue;
       const existing = out.find((o) => same(f, o.value, v));
-      if (existing) existing.sources.push(r.source!);
-      else out.push({ value: v, sources: [r.source!] });
+      if (existing) existing.sources.push(sourceName(r));
+      else out.push({ value: v, sources: [sourceName(r)] });
     }
     return out;
   };
@@ -280,7 +302,7 @@ export function MatchDialog(props: {
         f.key === 'descriptionHtml'
           ? opts.reduce((best, o, i) => (f.text(o.value).length > f.text(opts[best]!.value).length ? i : best), 0)
           : 0;
-      const pick = Math.min(picked[f.key] ?? defaultPick, Math.max(opts.length - 1, 0));
+      const pick = Math.min(picked()[f.key] ?? defaultPick, Math.max(opts.length - 1, 0));
       const value = opts[pick]?.value ?? null;
       const unchanged = value === null || same(f, value, current);
       // Fill gaps by default; replacing what's there is the user's call.
@@ -290,17 +312,19 @@ export function MatchDialog(props: {
           ? value !== null &&
             Object.entries(props.current.identifiers).every(([k, v]) => (value as Record<string, string>)[k] === v)
           : current === null;
-      const on = !unchanged && (checked[f.key] ?? safe);
+      const on = !unchanged && (checked()[f.key] ?? safe);
       return { f, opts, pick, value, current, unchanged, on };
     }),
   );
 
   const covers = () => {
-    const urls = (match()?.records ?? []).flatMap((r) => (r.coverUrl ? [{ url: r.coverUrl, source: r.source! }] : []));
+    const urls = (match()?.records ?? []).flatMap((r) =>
+      r.coverUrl ? [{ url: r.coverUrl, source: sourceName(r) }] : [],
+    );
     return urls.filter((u, i) => urls.findIndex((x) => x.url === u.url) === i);
   };
-  const coverPick = () => Math.min(picked.cover ?? 0, Math.max(covers().length - 1, 0));
-  const coverOn = () => covers().length > 0 && (checked.cover ?? !props.current.hasCover);
+  const coverPick = () => Math.min(picked().cover ?? 0, Math.max(covers().length - 1, 0));
+  const coverOn = () => covers().length > 0 && (checked().cover ?? !props.current.hasCover);
   const chosenCount = () => rows().filter((r) => r.on).length + (coverOn() ? 1 : 0);
 
   const apply = async () => {
@@ -436,9 +460,7 @@ export function MatchDialog(props: {
                           </span>
                           <For each={m.records}>
                             {(x) => (
-                              <span class="rounded-chip bg-element px-1.5 text-[10px] text-muted">
-                                {SOURCE_NAME[x.source!]}
-                              </span>
+                              <span class="rounded-chip bg-element px-1.5 text-[10px] text-muted">{sourceName(x)}</span>
                             )}
                           </For>
                         </div>
@@ -467,7 +489,7 @@ export function MatchDialog(props: {
                       label={row.f.label}
                       on={row.on}
                       disabled={row.unchanged}
-                      onToggle={(on) => setChecked(row.f.key, on)}
+                      onToggle={(on) => setChecked((c) => ({ ...c, [row.f.key]: on }))}
                       current={
                         row.current === null ? null : (
                           <Text html={row.f.key === 'descriptionHtml'} value={row.f.text(row.current)} />
@@ -491,13 +513,9 @@ export function MatchDialog(props: {
                           </>
                         )
                       }
-                      sources={
-                        row.opts.length > 1
-                          ? row.opts.map((o) => o.sources.map((s) => SOURCE_NAME[s]).join(' & '))
-                          : null
-                      }
+                      sources={row.opts.length > 1 ? row.opts.map((o) => o.sources.join(' & ')) : null}
                       pick={row.pick}
-                      onPick={(i) => setPicked(row.f.key, i)}
+                      onPick={(i) => setPicked((p) => ({ ...p, [row.f.key]: i }))}
                     />
                   )}
                 </For>
@@ -505,7 +523,7 @@ export function MatchDialog(props: {
                   label="Cover"
                   on={coverOn()}
                   disabled={!covers().length}
-                  onToggle={(on) => setChecked('cover', on)}
+                  onToggle={(on) => setChecked((c) => ({ ...c, cover: on }))}
                   current={props.current.hasCover ? <CurrentCover id={props.id} /> : null}
                   found={
                     covers().length ? (
@@ -514,17 +532,14 @@ export function MatchDialog(props: {
                       <span class="text-faint">—</span>
                     )
                   }
-                  sources={covers().length > 1 ? covers().map((c) => SOURCE_NAME[c.source]) : null}
+                  sources={covers().length > 1 ? covers().map((c) => c.source) : null}
                   pick={coverPick()}
-                  onPick={(i) => setPicked('cover', i)}
+                  onPick={(i) => setPicked((p) => ({ ...p, cover: i }))}
                 />
                 <Show when={match()?.records.some((r) => r.link)}>
                   <p class="mt-3 text-[11px] text-faint">
-                    From{' '}
-                    {match()!
-                      .records.map((r) => SOURCE_NAME[r.source!])
-                      .join(' and ')}
-                    . Fields that are empty now are ticked; replacing what's there is up to you.
+                    From {match()!.records.map(sourceName).join(' and ')}. Fields that are empty now are ticked;
+                    replacing what's there is up to you.
                   </p>
                 </Show>
               </Show>

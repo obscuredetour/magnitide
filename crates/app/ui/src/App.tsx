@@ -11,8 +11,9 @@ import { EmptyState } from './components/EmptyState';
 import { ImportDialog } from './components/ImportDialog';
 import { NetworkWarning } from './components/NetworkWarning';
 import { SelectionBar } from './components/SelectionBar';
-import { SettingsDialog } from './components/Settings';
+import { SettingsDialog, type SettingsSection } from './components/Settings';
 import { StatusBar } from './components/StatusBar';
+import { QuestionHost } from './question';
 import { ConfirmHost } from './confirm';
 import { TitleBar } from './components/TitleBar';
 import { TopBar } from './components/TopBar';
@@ -44,12 +45,18 @@ import { coverSize, setViewMode, sidebarOpen, viewMode } from './view';
 import { resetZoom, stepZoom } from './zoom';
 import { drag, dragJustEnded, startBookDrag } from './bookDrag';
 import { addToShelf, newShelfFor, refreshShelves, shelves } from './shelves';
+import { initPlugins } from './plugins';
 import { Sidebar } from './components/Sidebar';
 
 export function App() {
   let view: ViewHandle | undefined;
   let searchInput: HTMLInputElement | undefined;
   const [settingsOpen, setSettingsOpen] = createSignal(false);
+  const [settingsSection, setSettingsSection] = createSignal<SettingsSection>();
+  const openSettings = (section?: SettingsSection) => {
+    setSettingsSection(section);
+    setSettingsOpen(true);
+  };
 
   const noLibrary = () => {
     const s = status();
@@ -108,7 +115,7 @@ export function App() {
     // ⌘, opens settings (macOS convention). While it's open, its own controls own the keyboard.
     if (cmd && e.key === ',') {
       e.preventDefault();
-      setSettingsOpen(true);
+      openSettings();
       return;
     }
     // ⌘+ / ⌘− / ⌘0: interface size, anywhere. On macOS the View menu owns ⌘=, ⌘− and ⌘0; ⌘⇧= (⌘+) comes here.
@@ -204,7 +211,7 @@ export function App() {
     onCleanup(() => document.removeEventListener('pointerdown', pressBook));
     document.addEventListener('keydown', onKeyDown);
     // On macOS the menu bar item owns ⌘, (so onKeyDown's ⌘, branch only runs on other platforms).
-    const unlisten = onOpenSettings(() => setSettingsOpen(true));
+    const unlisten = onOpenSettings(() => openSettings());
     onCleanup(() => void unlisten.then((off) => off()));
     const unlistenZoom = onZoomMenu((action) =>
       action === 'reset' ? resetZoom() : stepZoom(action === 'in' ? 1 : -1),
@@ -212,6 +219,7 @@ export function App() {
     onCleanup(() => void unlistenZoom.then((off) => off()));
     void openInitialLibrary();
     watchDevices();
+    initPlugins();
     void loadThemeAddons().catch(() => {}); // the cached copy already applies
   });
   onCleanup(() => document.removeEventListener('keydown', onKeyDown));
@@ -222,11 +230,7 @@ export function App() {
   return (
     <>
       <TitleBar />
-      <TopBar
-        searchRef={(el) => (searchInput = el)}
-        onLeaveSearch={leaveSearch}
-        onOpenSettings={() => setSettingsOpen(true)}
-      />
+      <TopBar searchRef={(el) => (searchInput = el)} onLeaveSearch={leaveSearch} onOpenSettings={openSettings} />
       <Switch>
         <Match when={status().kind === 'ready'}>
           <main class="fixed inset-x-0 top-(--chrome-h) bottom-(--statusbar-h) flex flex-col">
@@ -284,11 +288,12 @@ export function App() {
         <ImportDialog />
       </Show>
       <Show when={settingsOpen()}>
-        <SettingsDialog onClose={() => setSettingsOpen(false)} />
+        <SettingsDialog section={settingsSection()} onClose={() => setSettingsOpen(false)} />
       </Show>
       <BookMenuHost />
       <LookupHost />
       <ConfirmHost />
+      <QuestionHost />
       <Toast />
       {/* What's being dragged: follows the pointer. */}
       <Show when={drag()}>

@@ -1,0 +1,65 @@
+# What scripts/vendor-calibre.py takes from a calibre checkout, should the
+# from-scratch compat package (crates/plugins/python/compat) ever be replaced by
+# calibre's own modules (see docs/calibre-plugins.md, "The fallback").
+# Not wired in: nothing reads this at build or run time.
+
+[calibre]
+# The upstream tag the compat package mirrors.
+tag = "v9.15.0"
+repository = "https://github.com/kovidgoyal/calibre.git"
+
+[closure]
+# Modules the walk starts from: what plugins import, and what the host needs.
+entries = [
+    "calibre", "calibre.customize", "calibre.customize.zipplugin", "calibre.customize.ui",
+    "calibre.ebooks.metadata", "calibre.ebooks.metadata.book.base", "calibre.ebooks.metadata.opf2",
+    "calibre.ebooks.metadata.sources.base", "calibre.ebooks.metadata.sources.identify",
+    "calibre.ebooks.metadata.meta", "calibre.ebooks.oeb.polish.container", "calibre.ebooks.oeb.iterator",
+    "calibre.db.legacy", "calibre.db.cache", "calibre.library.comments", "calibre.library.field_metadata",
+    "calibre.utils.config", "calibre.utils.date", "calibre.utils.localization", "calibre.utils.logging",
+    "calibre.utils.formatter", "calibre.utils.formatter_functions", "calibre.utils.ipc.simple_worker",
+    "calibre.utils.ipc.server", "calibre.utils.img", "calibre.utils.zipfile", "calibre.ptempfile",
+    "calibre.gui2", "calibre.gui2.actions", "calibre.gui2.dialogs.message_box", "calibre.gui2.dialogs.confirm_delete",
+    "calibre.gui2.dialogs.progress", "calibre.gui2.proceed", "calibre.gui2.keyboard", "calibre.gui2.jobs",
+    "calibre.gui2.threaded_jobs", "calibre.gui2.preferences", "calibre.gui2.metadata.config", "calibre.gui2.widgets",
+    "calibre.gui2.widgets2", "calibre.gui2.complete2", "calibre.gui2.comments_editor", "calibre.gui2.library.delegates",
+    "calibre.gui2.library.models", "calibre.gui2.dnd", "calibre.gui2.progress_indicator",
+    "polyglot", "qt.core",
+]
+# Nested (inside-function) imports promoted to the closure because the code runs in Magnitide.
+lazy = ["calibre.ebooks.oeb.base", "calibre.ebooks.oeb.parse_utils", "calibre.ebooks.covers"]
+# Trees never taken, whatever imports them (the compat package's stubs stay).
+deny = [
+    "calibre.srv", "calibre.devices", "calibre.ai", "calibre.web", "calibre.gui2.tweak_book", "calibre.gui2.viewer",
+    "calibre.gui2.store", "calibre.ebooks.conversion.plugins", "calibre.library.catalogs", "calibre.utils.mdns",
+    "calibre.utils.smtp", "calibre.utils.https", "calibre.gui2.cover_flow", "calibre.gui2.update", "calibre.gui2.email",
+    "calibre.gui2.central", "calibre.gui2.init", "calibre.gui2.layout", "calibre.gui2.bars", "calibre.gui2.book_details",
+    "calibre.gui2.tag_browser", "calibre.gui2.listener", "calibre.gui2.auto_add", "calibre.gui2.extra_files_watcher",
+    "calibre.gui2.ebook_download", "calibre.gui2.open_with", "calibre.gui2.tts", "calibre.ebooks.pdf",
+    "calibre.utils.podofo", "calibre.utils.unrar", "calibre.ebooks.mobi.writer2", "calibre.ebooks.mobi.writer8",
+]
+# Modules kept from the compat package instead of calibre's (the edges).
+replace = [
+    "calibre.constants", "calibre.startup", "calibre.customize.builtins", "calibre.gui2.ui", "calibre.gui2.device",
+    "calibre.utils.icu",
+]
+# calibre's C extensions, provided in pure Python by scripts/vendor-calibre/calibre_extensions/.
+extensions = [
+    "speedup", "fast_html_entities", "translator", "progress_indicator", "imageops", "uchardet",
+    "sqlite_extension", "cPalmdoc", "usbobserver", "cocoa", "winutil", "icu", "hyphen", "html_as_json",
+    "unicode_names", "freetype", "fontconfig", "podofo", "unrar", "lzx", "msdes", "rcc_backend", "matcher",
+    "bzzdec", "html", "certgen", "hunspell", "libusb", "libmtp", "piper", "tokenizer", "palmdoc", "ffmpeg",
+]
+
+[resources]
+# Files from calibre's resources/ tree the vendored modules read through P().
+copy = [
+    "images", "templates", "jacket", "metadata_sqlite.sql", "default_tweaks.py", "mime.types",
+    "calibre-mimetypes.xml", "template-functions.json", "user-agent-data.json",
+]
+# Generated from calibre's setup (iso-codes), not present in the source tree.
+generate = ["localization/iso639.calibre_msgpack", "localization/iso3166.calibre_msgpack"]
+
+[output]
+# Where the vendored tree goes (beside the compat package, until switched).
+dir = "crates/plugins/python/vendor"

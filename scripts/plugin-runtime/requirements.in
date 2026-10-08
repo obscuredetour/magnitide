@@ -1,0 +1,41 @@
+# The plugin runtime's wheels. Resolved into requirements.txt (with hashes,
+# for every platform) by `uv pip compile`; see README.md. Keep this list
+# short: every wheel is downloaded by every user who installs the runtime.
+
+# Qt, for GUI plugins (calibre's `qt.core` is PyQt6). build.py strips the Qt
+# modules calibre plugins don't use (WebEngine, Qml, Multimedia, …).
+PyQt6
+PyQt6-Qt6
+PyQt6-sip
+
+# XML/HTML, used by calibre's metadata, OPF and ebook-container code.
+lxml
+html5lib
+css-parser
+beautifulsoup4
+
+# Images: covers and calibre.utils.img.
+Pillow
+
+# Text and dates.
+regex
+python-dateutil
+tzlocal
+charset-normalizer
+html2text
+markdown
+
+# Metadata sources' browser (calibre.browser() is mechanize).
+mechanize
+
+# PDF metadata.
+pypdf
+
+# Small libraries calibre's database and serialization code uses.
+msgpack
+apsw
+xxhash
+
+# Cryptography for plugins that sign or encrypt books (`Crypto` / `Cryptodome`);
+# calibre itself doesn't bundle it, so such plugins ask users to install it.
+pycryptodome
