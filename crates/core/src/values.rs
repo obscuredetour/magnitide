@@ -1,13 +1,14 @@
-//! Merging and renaming the names books share: tags, series, publishers and
-//! identifier schemes. "scifi", "Sci-fi" and "SF" become one tag; a spelling
-//! changes everywhere at once. Authors aren't here: renaming one moves book
-//! folders, so that stays a per-book edit.
+//! Merging, renaming, splitting and removing the names books share: tags,
+//! series, publishers and identifier schemes. "scifi", "Sci-fi" and "SF"
+//! become one tag; a spelling changes everywhere at once; "Fiction / Fantasy"
+//! becomes two tags; a tag goes from every book. Authors aren't here:
+//! renaming one moves book folders, so that stays a per-book edit.
 
 use rusqlite::{OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
-use crate::library::{Library, now, prune_unused_names};
+use crate::library::{Library, now, prune_unused_names, tag_id};
 
 /// A kind of shared name.
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
@@ -20,13 +21,21 @@ pub enum ValueField {
     Identifiers,
 }
 
-/// What a merge did.
+/// What a merge, split or removal did.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct MergeReport {
     /// Books whose metadata changed.
     pub books: usize,
+}
+
+/// A tag that holds several ("Fiction / Fantasy / Military"), and what it becomes.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+pub struct TagSplit {
+    pub from: String,
+    pub into: Vec<String>,
 }
 
 impl Library {
@@ -49,16 +58,119 @@ impl Library {
             ValueField::Publishers => merge_publishers(&tx, &from, to)?,
             ValueField::Identifiers => merge_schemes(&tx, &from, &to.to_lowercase())?,
         };
-        if !books.is_empty() {
-            let at = now();
-            for id in &books {
-                tx.execute("UPDATE books SET modified_at = ? WHERE id = ?", params![at, id])?;
-            }
-        }
+        touch(&tx, &books)?;
         prune_unused_names(&tx)?;
         tx.commit()?;
         Ok(MergeReport { books: books.len() })
     }
+}
+
+impl Library {
+    /// Each book with a `from` tag gets its `into` tags instead (ones it
+    /// already has stay as they are). Returns how many books changed.
+    pub fn split_tags(&mut self, splits: &[TagSplit]) -> Result<MergeReport> {
+        let tx = self.conn.transaction()?;
+        let mut books: Vec<i64> = Vec::new();
+        for split in splits {
+            let into: Vec<&str> = split.into.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+            if into.is_empty() {
+                return Err(Error::InvalidBook(format!("nothing to split \u{201c}{}\u{201d} into", split.from)));
+            }
+            let Some(old) = ids_named(&tx, "tags", &[split.from.trim()])?.first().copied() else { continue };
+            let linked = books_linked(&tx, "book_tags", "tag_id", &[old])?;
+            let parts: Vec<i64> = into.iter().map(|p| tag_id(&tx, p)).collect::<Result<_>>()?;
+            for b in &linked {
+                for part in &parts {
+                    tx.execute("INSERT OR IGNORE INTO book_tags (book_id, tag_id) VALUES (?, ?)", params![b, part])?;
+                }
+                if !books.contains(b) {
+                    books.push(*b);
+                }
+            }
+            if !parts.contains(&old) {
+                tx.execute("DELETE FROM book_tags WHERE tag_id = ?", [old])?;
+            }
+        }
+        touch(&tx, &books)?;
+        prune_unused_names(&tx)?;
+        tx.commit()?;
+        Ok(MergeReport { books: books.len() })
+    }
+
+    /// Take these names off every book (a series or publisher is unset; an
+    /// identifier scheme's values are dropped). Returns how many books changed.
+    pub fn remove_values(&mut self, field: ValueField, names: &[String]) -> Result<MergeReport> {
+        let names: Vec<&str> = names.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        let tx = self.conn.transaction()?;
+        let books = match field {
+            ValueField::Tags => {
+                let ids = ids_named(&tx, "tags", &names)?;
+                let books = books_linked(&tx, "book_tags", "tag_id", &ids)?;
+                for id in &ids {
+                    tx.execute("DELETE FROM book_tags WHERE tag_id = ?", [id])?;
+                }
+                books
+            }
+            ValueField::Series => {
+                let ids = ids_named(&tx, "series", &names)?;
+                let mut books = books_linked(&tx, "book_more_series", "series_id", &ids)?;
+                let mut stmt = tx.prepare("SELECT id FROM books WHERE series_id = ?")?;
+                for id in &ids {
+                    for b in stmt.query_map([id], |r| r.get::<_, i64>(0))? {
+                        let b = b?;
+                        if !books.contains(&b) {
+                            books.push(b);
+                        }
+                    }
+                    tx.execute("DELETE FROM book_more_series WHERE series_id = ?", [id])?;
+                    tx.execute("UPDATE books SET series_id = NULL, series_index = NULL WHERE series_id = ?", [id])?;
+                }
+                books
+            }
+            ValueField::Publishers => {
+                let ids = ids_named(&tx, "publishers", &names)?;
+                let mut books = Vec::new();
+                let mut stmt = tx.prepare("SELECT id FROM books WHERE publisher_id = ?")?;
+                for id in &ids {
+                    for b in stmt.query_map([id], |r| r.get::<_, i64>(0))? {
+                        let b = b?;
+                        if !books.contains(&b) {
+                            books.push(b);
+                        }
+                    }
+                    tx.execute("UPDATE books SET publisher_id = NULL WHERE publisher_id = ?", [id])?;
+                }
+                books
+            }
+            ValueField::Identifiers => {
+                let mut books = Vec::new();
+                let mut stmt = tx.prepare("SELECT book_id FROM identifiers WHERE scheme = ?")?;
+                for scheme in &names {
+                    for b in stmt.query_map([scheme], |r| r.get::<_, i64>(0))? {
+                        let b = b?;
+                        if !books.contains(&b) {
+                            books.push(b);
+                        }
+                    }
+                    tx.execute("DELETE FROM identifiers WHERE scheme = ?", [scheme])?;
+                }
+                books
+            }
+        };
+        touch(&tx, &books)?;
+        prune_unused_names(&tx)?;
+        tx.commit()?;
+        Ok(MergeReport { books: books.len() })
+    }
+}
+
+/// Mark books as modified now (their files' metadata is out of date).
+fn touch(tx: &Transaction<'_>, books: &[i64]) -> Result<()> {
+    let at = now();
+    for id in books {
+        tx.execute("UPDATE books SET modified_at = ? WHERE id = ?", params![at, id])?;
+    }
+    Ok(())
 }
 
 /// The ids of a name table's rows called any of `names` (case-insensitively).
@@ -251,6 +363,26 @@ mod tests {
         assert_eq!(tags_of(&lib, ids[0]), ["FANTASY", "Sci-Fi"]);
         assert_eq!(lib.merge_values(ValueField::Tags, &["nope".into()], "Whatever").unwrap().books, 0);
         assert!(lib.merge_values(ValueField::Tags, &["Sci-Fi".into()], "  ").is_err());
+    }
+
+    #[test]
+    fn splits_and_removes_tags() {
+        let (_tmp, mut lib, ids) = library();
+        set_tags(&mut lib, ids[0], &["Fiction / Fantasy / Military", "Fantasy"]);
+        set_tags(&mut lib, ids[1], &["Dragons;epic", "Fiction"]);
+        let splits = vec![
+            TagSplit {
+                from: "Fiction / Fantasy / Military".into(),
+                into: vec!["Fiction".into(), "Fantasy".into(), "Military".into()],
+            },
+            TagSplit { from: "Dragons;epic".into(), into: vec!["Dragons".into(), "epic".into()] },
+        ];
+        assert_eq!(lib.split_tags(&splits).unwrap().books, 2);
+        assert_eq!(tags_of(&lib, ids[0]), ["Fantasy", "Fiction", "Military"]);
+        assert_eq!(tags_of(&lib, ids[1]), ["Dragons", "epic", "Fiction"]);
+        assert_eq!(lib.remove_values(ValueField::Tags, &["fiction".into(), "nope".into()]).unwrap().books, 2);
+        assert_eq!(tags_of(&lib, ids[0]), ["Fantasy", "Military"]);
+        assert!(lib.split_tags(&[TagSplit { from: "Fantasy".into(), into: vec![" ".into()] }]).is_err());
     }
 
     #[test]

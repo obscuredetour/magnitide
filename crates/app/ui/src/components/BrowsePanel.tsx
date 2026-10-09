@@ -2,12 +2,12 @@ import { createMemo, createSignal, For, Show } from 'solid-js';
 import Sparkles from 'lucide-solid/icons/sparkles';
 import X from 'lucide-solid/icons/x';
 
-import { api, errorMessage, type FacetValue } from '../api';
+import { api, errorMessage, type FacetValue, type TagSplit } from '../api';
 import { type Category, facets, isActive, toggleSearch, valueQuery } from '../browse';
 import { primaryButton, secondaryButton, smallButton } from '../buttons';
 import { confirm } from '../confirm';
 import { library, refresh, setEditRevision } from '../library';
-import { tidyGroups, type TidyGroup } from '../tidy';
+import { type Split, splitParts, tidyGroups, type TidyGroup, tidySplits } from '../tidy';
 import { toast } from '../toast';
 import { plural } from '../writeback';
 import { CATEGORY_ICONS } from './Browse';
@@ -20,12 +20,17 @@ type Props = {
 };
 
 const glass = 'cursor-pointer bg-element-hover/70 shadow-card ring-1 ring-line backdrop-blur-sm hover:bg-element';
+const card = 'rounded-card border border-line bg-bg/60 p-2.5';
+const tick = 'size-3.5 accent-accent';
+
+/** What the broom proposes: names to merge, and names to split. */
+type Proposals = { groups: TidyGroup[]; splits: Split[] };
 
 /**
  * A category opened wide beside the sidebar: every value with its count,
- * a filter, and (for names that can be merged) tidying up: pick values and
- * merge or rename them, or let the broom find the ones that are one thing
- * spelt several ways.
+ * a filter, and (for names that can be changed) tidying up: pick values and
+ * merge, rename, split or delete them, or let the broom find the ones that
+ * are one thing spelt several ways and the ones that hold several things.
  */
 export function BrowsePanel(props: Props) {
   const c = () => props.category;
@@ -35,10 +40,12 @@ export function BrowsePanel(props: Props) {
   const [selected, setSelected] = createSignal<ReadonlySet<string>>(new Set());
   const [busy, setBusy] = createSignal(false);
   /** The broom's proposals, while reviewing them. */
-  const [groups, setGroups] = createSignal<TidyGroup[] | null>(null);
-  const [skipped, setSkipped] = createSignal<ReadonlySet<number>>(new Set());
+  const [proposals, setProposals] = createSignal<Proposals | null>(null);
+  /** Proposals unticked, by key ("m3", "s1"); and the spelling picked for a merge group. */
+  const [skipped, setSkipped] = createSignal<ReadonlySet<string>>(new Set());
   const [targets, setTargets] = createSignal<ReadonlyMap<number, string>>(new Map());
-  const canMerge = () => c().merge !== null && library()?.kind === 'magnitide';
+  const editable = () => c().merge !== null && library()?.kind === 'magnitide';
+  const isTags = () => c().key === 'tags';
 
   const shown = createMemo(() => {
     const f = filter().trim().toLowerCase();
@@ -47,6 +54,9 @@ export function BrowsePanel(props: Props) {
       list.sort((a, b) => c().show(a.value).localeCompare(c().show(b.value), undefined, { sensitivity: 'base' }));
     return list;
   });
+  const chosen = () => values().filter((v) => selected().has(v.value));
+  /** Of the selected tags, those that hold several. */
+  const splittable = () => (isTags() ? chosen().filter((v) => splitParts(v.value)) : []);
 
   const toggle = (value: string) => {
     const next = new Set(selected());
@@ -54,11 +64,27 @@ export function BrowsePanel(props: Props) {
     setSelected(next);
   };
 
+  /** Run changes one after another, then show what happened. */
+  const run = async (work: () => Promise<number>, done: (books: number) => string) => {
+    setBusy(true);
+    try {
+      const books = await work();
+      await refresh();
+      setEditRevision((n) => n + 1);
+      setSelected(new Set<string>());
+      setProposals(null);
+      toast(done(books));
+    } catch (err) {
+      toast(errorMessage(err), { error: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const field = () => c().merge!;
+
   /** Merge (or rename, when it's one) the selected values under a name asked for. */
   const mergeSelected = async () => {
-    const names = values()
-      .filter((v) => selected().has(v.value))
-      .map((v) => v.value);
+    const names = chosen().map((v) => v.value);
     if (!names.length) return;
     const [name, setName] = createSignal(names[0]!);
     const ok = await confirm({
@@ -88,48 +114,102 @@ export function BrowsePanel(props: Props) {
       confirm: names.length === 1 ? 'Rename' : 'Merge',
     });
     if (!ok || !name().trim()) return;
-    await apply([[names, name().trim()]]);
+    const to = name().trim();
+    await run(
+      async () => (await api.mergeValues(field(), names, to)).books,
+      (books) => `“${to}”: ${plural(books, 'book', 'books')} changed`,
+    );
   };
 
-  /** Run merges one after another, then show what happened. */
-  const apply = async (merges: [string[], string][]) => {
-    const field = c().merge;
-    if (!field) return;
-    setBusy(true);
-    let books = 0;
-    try {
-      for (const [from, to] of merges) books += (await api.mergeValues(field, from, to)).books;
-      await refresh();
-      setEditRevision((n) => n + 1);
-      setSelected(new Set<string>());
-      setGroups(null);
-      toast(
-        merges.length === 1
-          ? `“${merges[0]![1]}”: ${plural(books, 'book', 'books')} changed`
-          : `Merged ${plural(merges.length, 'group', 'groups')}: ${plural(books, 'book', 'books')} changed`,
-      );
-    } catch (err) {
-      toast(errorMessage(err), { error: true });
-    } finally {
-      setBusy(false);
-    }
+  /** Split the selected tags that hold several into their parts. */
+  const splitSelected = async () => {
+    const splits: TagSplit[] = splittable().map((v) => ({ from: v.value, into: splitParts(v.value)! }));
+    if (!splits.length) return;
+    const ok = await confirm({
+      title: `Split ${plural(splits.length, 'tag', 'tags')}`,
+      message: () => (
+        <ul class="max-h-60 space-y-1.5 overflow-y-auto text-xs">
+          <For each={splits}>
+            {(s) => (
+              <li>
+                <span class="text-muted">{s.from}</span> → {s.into.join(' · ')}
+              </li>
+            )}
+          </For>
+        </ul>
+      ),
+      confirm: 'Split',
+    });
+    if (!ok) return;
+    await run(
+      async () => (await api.splitTags(splits)).books,
+      (books) => `Split ${plural(splits.length, 'tag', 'tags')}: ${plural(books, 'book', 'books')} changed`,
+    );
+  };
+
+  /** Take the selected values off every book. */
+  const deleteSelected = async () => {
+    const names = chosen().map((v) => v.value);
+    if (!names.length) return;
+    const books = chosen().reduce((n, v) => n + v.count, 0);
+    const ok = await confirm({
+      title: `Delete ${plural(names.length, c().one, c().label.toLowerCase())}`,
+      message: () => (
+        <p class="text-xs">
+          {names.map((n) => `“${n}”`).join(', ')} {names.length === 1 ? 'comes' : 'come'} off{' '}
+          {plural(books, 'book', 'books')}. The books stay.
+        </p>
+      ),
+      confirm: 'Delete',
+      danger: true,
+    });
+    if (!ok) return;
+    await run(
+      async () => (await api.removeValues(field(), names)).books,
+      (b) => `Deleted ${plural(names.length, c().one, c().label.toLowerCase())}: ${plural(b, 'book', 'books')} changed`,
+    );
   };
 
   const sweep = () => {
-    const g = tidyGroups(values());
-    setSkipped(new Set<number>());
+    const p = { groups: tidyGroups(values()), splits: isTags() ? tidySplits(values()) : [] };
+    setSkipped(new Set<string>());
     setTargets(new Map<number, string>());
-    setGroups(g);
-    if (!g.length) toast(`Nothing to tidy: no two ${c().label.toLowerCase()} look alike`);
+    setProposals(p);
+    if (!p.groups.length && !p.splits.length) toast(`Nothing to tidy among the ${c().label.toLowerCase()}`);
   };
-  const applyGroups = () => {
-    const merges: [string[], string][] = (groups() ?? [])
-      .map((g, i) => [g, i] as const)
-      .filter(([, i]) => !skipped().has(i))
-      .map(([g, i]) => [g.members.map((m) => m.value), targets().get(i) ?? g.target]);
-    void apply(merges);
+  const skip = (key: string, on: boolean) => {
+    const next = new Set(skipped());
+    if (on) next.delete(key);
+    else next.add(key);
+    setSkipped(next);
   };
-  const chosen = () => (groups()?.length ?? 0) - skipped().size;
+  const chosenProposals = () => {
+    const p = proposals();
+    if (!p) return { merges: [] as [string[], string][], splits: [] as TagSplit[] };
+    const merges = p.groups
+      .map((g, i): [string[], string] | null =>
+        skipped().has(`m${i}`) ? null : [g.members.map((m) => m.value), targets().get(i) ?? g.target],
+      )
+      .filter((m): m is [string[], string] => m !== null);
+    const splits = p.splits
+      .filter((_, i) => !skipped().has(`s${i}`))
+      .map((s) => ({ from: s.from.value, into: s.into }));
+    return { merges, splits };
+  };
+  const applyProposals = () => {
+    const { merges, splits } = chosenProposals();
+    void run(
+      async () => {
+        let books = 0;
+        for (const [from, to] of merges) books += (await api.mergeValues(field(), from, to)).books;
+        if (splits.length) books += (await api.splitTags(splits)).books;
+        return books;
+      },
+      (books) =>
+        `Tidied ${plural(merges.length + splits.length, 'group', 'groups')}: ${plural(books, 'book', 'books')} changed`,
+    );
+  };
+  const chosenCount = () => chosenProposals().merges.length + chosenProposals().splits.length;
 
   return (
     <aside
@@ -151,7 +231,7 @@ export function BrowsePanel(props: Props) {
       </div>
 
       <Show
-        when={groups()}
+        when={proposals()}
         fallback={
           <>
             <div class="flex items-center gap-2 px-4 pb-2">
@@ -172,10 +252,10 @@ export function BrowsePanel(props: Props) {
               >
                 {byName() ? 'A–Z' : 'Count'}
               </button>
-              <Show when={canMerge()}>
+              <Show when={editable()}>
                 <button
                   class={smallButton}
-                  title={`Find ${c().label.toLowerCase()} that are one thing spelt several ways`}
+                  title={`Find ${c().label.toLowerCase()} that are one thing spelt several ways${isTags() ? ', and tags that hold several' : ''}`}
                   disabled={busy()}
                   onClick={sweep}
                 >
@@ -188,10 +268,10 @@ export function BrowsePanel(props: Props) {
               <For each={shown()}>
                 {(v) => (
                   <li class="group flex h-7 items-center gap-2 rounded-control pr-2 pl-2 hover:bg-hover">
-                    <Show when={canMerge()}>
+                    <Show when={editable()}>
                       <input
                         type="checkbox"
-                        class="size-3.5 accent-accent"
+                        class={tick}
                         aria-label={`Select ${c().show(v.value)}`}
                         checked={selected().has(v.value)}
                         onChange={() => toggle(v.value)}
@@ -216,11 +296,23 @@ export function BrowsePanel(props: Props) {
               </Show>
             </ul>
             <Show when={selected().size}>
-              <div class="flex items-center gap-2 border-t border-line px-4 py-2.5 text-xs">
-                <span class="text-muted">{plural(selected().size, 'selected', 'selected')}</span>
+              <div class="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2.5 text-xs">
+                <span class="text-muted">{selected().size} selected</span>
                 <button class={`${smallButton} ml-auto`} onClick={() => setSelected(new Set<string>())}>
                   Clear
                 </button>
+                <button
+                  class={`${smallButton} text-danger hover:bg-danger/15`}
+                  disabled={busy()}
+                  onClick={() => void deleteSelected()}
+                >
+                  Delete…
+                </button>
+                <Show when={splittable().length}>
+                  <button class={smallButton} disabled={busy()} onClick={() => void splitSelected()}>
+                    Split…
+                  </button>
+                </Show>
                 <button
                   class={`${smallButton} border-transparent bg-accent text-on-accent hover:brightness-110`}
                   disabled={busy()}
@@ -230,7 +322,7 @@ export function BrowsePanel(props: Props) {
                 </button>
               </div>
             </Show>
-            <Show when={!canMerge() && c().merge && library()?.kind === 'calibre'}>
+            <Show when={!editable() && c().merge && library()?.kind === 'calibre'}>
               <p class="border-t border-line px-4 py-2.5 text-xs text-faint">
                 Tidying up is for Magnitide libraries; calibre libraries are read-only.
               </p>
@@ -238,32 +330,24 @@ export function BrowsePanel(props: Props) {
           </>
         }
       >
-        {(gs) => (
+        {(p) => (
           <>
             <p class="px-4 pb-2 text-xs text-muted">
-              {gs().length
-                ? `${plural(gs().length, 'group', 'groups')} of ${c().label.toLowerCase()} that look like one thing. Untick any to keep apart, and pick the spelling to keep.`
-                : `No two ${c().label.toLowerCase()} look alike.`}
+              {p().groups.length || p().splits.length
+                ? 'Untick anything to leave as it is. Merges keep the spelling you pick.'
+                : `Nothing to tidy among the ${c().label.toLowerCase()}.`}
             </p>
             <ul class="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 pb-2" role="list">
-              <For each={gs()}>
+              <For each={p().groups}>
                 {(g, i) => (
-                  <li
-                    class="rounded-card border border-line bg-bg/60 p-2.5"
-                    classList={{ 'opacity-50': skipped().has(i()) }}
-                  >
+                  <li class={card} classList={{ 'opacity-50': skipped().has(`m${i()}`) }}>
                     <div class="flex items-center gap-2">
                       <input
                         type="checkbox"
-                        class="size-3.5 accent-accent"
+                        class={tick}
                         aria-label="Merge this group"
-                        checked={!skipped().has(i())}
-                        onChange={(e) => {
-                          const next = new Set(skipped());
-                          if (e.currentTarget.checked) next.delete(i());
-                          else next.add(i());
-                          setSkipped(next);
-                        }}
+                        checked={!skipped().has(`m${i()}`)}
+                        onChange={(e) => skip(`m${i()}`, e.currentTarget.checked)}
                       />
                       <Select
                         class="h-6 min-w-0 flex-1 pl-2 text-xs"
@@ -282,7 +366,7 @@ export function BrowsePanel(props: Props) {
                             : 'A letter or two apart'
                         }
                       >
-                        {g.reason === 'variant' ? 'variant' : 'spelling'}
+                        {g.reason}
                       </span>
                     </div>
                     <p class="mt-1.5 pl-5.5 text-xs text-muted">
@@ -300,13 +384,38 @@ export function BrowsePanel(props: Props) {
                   </li>
                 )}
               </For>
+              <For each={p().splits}>
+                {(s, i) => (
+                  <li class={card} classList={{ 'opacity-50': skipped().has(`s${i()}`) }}>
+                    <div class="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        class={tick}
+                        aria-label="Split this tag"
+                        checked={!skipped().has(`s${i()}`)}
+                        onChange={(e) => skip(`s${i()}`, e.currentTarget.checked)}
+                      />
+                      <span class="min-w-0 flex-1 truncate text-sm" title={s.from.value}>
+                        {s.from.value} <span class="text-xs text-faint tabular-nums">{s.from.count}</span>
+                      </span>
+                      <span
+                        class="flex-none rounded-chip bg-element px-1.5 text-[10px] text-muted"
+                        title="Several tags in one"
+                      >
+                        split
+                      </span>
+                    </div>
+                    <p class="mt-1.5 pl-5.5 text-xs text-muted">→ {s.into.join(' · ')}</p>
+                  </li>
+                )}
+              </For>
             </ul>
             <div class="flex items-center gap-2 border-t border-line px-4 py-2.5">
-              <button class={`${secondaryButton} ml-auto`} onClick={() => setGroups(null)}>
+              <button class={`${secondaryButton} ml-auto`} onClick={() => setProposals(null)}>
                 Cancel
               </button>
-              <button class={primaryButton} disabled={!chosen() || busy()} onClick={applyGroups}>
-                {busy() ? 'Merging…' : `Merge ${plural(chosen(), 'Group', 'Groups')}`}
+              <button class={primaryButton} disabled={!chosenCount() || busy()} onClick={applyProposals}>
+                {busy() ? 'Tidying…' : `Tidy ${plural(chosenCount(), 'Group', 'Groups')}`}
               </button>
             </div>
           </>

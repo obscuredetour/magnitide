@@ -147,6 +147,8 @@ fn main() {
             commands::make_shelves,
             commands::facets,
             commands::merge_values,
+            commands::split_tags,
+            commands::remove_values,
             commands::remove_from_shelf,
             devices::sync_device_shelves,
             themes::theme_addons,

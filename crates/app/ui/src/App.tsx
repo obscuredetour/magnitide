@@ -3,7 +3,7 @@ import { createEffect, createSignal, Match, on, onCleanup, onMount, Show, Switch
 import { BookMenuHost, openBookMenu } from './components/BookMenu';
 import { BookTable } from './components/BookTable';
 import { BrowsePanel } from './components/BrowsePanel';
-import { browsePanel, category, closeBrowsePanel } from './browse';
+import { browsePanel, category, closeBrowsePanel, mayOpenDetails, roomForBoth } from './browse';
 import { CoverGrid, type ViewHandle } from './components/CoverGrid';
 import { DetailsPanel } from './components/DetailsPanel';
 import { DropOverlay } from './components/DropOverlay';
@@ -65,9 +65,9 @@ export function App() {
     return s.kind === 'no-library' ? s : null;
   };
 
-  // Opening the details closes the browse panel, which took its place.
+  // Opening the details closes the browse panel unless both fit across the window.
   createEffect(() => {
-    if (detailsOpen()) closeBrowsePanel();
+    if (detailsOpen() && !roomForBoth()) closeBrowsePanel();
   });
 
   const select = (id: number, { open = true, reveal = false } = {}) => {
@@ -81,8 +81,8 @@ export function App() {
     if (dragJustEnded()) return;
     if (e.metaKey || e.ctrlKey) toggleSelected(id);
     else if (e.shiftKey) selectRange(id, shownItems());
-    // While the browse panel is open, a click only selects (Enter or a double-click still open the book).
-    else select(id, { open: browsePanel() === null });
+    // While the browse panel is open and there's no room beside it, a click only selects (Enter still opens the details).
+    else select(id, { open: mayOpenDetails() });
   };
 
   /** Right-click on a book: its menu, for the selection if it's in it, else for it alone (as in Finder). */

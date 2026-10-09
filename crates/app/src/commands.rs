@@ -381,6 +381,25 @@ pub async fn merge_values(
     write_library(&state, move |lib| lib.merge_values(field, &from, &to)).await
 }
 
+/// Tags that hold several become their parts (see `Library::split_tags`).
+#[tauri::command]
+pub async fn split_tags(
+    state: State<'_, AppState>,
+    splits: Vec<magnitide_core::values::TagSplit>,
+) -> CmdResult<magnitide_core::values::MergeReport> {
+    write_library(&state, move |lib| lib.split_tags(&splits)).await
+}
+
+/// Take shared names off every book (see `Library::remove_values`).
+#[tauri::command]
+pub async fn remove_values(
+    state: State<'_, AppState>,
+    field: magnitide_core::values::ValueField,
+    names: Vec<String>,
+) -> CmdResult<magnitide_core::values::MergeReport> {
+    write_library(&state, move |lib| lib.remove_values(field, &names)).await
+}
+
 /// How these authors sort (saved sort names, or the automatic ones for new authors).
 #[tauri::command]
 pub async fn author_sorts(

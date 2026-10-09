@@ -7,7 +7,8 @@ import { createResource, createRoot, createSignal } from 'solid-js';
 
 import { api, type Facets, type ValueField } from './api';
 import { languageName } from './languages';
-import { editRevision, library, query, search, setDetailsOpen } from './library';
+import { detailsOpen, editRevision, library, query, search, setDetailsOpen } from './library';
+import { detailsWidth } from './view';
 import { storage } from './storage';
 
 export type FacetKey = keyof Facets;
@@ -106,11 +107,22 @@ export function toggleExpanded(key: FacetKey): void {
 const [browsePanel, setBrowsePanel] = createSignal<FacetKey | null>(null);
 export { browsePanel };
 
-/** Open a category wide. The panel takes the details panel's place. */
+/** The sidebar, the browse panel, a usable list and the details panel all fit across the window. */
+export const roomForBoth = (): boolean => window.innerWidth >= 208 + 380 + 320 + detailsWidth();
+
+/** Open a category wide, beside the details panel when there's room for both, else in its place. */
 export function openBrowsePanel(key: FacetKey): void {
-  setDetailsOpen(false);
+  if (!roomForBoth()) setDetailsOpen(false);
   setBrowsePanel(key);
 }
+
+/** Whether a click on a book may open the details without pushing the browse panel out. */
+export const mayOpenDetails = (): boolean => browsePanel() === null || roomForBoth();
+
+// When the window gets too narrow for both, the details give way (they come back with the next click).
+window.addEventListener('resize', () => {
+  if (browsePanel() !== null && detailsOpen() && !roomForBoth()) setDetailsOpen(false);
+});
 export function closeBrowsePanel(): void {
   setBrowsePanel(null);
 }

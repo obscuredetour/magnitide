@@ -13,6 +13,7 @@ import type { CoverColor } from './bindings/CoverColor';
 import type { Facets } from './bindings/Facets';
 import type { FacetValue } from './bindings/FacetValue';
 import type { MergeReport } from './bindings/MergeReport';
+import type { TagSplit } from './bindings/TagSplit';
 import type { ValueField } from './bindings/ValueField';
 import type { CustomDetail } from './bindings/CustomDetail';
 import type { FormatCount } from './bindings/FormatCount';
@@ -100,6 +101,7 @@ export type {
   Facets,
   FacetValue,
   MergeReport,
+  TagSplit,
   ValueField,
   FormatCount,
   LibraryStats,
@@ -233,6 +235,12 @@ export const api = {
   /** Every book with any of the `from` names gets `to` instead (tags, series, publishers, identifier schemes). */
   mergeValues: (field: ValueField, from: string[], to: string) =>
     invoke<MergeReport>('merge_values', { field, from, to }),
+
+  /** Each tag in `splits` becomes its parts on every book that has it. */
+  splitTags: (splits: TagSplit[]) => invoke<MergeReport>('split_tags', { splits }),
+
+  /** Take these names off every book. */
+  removeValues: (field: ValueField, names: string[]) => invoke<MergeReport>('remove_values', { field, names }),
 
   /**
    * Import the open calibre library into a Magnitide library at `dest`

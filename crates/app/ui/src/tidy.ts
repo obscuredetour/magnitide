@@ -1,6 +1,7 @@
-// Finding names that are probably the same thing spelt differently, for the
-// browse panel's tidy-up: "Sci-Fi", "scifi" and "SF" are one tag; "scfi" is a
-// typo of it. Pure functions over the facet lists.
+// Finding names that are probably the same thing spelt differently, and
+// names that hold several things, for the browse panel's tidy-up: "Sci-Fi",
+// "scifi" and "SF" are one tag; "scfi" is a typo of it; "Fiction / Fantasy"
+// and "Dragons;epic" are two each. Pure functions over the facet lists.
 
 import type { FacetValue } from './api';
 
@@ -63,14 +64,16 @@ export function tidyGroups(values: readonly FacetValue[]): TidyGroup[] {
     if (first === undefined) byKey.set(k, i);
     else union(i, first);
   });
-  // A letter or two apart: a typo of each other, most likely.
+  // A letter or two apart: a typo of each other, most likely. Different
+  // numbers are different things ("English 8", "English 10"), never typos.
+  const digits = (k: string) => k.replace(/\D/g, '');
   const distinct = [...byKey.entries()];
   for (let x = 0; x < distinct.length; x++) {
     const [ka, ia] = distinct[x]!;
     for (let y = x + 1; y < distinct.length; y++) {
       const [kb, ib] = distinct[y]!;
       const max = Math.min(allowance(ka.length), allowance(kb.length));
-      if (max > 0 && distance(ka, kb, max) <= max) union(ia, ib);
+      if (max > 0 && digits(ka) === digits(kb) && distance(ka, kb, max) <= max) union(ia, ib);
     }
   }
   const groups = new Map<number, FacetValue[]>();
@@ -89,5 +92,33 @@ export function tidyGroups(values: readonly FacetValue[]): TidyGroup[] {
 }
 
 const total = (g: TidyGroup) => g.members.reduce((n, m) => n + m.count, 0);
+
+/** A name that holds several, and its parts. */
+export type Split = { from: FacetValue; into: string[] };
+
+/**
+ * Separators between values packed into one name: `;` and `|` anywhere, a
+ * comma, and `/` or a dash with space on both sides ("Fiction / Fantasy",
+ * "Fiction - Mystery", but not "Sci-Fi" or "1/2").
+ */
+const SEPARATOR = /\s*[;|,]\s*|\s+[/\-–—]\s+/u;
+
+/** The parts a name splits into, when there are at least two. */
+export function splitParts(name: string): string[] | null {
+  const seen = new Set<string>();
+  const parts = name
+    .split(SEPARATOR)
+    .map((p) => p.trim())
+    .filter((p) => p && !seen.has(p.toLowerCase()) && seen.add(p.toLowerCase()));
+  return parts.length > 1 ? parts : null;
+}
+
+/** The names that hold several values, most-used first. */
+export function tidySplits(values: readonly FacetValue[]): Split[] {
+  return values
+    .map((from) => ({ from, into: splitParts(from.value) }))
+    .filter((s): s is Split => s.into !== null)
+    .sort((a, b) => b.from.count - a.from.count);
+}
 /** Between equally common spellings, prefer a capitalised one, then a shorter one. */
 const score = (name: string) => (/\p{Lu}/u.test(name) ? 10 : 0) - name.length / 100;
