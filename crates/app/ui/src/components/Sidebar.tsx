@@ -111,7 +111,7 @@ export function Sidebar() {
                   setMenu({ x: e.clientX, y: e.clientY, shelf });
                 }}
               >
-                <Icon of={SquareLibrary} class="text-muted group-aria-[current=true]:text-accent" />
+                <Icon of={SquareLibrary} class="text-muted group-aria-current:text-accent" />
                 <span class="min-w-0 flex-1 truncate">{shelf.name}</span>
                 <span class="text-xs text-faint tabular-nums">{shelf.count.toLocaleString()}</span>
               </button>

@@ -1,6 +1,7 @@
 import { createEffect, createResource, createSignal, For, Match, Show, Switch } from 'solid-js';
 import SquareLibrary from 'lucide-solid/icons/square-library';
 import X from 'lucide-solid/icons/x';
+import Pencil from 'lucide-solid/icons/pencil';
 
 import { api, type BookDetails, errorMessage, fileManagerName, type MatchedBy } from '../api';
 import { openEditor } from '../editor';
@@ -94,7 +95,7 @@ export function DetailsPanel(props: Props) {
   return (
     <aside
       ref={(el) => widthFlags(el, { wide: 416 })}
-      class="group/details relative flex-none animate-slide-in border-l border-line cover-blend select-text max-[760px]:absolute max-[760px]:inset-y-0 max-[760px]:right-0 max-[760px]:w-[min(28rem,100%_-_2rem)]! max-[760px]:max-w-full! max-[760px]:shadow-lift"
+      class="group/details relative flex-none animate-slide-in border-l border-line cover-blend select-text max-[760px]:absolute max-[760px]:inset-y-0 max-[760px]:right-0 max-[760px]:w-[min(28rem,100%-2rem)]! max-[760px]:max-w-full! max-[760px]:shadow-lift"
       // The list keeps at least 320px beside it.
       style={{
         width: `${detailsWidth()}px`,
@@ -107,16 +108,7 @@ export function DetailsPanel(props: Props) {
     >
       <ResizeHandle />
       <div class="h-full overflow-y-auto" ref={scroller}>
-        <div class="absolute top-2.5 right-2.5 z-1 flex items-center gap-1.5">
-          <Show when={library()?.kind === 'magnitide'}>
-            <button
-              class={`h-7 rounded-chip px-3 text-xs font-medium ${glass}`}
-              title={`Edit (${keys('mod+E')})`}
-              onClick={() => void openEditor(props.id)}
-            >
-              Edit
-            </button>
-          </Show>
+        <div class="absolute top-2.5 right-2.5 z-1 flex flex-col items-center gap-1.5">
           <button
             class={`grid size-7 place-items-center rounded-full ${glass}`}
             title="Close (Esc)"
@@ -124,6 +116,15 @@ export function DetailsPanel(props: Props) {
           >
             <Icon of={X} class="text-muted" />
           </button>
+          <Show when={library()?.kind === 'magnitide'}>
+            <button
+              class={`grid size-7 place-items-center rounded-full ${glass}`}
+              title={`Edit (${keys('mod+E')})`}
+              onClick={() => void openEditor(props.id)}
+            >
+              <Icon of={Pencil} class="text-muted" />
+            </button>
+          </Show>
         </div>
         <Show when={book()}>{(b) => <Details book={b()} />}</Show>
       </div>
@@ -304,7 +305,7 @@ function Details(props: { book: BookDetails }) {
               {([label, value]) => (
                 <>
                   <dt class="text-muted">{label}</dt>
-                  <dd class="[overflow-wrap:anywhere] tabular-nums">{value}</dd>
+                  <dd class="wrap-anywhere tabular-nums">{value}</dd>
                 </>
               )}
             </For>
@@ -390,7 +391,7 @@ function Details(props: { book: BookDetails }) {
                         </Show>
                         <Show when={library()?.kind === 'magnitide'}>
                           <button
-                            class="absolute -top-1.5 -right-1.5 grid size-[18px] cursor-pointer place-items-center rounded-full bg-popover text-xs leading-none text-muted opacity-0 shadow-sm ring-1 ring-line group-hover/format:opacity-100 hover:bg-danger hover:text-on-status hover:ring-danger focus-visible:opacity-100"
+                            class="absolute -top-1.5 -right-1.5 grid size-4.5 cursor-pointer place-items-center rounded-full bg-popover text-xs leading-none text-muted opacity-0 shadow-sm ring-1 ring-line group-hover/format:opacity-100 hover:bg-danger hover:text-on-status hover:ring-danger focus-visible:opacity-100"
                             title={`Remove the ${f.format}`}
                             aria-label={`Remove the ${f.format}`}
                             onClick={() => void removeFormat(b(), f.format)}
