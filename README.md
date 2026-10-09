@@ -131,7 +131,7 @@ scripts/build-plugin.sh plugins/my-source                             # → targ
 cargo run -p magnitide-plugins-wasm --bin mgp -- check target/plugins/my-source.mgp   # or identify, read, hook
 ```
 
-Styling is [Tailwind v4](https://tailwindcss.com) utilities in the components. Icons are [Lucide](https://lucide.dev), always through `components/Icon.tsx`. The serif is [Literata](https://github.com/googlefonts/literata) (OFL, bundled in `crates/app/ui/public/fonts`). Colours
+Styling is [Tailwind v4](https://tailwindcss.com) utilities in the components. Icons are [Lucide](https://lucide.dev), always through `components/Icon.tsx`. Colours
 and shadows come only from the theme (`crates/app/ui/src/themes/`, starting at `index.css`), in two layers:
 a palette named after [Catppuccin's](https://github.com/catppuccin/catppuccin/blob/main/docs/style-guide.md)
 (crust, mantle, base, surface 0–2, overlay 0–2, subtext 0–1, text, and the accents),
