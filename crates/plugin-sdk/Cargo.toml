@@ -1,6 +1,6 @@
 [package]
 name = "magnitide-plugin-sdk"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 description = "Write Magnitide plugins in Rust: the plugin API's bindings and helpers, for the wasm32-wasip2 target"
 license = "GPL-3.0-or-later"

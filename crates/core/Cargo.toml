@@ -1,9 +1,10 @@
 [package]
 name = "magnitide-core"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 description = "The Magnitide library: native schema, migrations, queries, edits and import"
 license = "GPL-3.0-or-later"
+publish = false
 
 [features]
 # Export TypeScript bindings for UI-facing types (used by the app).
@@ -11,12 +12,12 @@ ts = ["dep:ts-rs"]
 
 [dependencies]
 ammonia = "4.2.1"
-calibre-compat = { version = "0.1.0", path = "../calibre-compat" }
+calibre-compat = { path = "../calibre-compat" }
 chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"] }
 deunicode = "1.6"
 flate2 = "1.1.10"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
-magnitide-catalog = { version = "0.1.0", path = "../catalog" }
+magnitide-catalog = { path = "../catalog" }
 md-5 = "0.11.0"
 quick-xml = "0.42"
 reflink-copy = "0.1.30"

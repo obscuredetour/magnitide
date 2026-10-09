@@ -1,7 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Magnitide",
-  "version": "0.6.0",
   "identifier": "com.magnitide.app",
   "build": {
     "devUrl": "http://localhost:1420",
