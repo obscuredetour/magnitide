@@ -1,7 +1,7 @@
 /* Magnitide's own themes: light and dark (the defaults) with the coral of
-   the icon's bookmark as the accent and its aqua for links, and sepia. Accents
-   beyond the ones they set come from Catppuccin Latte (light) and Mocha
-   (dark), for the accent picker. */
+   the logo's bottom book as the accent (--coral, the same in every theme)
+   and teal for links, and sepia. Accents beyond the ones they set come from
+   Catppuccin Latte (light) and Mocha (dark), for the accent picker. */
 
 :root:not([data-theme]),
 [data-theme='light'] {
@@ -31,8 +31,9 @@
   --sky: #04a5e5;
   --sapphire: #209fb5;
   --lavender: #7287fd;
+  --coral: #f14b4b;
 
-  --accent: var(--peach);
+  --accent: var(--coral);
   --link: var(--teal);
   --field: #ffffff;
   --on-accent: #ffffff;
@@ -69,8 +70,9 @@
   --sky: #89dceb;
   --sapphire: #74c7ec;
   --lavender: #b4befe;
+  --coral: #f14b4b;
 
-  --accent: var(--peach);
+  --accent: var(--coral);
   --link: var(--teal);
   --on-accent: #0e0e10;
   --field: var(--mantle);
@@ -107,6 +109,7 @@
   --sapphire: #209fb5;
   --blue: #1e66f5;
   --lavender: #7287fd;
+  --coral: #f14b4b;
 
   --accent: var(--peach);
   --link: var(--peach);
