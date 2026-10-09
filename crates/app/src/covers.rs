@@ -136,7 +136,7 @@ struct ColorSidecar {
     v: u8,
     colors: Vec<String>,
 }
-const COLOR_VERSION: u8 = 3;
+const COLOR_VERSION: u8 = 4;
 
 /// These books' cover palettes. Books without a cover, or whose cover can't
 /// be read, are left out. Computed from the cached thumbnail (made if
@@ -186,27 +186,18 @@ fn cover_color(lib: &Loaded, id: i64) -> Result<Option<CoverColor>> {
     Ok(Some(CoverColor { id, colors }))
 }
 
-/// Up to three of the cover's common colours, the most common first, then
-/// ones of a clearly different hue (or, failing that, clearly lighter or
-/// darker), so a gradient from them has somewhere to go; for a cover that's
-/// all white, grey or black, its mean colour alone.
+/// Up to three of the cover's colours: the most common first, then the one
+/// that stands out most from what's chosen so far (perceptually, in OKLab,
+/// weighted by how much of the cover it fills), as long as it stands out
+/// enough. Red, then the gold of the emblem, then the white of the title.
 fn palette(img: &DynamicImage) -> Vec<String> {
     let small = img.thumbnail(32, 48).to_rgb8();
-    let total = small.pixels().len().max(1);
-    // Saturated pixels, quantised to 4 bits per channel: a count and a colour sum per bucket.
+    let total = small.pixels().len().max(1) as f32;
+    // Every pixel, quantised to 3 bits per channel: a count and a colour sum per bucket.
     let mut buckets: std::collections::HashMap<u16, (u32, [u64; 3])> = std::collections::HashMap::new();
-    let mut mean = [0u64; 3];
     for p in small.pixels() {
         let [r, g, b] = p.0;
-        for (m, c) in mean.iter_mut().zip([r, g, b]) {
-            *m += u64::from(c);
-        }
-        let max = r.max(g).max(b);
-        let min = r.min(g).min(b);
-        if max < 40 || u32::from(max - min) * 4 < u32::from(max) {
-            continue; // near-black, or too grey to carry a hue
-        }
-        let key = (u16::from(r >> 4) << 8) | (u16::from(g >> 4) << 4) | u16::from(b >> 4);
+        let key = (u16::from(r >> 5) << 6) | (u16::from(g >> 5) << 3) | u16::from(b >> 5);
         let e = buckets.entry(key).or_insert((0, [0; 3]));
         e.0 += 1;
         for (sum, c) in e.1.iter_mut().zip([r, g, b]) {
@@ -215,59 +206,55 @@ fn palette(img: &DynamicImage) -> Vec<String> {
     }
     let rgb = |sum: [u64; 3], n: u64| [sum[0] / n, sum[1] / n, sum[2] / n];
     let hex = |c: [u64; 3]| format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2]);
-    let mut ranked: Vec<(u32, [u64; 3])> = buckets.into_values().map(|(n, sum)| (n, rgb(sum, u64::from(n)))).collect();
-    ranked.sort_by_key(|&(n, _)| std::cmp::Reverse(n));
-    // The first needs 3% of the cover; the others, which only add variety, 1.5%.
-    let Some(&(_, first)) = ranked.first().filter(|(n, _)| *n as usize * 33 >= total) else {
-        return vec![hex(rgb(mean, total as u64))];
-    };
-    let mut out = vec![first];
-    let candidates: Vec<[u64; 3]> = ranked.iter().filter(|(n, _)| *n as usize * 66 >= total).map(|&(_, c)| c).collect();
+    // Colours filling at least 1% of the cover, with their share and OKLab position.
+    let mut candidates: Vec<(f32, [u64; 3], [f32; 3])> = buckets
+        .into_values()
+        .filter(|(n, _)| *n as f32 >= total / 100.0)
+        .map(|(n, sum)| {
+            let c = rgb(sum, u64::from(n));
+            (n as f32 / total, c, oklab(c))
+        })
+        .collect();
+    candidates.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let Some(&(_, first, first_lab)) = candidates.first() else { return vec![] };
+    let mut out = vec![(first, first_lab)];
     while out.len() < 3 {
-        // Another hue if there is one (35° away from every colour chosen), else another lightness.
-        let far = |c: &[u64; 3], by_hue: bool| {
-            out.iter().all(|o| {
-                if by_hue { hue_distance(*o, *c) >= 35.0 } else { (lightness(*o) - lightness(*c)).abs() >= 0.3 }
+        // The farthest from everything chosen, with a thumb on the scale for coverage.
+        let best = candidates
+            .iter()
+            .map(|&(share, c, lab)| {
+                let apart = out.iter().map(|(_, o)| distance(*o, lab)).fold(f32::INFINITY, f32::min);
+                (apart, apart * share.sqrt(), c, lab)
             })
-        };
-        let next =
-            candidates.iter().find(|c| far(c, true)).or_else(|| candidates.iter().find(|c| far(c, false))).copied();
-        match next {
-            Some(c) => out.push(c),
+            .filter(|&(apart, ..)| apart >= 0.15)
+            .max_by(|a, b| a.1.total_cmp(&b.1));
+        match best {
+            Some((_, _, c, lab)) => out.push((c, lab)),
             None => break,
         }
     }
-    out.into_iter().map(hex).collect()
+    out.into_iter().map(|(c, _)| hex(c)).collect()
 }
 
-/// Hue in degrees, 0–360 (0 for grey).
-fn hue(c: [u64; 3]) -> f32 {
-    let [r, g, b] = c.map(|x| x as f32 / 255.0);
-    let (max, min) = (r.max(g).max(b), r.min(g).min(b));
-    let d = max - min;
-    if d < 1e-6 {
-        return 0.0;
-    }
-    let h = if max == r {
-        ((g - b) / d) % 6.0
-    } else if max == g {
-        (b - r) / d + 2.0
-    } else {
-        (r - g) / d + 4.0
+/// sRGB to OKLab, where distances match how different colours look.
+fn oklab(c: [u64; 3]) -> [f32; 3] {
+    let lin = |x: u64| {
+        let x = x as f32 / 255.0;
+        if x <= 0.04045 { x / 12.92 } else { ((x + 0.055) / 1.055).powf(2.4) }
     };
-    (h * 60.0).rem_euclid(360.0)
+    let [r, g, b] = c.map(lin);
+    let l = (0.412_221_5 * r + 0.536_332_5 * g + 0.051_445_7 * b).cbrt();
+    let m = (0.211_903_5 * r + 0.680_699_5 * g + 0.107_396_9 * b).cbrt();
+    let s = (0.088_302_4 * r + 0.281_718_8 * g + 0.629_978_7 * b).cbrt();
+    [
+        0.210_454_3 * l + 0.793_617_8 * m - 0.004_072_7 * s,
+        1.977_998_4 * l - 2.428_592_2 * m + 0.450_593_7 * s,
+        0.025_904_0 * l + 0.782_771_8 * m - 0.808_675_8 * s,
+    ]
 }
 
-/// How far apart two hues are, 0–180.
-fn hue_distance(a: [u64; 3], b: [u64; 3]) -> f32 {
-    let d = (hue(a) - hue(b)).abs();
-    d.min(360.0 - d)
-}
-
-/// HSL lightness, 0–1.
-fn lightness(c: [u64; 3]) -> f32 {
-    let [r, g, b] = c.map(|x| x as f32 / 255.0);
-    (r.max(g).max(b) + r.min(g).min(b)) / 2.0
+fn distance(a: [f32; 3], b: [f32; 3]) -> f32 {
+    a.iter().zip(b).map(|(x, y)| (x - y).powi(2)).sum::<f32>().sqrt()
 }
 
 fn write_atomic(dest: &Path, bytes: &[u8]) -> Result<()> {
@@ -290,55 +277,39 @@ mod tests {
         RgbImage::from_pixel(w, h, Rgb(rgb))
     }
 
-    #[test]
-    fn solid_colour_is_itself() {
-        assert_eq!(palette(&DynamicImage::ImageRgb8(solid(20, 30, [255, 0, 0]))), ["#ff0000"]);
+    fn band(img: &mut RgbImage, rows: std::ops::Range<u32>, rgb: [u8; 3]) {
+        for y in rows {
+            for x in 0..img.width() {
+                img.put_pixel(x, y, Rgb(rgb));
+            }
+        }
     }
 
     #[test]
-    fn grey_cover_gives_its_mean() {
+    fn solid_colour_is_itself() {
+        assert_eq!(palette(&DynamicImage::ImageRgb8(solid(20, 30, [255, 0, 0]))), ["#ff0000"]);
         assert_eq!(palette(&DynamicImage::ImageRgb8(solid(20, 30, [128, 128, 128]))), ["#808080"]);
     }
 
     #[test]
-    fn picks_different_hues_over_neighbours() {
-        // Mostly one blue with a slightly different blue beside it, plus a little orange:
-        // the orange is the second colour, not the other blue.
-        let mut img = solid(32, 48, [20, 60, 200]);
-        for y in 30..44 {
-            for x in 0..32 {
-                img.put_pixel(x, y, Rgb([30, 80, 210]));
-            }
-        }
-        for y in 44..48 {
-            for x in 0..32 {
-                img.put_pixel(x, y, Rgb([230, 120, 20]));
-            }
-        }
-        assert_eq!(palette(&DynamicImage::ImageRgb8(img)), ["#143cc8", "#e67814"]);
-        // The same hue in two clearly different lightnesses still gives two colours.
-        let mut img = solid(32, 48, [20, 60, 200]);
-        for y in 30..48 {
-            for x in 0..32 {
-                img.put_pixel(x, y, Rgb([150, 170, 240]));
-            }
-        }
-        assert_eq!(palette(&DynamicImage::ImageRgb8(img)), ["#143cc8", "#96aaf0"]);
+    fn most_common_first_then_what_stands_out() {
+        // A red cover with a gold emblem and a white title: red, gold, white.
+        let mut img = solid(32, 48, [166, 38, 36]);
+        band(&mut img, 20..34, [249, 224, 79]);
+        band(&mut img, 34..40, [248, 246, 254]);
+        band(&mut img, 40..44, [150, 30, 30]); // a darker red: not different enough to count
+        assert_eq!(palette(&DynamicImage::ImageRgb8(img)), ["#a62624", "#f9e04f", "#f8f6fe"]);
+        // A black cover with red lettering and a little gold: black, red, gold.
+        let mut img = solid(32, 48, [1, 1, 1]);
+        band(&mut img, 30..40, [253, 78, 78]);
+        band(&mut img, 40..44, [248, 235, 128]);
+        assert_eq!(palette(&DynamicImage::ImageRgb8(img)), ["#010101", "#fd4e4e", "#f8eb80"]);
     }
 
     #[test]
-    fn bands_come_most_common_first() {
-        let mut img = solid(32, 48, [255, 255, 255]);
-        for y in 0..20 {
-            for x in 0..32 {
-                img.put_pixel(x, y, Rgb([20, 60, 200]));
-            }
-        }
-        for y in 20..30 {
-            for x in 0..32 {
-                img.put_pixel(x, y, Rgb([200, 40, 30]));
-            }
-        }
-        assert_eq!(palette(&DynamicImage::ImageRgb8(img)), ["#143cc8", "#c8281e"]);
+    fn a_near_twin_does_not_count() {
+        let mut img = solid(32, 48, [20, 60, 200]);
+        band(&mut img, 30..48, [30, 80, 210]);
+        assert_eq!(palette(&DynamicImage::ImageRgb8(img)), ["#143cc8"]);
     }
 }
