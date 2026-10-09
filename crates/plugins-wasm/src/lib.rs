@@ -679,7 +679,6 @@ impl WasmPlugins {
         capabilities: &[Capability],
         sandbox: Option<&Sandbox>,
         library: Option<Arc<dyn LibraryAccess>>,
-        timeout: Duration,
     ) -> Result<Store<State>, String> {
         let mut wasi = WasiCtxBuilder::new();
         if let Some(s) = sandbox {
@@ -703,7 +702,11 @@ impl WasmPlugins {
         };
         let mut store = Store::new(&self.engine, state);
         store.limiter(|s| &mut s.limits);
-        store.set_epoch_deadline((timeout.as_millis() / EPOCH_TICK.as_millis()).max(1) as u64);
+        // Instantiating gets the full allowance whatever the call's deadline
+        // (tests shorten it to catch runaway plugins, and a loaded machine
+        // instantiates slowly); the call's own deadline is set once the
+        // instance is up, by `deadline`.
+        store.set_epoch_deadline(ticks(CALL_TIMEOUT));
         // At the deadline: time spent waiting on the user is given back; else stop.
         store.epoch_deadline_callback(|mut ctx| {
             let waited = std::mem::take(&mut ctx.data_mut().waited);
@@ -727,9 +730,10 @@ impl WasmPlugins {
         let mut linker = self.linker()?;
         MetadataSourcePlugin::add_to_linker::<_, HasSelf<_>>(&mut linker, |s: &mut State| s)
             .map_err(|e| e.to_string())?;
-        let mut store = self.store(name, &self.capabilities_of(name), None, None, timeout)?;
+        let mut store = self.store(name, &self.capabilities_of(name), None, None)?;
         let instance = MetadataSourcePlugin::instantiate(&mut store, component, &linker)
             .map_err(|e| format!("{name} doesn't implement the metadata-source API: {}", first_line(&e.to_string())))?;
+        deadline(&mut store, timeout);
         Ok((store, instance))
     }
 
@@ -742,9 +746,10 @@ impl WasmPlugins {
     ) -> Result<(Store<State>, ImportHookPlugin), String> {
         let mut linker = self.linker()?;
         ImportHookPlugin::add_to_linker::<_, HasSelf<_>>(&mut linker, |s: &mut State| s).map_err(|e| e.to_string())?;
-        let mut store = self.store(name, &self.capabilities_of(name), sandbox, None, timeout)?;
+        let mut store = self.store(name, &self.capabilities_of(name), sandbox, None)?;
         let instance = ImportHookPlugin::instantiate(&mut store, component, &linker)
             .map_err(|e| format!("{name} doesn't implement the import-hook API: {}", first_line(&e.to_string())))?;
+        deadline(&mut store, timeout);
         Ok((store, instance))
     }
 
@@ -758,9 +763,10 @@ impl WasmPlugins {
         let mut linker = self.linker()?;
         FileMetadataPlugin::add_to_linker::<_, HasSelf<_>>(&mut linker, |s: &mut State| s)
             .map_err(|e| e.to_string())?;
-        let mut store = self.store(name, &self.capabilities_of(name), sandbox, None, timeout)?;
+        let mut store = self.store(name, &self.capabilities_of(name), sandbox, None)?;
         let instance = FileMetadataPlugin::instantiate(&mut store, component, &linker)
             .map_err(|e| format!("{name} doesn't implement the file-metadata API: {}", first_line(&e.to_string())))?;
+        deadline(&mut store, timeout);
         Ok((store, instance))
     }
 
@@ -1355,11 +1361,22 @@ impl WasmPlugins {
         let mut linker = self.linker()?;
         LibraryActionPlugin::add_to_linker::<_, HasSelf<_>>(&mut linker, |s: &mut State| s)
             .map_err(|e| e.to_string())?;
-        let mut store = self.store(name, &self.capabilities_of(name), sandbox, library, timeout)?;
+        let mut store = self.store(name, &self.capabilities_of(name), sandbox, library)?;
         let instance = LibraryActionPlugin::instantiate(&mut store, component, &linker)
             .map_err(|e| format!("{name} doesn't implement the library-action API: {}", first_line(&e.to_string())))?;
+        deadline(&mut store, timeout);
         Ok((store, instance))
     }
+}
+
+/// Epoch ticks in a span of time, at least one.
+fn ticks(timeout: Duration) -> u64 {
+    (timeout.as_millis() / EPOCH_TICK.as_millis()).max(1) as u64
+}
+
+/// From now, the call may run `timeout` (its waits on the user credited back).
+fn deadline(store: &mut Store<State>, timeout: Duration) {
+    store.set_epoch_deadline(ticks(timeout));
 }
 
 fn validate(m: &Manifest) -> Result<(), String> {

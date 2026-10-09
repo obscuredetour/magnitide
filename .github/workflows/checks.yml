@@ -41,6 +41,14 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@v5
+      # The Android SDK is the runner's biggest unused item; without it the
+      # workspace build, the plugin runtime and a calibre fit with room to
+      # spare (4.7 GB were left without this, before the plugin builds).
+      - name: Make room on the runner
+        run: |
+          df -h / | tail -1
+          sudo rm -rf /usr/local/lib/android
+          df -h / | tail -1
       # The plugin-only steps (the runtime, the calibre oracle, the plugin
       # builds) run on every push to main, and on a pull request only when it
       # touches the plugins; fmt, clippy and the workspace tests always run.
