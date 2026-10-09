@@ -297,6 +297,109 @@ fn stats_of(catalog: &magnitide_catalog::Catalog) -> LibraryStats {
     LibraryStats { authors: authors.len(), series: series.len(), formats, total_bytes }
 }
 
+/// A value books share, and how many have it.
+#[derive(Serialize, TS)]
+#[ts(export)]
+pub struct FacetValue {
+    value: String,
+    count: usize,
+}
+
+/// The library's values by kind, each most common first, for browsing.
+/// Names compare case-insensitively (the first spelling seen is shown).
+#[derive(Serialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct Facets {
+    authors: Vec<FacetValue>,
+    /// Main and further series alike.
+    series: Vec<FacetValue>,
+    tags: Vec<FacetValue>,
+    publishers: Vec<FacetValue>,
+    formats: Vec<FacetValue>,
+    /// ISO 639-2 codes.
+    languages: Vec<FacetValue>,
+    /// Stars ("4", "3.5"), highest first.
+    ratings: Vec<FacetValue>,
+    /// Identifier schemes ("isbn").
+    identifiers: Vec<FacetValue>,
+}
+
+#[tauri::command]
+pub async fn facets(state: State<'_, AppState>) -> CmdResult<Facets> {
+    let lib = state.current().ok_or("No library is open")?;
+    Ok(facets_of(&lib.catalog))
+}
+
+fn facets_of(catalog: &magnitide_catalog::Catalog) -> Facets {
+    // Keyed case-insensitively, keeping the first spelling seen.
+    let mut counts: [BTreeMap<String, (String, usize)>; 8] = Default::default();
+    let mut add = |which: usize, name: &str| {
+        let e = counts[which].entry(name.to_lowercase()).or_insert_with(|| (name.to_owned(), 0));
+        e.1 += 1;
+    };
+    for b in &catalog.books {
+        b.authors.iter().for_each(|a| add(0, a));
+        b.series.iter().chain(b.more_series.iter().map(|s| &s.name)).for_each(|s| add(1, s));
+        b.tags.iter().for_each(|t| add(2, t));
+        b.publisher.iter().for_each(|p| add(3, p));
+        b.formats.iter().for_each(|f| add(4, &f.format));
+        b.languages.iter().for_each(|l| add(5, l));
+        if let Some(s) = b.stars() {
+            add(6, &magnitide_catalog::format_number(s.into(), None));
+        }
+        b.identifiers.keys().for_each(|k| add(7, k));
+    }
+    let by_count = |m: BTreeMap<String, (String, usize)>| {
+        let mut v: Vec<FacetValue> = m.into_values().map(|(value, count)| FacetValue { value, count }).collect();
+        v.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.value.to_lowercase().cmp(&b.value.to_lowercase())));
+        v
+    };
+    let [authors, series, tags, publishers, formats, languages, ratings, identifiers] = counts;
+    let mut ratings = by_count(ratings);
+    ratings.sort_by(|a, b| b.value.parse::<f32>().unwrap_or(0.0).total_cmp(&a.value.parse::<f32>().unwrap_or(0.0)));
+    Facets {
+        authors: by_count(authors),
+        series: by_count(series),
+        tags: by_count(tags),
+        publishers: by_count(publishers),
+        formats: by_count(formats),
+        languages: by_count(languages),
+        ratings,
+        identifiers: by_count(identifiers),
+    }
+}
+
+/// Merge or rename shared names (see `Library::merge_values`).
+#[tauri::command]
+pub async fn merge_values(
+    state: State<'_, AppState>,
+    field: magnitide_core::values::ValueField,
+    from: Vec<String>,
+    to: String,
+) -> CmdResult<magnitide_core::values::MergeReport> {
+    write_library(&state, move |lib| lib.merge_values(field, &from, &to)).await
+}
+
+/// Tags that hold several become their parts (see `Library::split_tags`).
+#[tauri::command]
+pub async fn split_tags(
+    state: State<'_, AppState>,
+    splits: Vec<magnitide_core::values::TagSplit>,
+) -> CmdResult<magnitide_core::values::MergeReport> {
+    write_library(&state, move |lib| lib.split_tags(&splits)).await
+}
+
+/// Take shared names off every book (see `Library::remove_values`).
+#[tauri::command]
+pub async fn remove_values(
+    state: State<'_, AppState>,
+    field: magnitide_core::values::ValueField,
+    names: Vec<String>,
+) -> CmdResult<magnitide_core::values::MergeReport> {
+    write_library(&state, move |lib| lib.remove_values(field, &names)).await
+}
+
 /// How these authors sort (saved sort names, or the automatic ones for new authors).
 #[tauri::command]
 pub async fn author_sorts(
@@ -988,6 +1091,22 @@ mod tests {
         assert_eq!((s.authors, s.series, s.total_bytes), (3, 2, 1111));
         let formats: Vec<(&str, usize)> = s.formats.iter().map(|f| (f.format.as_str(), f.count)).collect();
         assert_eq!(formats, [("EPUB", 3), ("PDF", 1)]);
+    }
+
+    #[test]
+    fn counts_facets() {
+        let book = |tags: &[&str], rating: Option<u8>| Book {
+            authors: vec!["Ann".into()],
+            tags: tags.iter().map(|t| t.to_string()).collect(),
+            rating,
+            ..Default::default()
+        };
+        let books = vec![book(&["Fantasy", "scifi"], Some(8)), book(&["SciFi"], Some(10)), book(&["fantasy"], None)];
+        let f = facets_of(&magnitide_catalog::Catalog::new(None, vec![], books, vec![]));
+        let pairs = |v: &[FacetValue]| v.iter().map(|x| (x.value.clone(), x.count)).collect::<Vec<_>>();
+        assert_eq!(pairs(&f.tags), [("Fantasy".to_owned(), 2), ("scifi".to_owned(), 2)]);
+        assert_eq!(pairs(&f.authors), [("Ann".to_owned(), 3)]);
+        assert_eq!(pairs(&f.ratings), [("5".to_owned(), 1), ("4".to_owned(), 1)], "highest first");
     }
 
     #[test]

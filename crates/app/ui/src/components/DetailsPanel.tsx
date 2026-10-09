@@ -9,6 +9,7 @@ import { DETAILS_WIDTH, detailsWidth, setDetailsWidth } from '../view';
 import { editRevision, library, openBook, search, setSelectedId } from '../library';
 import { formatCustom } from '../fields';
 import { identifierOrder } from '../identifiers';
+import { languageName } from '../languages';
 import { toast } from '../toast';
 import { devices, onDevice } from '../devices';
 import { addFromDevice, removeFormat, removeFromDevice, sendToDevice } from '../transfer';
@@ -26,22 +27,6 @@ type Props = {
   id: number;
   onClose(): void;
 };
-
-const languageNames = (() => {
-  try {
-    return new Intl.DisplayNames([navigator.language, 'en'], { type: 'language' });
-  } catch {
-    return null;
-  }
-})();
-
-function languageName(code: string): string {
-  try {
-    return languageNames?.of(code) ?? code;
-  } catch {
-    return code;
-  }
-}
 
 const searchFor = (field: string, value: string) => search(`${field}:"${value}"`);
 

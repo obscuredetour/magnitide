@@ -8,13 +8,17 @@ import { drag } from '../bookDrag';
 import { editRevision, library, query } from '../library';
 import { formatSize } from '../sizes';
 import { plural } from '../writeback';
+import { setSidebarMode, sidebarMode } from '../browse';
 import { activeShelf, createShelf, deleteShelf, makeShelvesFrom, renameShelf, shelves, showShelf } from '../shelves';
+import { Browse } from './Browse';
 import { Icon } from './Icon';
 import { ContextMenu, MenuItem, MenuSeparator } from './Menu';
 
 const row =
   'group flex h-7 w-full cursor-default items-center gap-2 rounded-control px-2 text-left text-sm outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-focus aria-[current=true]:bg-highlight aria-[current=true]:text-accent';
 const label = 'px-2 pt-4 pb-1 text-[11px] font-semibold tracking-[.06em] text-muted uppercase';
+const segment =
+  'h-6 flex-1 cursor-default rounded-inset text-xs font-medium text-muted hover:text-fg aria-pressed:bg-popover aria-pressed:text-fg aria-pressed:shadow-card';
 
 /** A name field for creating or renaming a shelf: Enter saves, Esc or leaving cancels. */
 function NameField(props: { value?: string; onDone(name: string | null): void }) {
@@ -57,15 +61,32 @@ export function Sidebar() {
 
   return (
     <nav class="flex w-52 flex-none flex-col overflow-y-auto border-r border-line bg-panel p-2" aria-label="Library">
+      {/* Your shelves, or the library by what its books share. */}
+      <div class="mb-1.5 flex rounded-control bg-element p-0.5" role="group" aria-label="Sidebar shows">
+        <button class={segment} aria-pressed={sidebarMode() === 'shelves'} onClick={() => setSidebarMode('shelves')}>
+          Shelves
+        </button>
+        <button class={segment} aria-pressed={sidebarMode() === 'browse'} onClick={() => setSidebarMode('browse')}>
+          Browse
+        </button>
+      </div>
       <button class={row} aria-current={!query().trim()} onClick={() => showShelf(null)}>
         <Icon of={LibraryBig} class="text-muted" />
         <span class="min-w-0 flex-1 truncate">All Books</span>
         <span class="text-xs text-faint tabular-nums">{library()?.bookCount.toLocaleString()}</span>
       </button>
 
+      <Show when={sidebarMode() === 'browse'}>
+        <Browse />
+      </Show>
+
       <Show
-        when={editable()}
-        fallback={<p class="px-2 pt-4 text-xs text-faint">Shelves are for Magnitide libraries.</p>}
+        when={sidebarMode() === 'shelves' && editable()}
+        fallback={
+          <Show when={sidebarMode() === 'shelves'}>
+            <p class="px-2 pt-4 text-xs text-faint">Shelves are for Magnitide libraries.</p>
+          </Show>
+        }
       >
         <div class="flex items-center">
           <div class={`${label} flex-1`}>Shelves</div>
