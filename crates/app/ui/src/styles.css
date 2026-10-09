@@ -154,9 +154,9 @@
 }
 :root[data-theme='light'] .cover-blend,
 :root[data-blend-all][data-appearance='light'] .cover-blend {
-  --blend-1: 22%;
-  --blend-2: 20%;
-  --blend-3: 16%;
+  --blend-1: 30%;
+  --blend-2: 28%;
+  --blend-3: 22%;
 }
 :root[data-theme='dark'] .cover-blend,
 :root[data-blend-all][data-appearance='dark'] .cover-blend {
