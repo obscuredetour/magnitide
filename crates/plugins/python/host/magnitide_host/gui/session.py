@@ -171,6 +171,8 @@ _job_reported = set()
 def _watch_jobs(gui):
     """Report the job manager's jobs to Magnitide as they start, progress
     and finish (its job bar shows them)."""
+    from magnitide_host import IN_CALIBRE
+
     if _jobs_watched[0]:
         return
     _jobs_watched[0] = True
@@ -204,7 +206,14 @@ def _watch_jobs(gui):
             if id(job) not in seen or job.is_finished:
                 continue
             try:
-                job.update()
+                # calibre's job manager emits job_done only when its own
+                # update() moves a job to finished; an update() from here
+                # first would take that transition and lose the signal, so
+                # in calibre only read (its server thread keeps percent and
+                # the message current). The compat package's manager leaves
+                # polling to us and reports done by a flag of its own.
+                if not IN_CALIBRE:
+                    job.update()
                 cur = (int(job.percent), job.status_text)
             except Exception:
                 continue
