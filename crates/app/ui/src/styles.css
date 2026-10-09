@@ -168,26 +168,6 @@
   }
 }
 
-/* A book spine (ShelfView.tsx): --spine is the cover's colour, or the
-   generated cover's. Ink turns dark or light by the spine's lightness, as
-   on-accent does in accents.css. */
-@utility spine {
-  /* Until the colour arrives, a plain board. */
-  --spine-c: var(--spine, var(--surface-1));
-  --spine-ink: #fff;
-  color: var(--spine-ink);
-  background: linear-gradient(
-    to right,
-    color-mix(in srgb, var(--spine-c) 78%, black) 0,
-    var(--spine-c) 14%,
-    var(--spine-c) 84%,
-    color-mix(in srgb, var(--spine-c) 70%, black) 100%
-  );
-  @supports (color: oklch(from red l c h)) {
-    --spine-ink: oklch(from var(--spine-c) clamp(0.15, (0.62 - l) * 1000, 0.98) 0.02 h);
-  }
-}
-
 /* Generated cover for books without one; --hue is set per book. */
 @utility cover-placeholder {
   background: linear-gradient(160deg, hsl(var(--hue) 42% 42%), hsl(calc(var(--hue) + 28) 48% 26%));

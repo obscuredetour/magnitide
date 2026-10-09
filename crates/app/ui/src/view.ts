@@ -6,7 +6,7 @@ import { devices } from './devices';
 import { storage } from './storage';
 import { customFields } from './fields';
 
-/** Target cover width in CSS px; the grid stretches tiles to fill each row, and shelves are as tall as a cover. */
+/** Target cover width in CSS px; the grid stretches tiles to fill each row. */
 export const COVER_SIZE = { min: 100, max: 240, step: 10, initial: 150 } as const;
 
 const clamp = (n: number) => Math.min(COVER_SIZE.max, Math.max(COVER_SIZE.min, Math.round(n)));
@@ -21,12 +21,9 @@ export function setCoverSize(n: number): void {
   storage.set('coverSize', String(size));
 }
 
-export type ViewMode = 'grid' | 'table' | 'shelf';
-const VIEW_MODES: readonly ViewMode[] = ['grid', 'table', 'shelf'];
-const storedMode = storage.get('viewMode') as ViewMode | null;
-const [viewMode, setViewModeSignal] = createSignal<ViewMode>(
-  storedMode && VIEW_MODES.includes(storedMode) ? storedMode : 'grid',
-);
+export type ViewMode = 'grid' | 'table';
+const storedMode = storage.get('viewMode');
+const [viewMode, setViewModeSignal] = createSignal<ViewMode>(storedMode === 'table' ? 'table' : 'grid');
 export { viewMode };
 
 export function setViewMode(mode: ViewMode): void {

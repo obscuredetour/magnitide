@@ -40,7 +40,6 @@ export const SHORTCUTS: { group: string; items: Shortcut[] }[] = [
       { keys: ['mod+F', '/'], action: 'Search' },
       { keys: ['mod+1'], action: 'Covers view' },
       { keys: ['mod+2'], action: 'List view' },
-      { keys: ['mod+3'], action: 'Shelf view' },
       { keys: ['mod++', 'mod+-'], action: 'Larger / smaller interface' },
       { keys: ['mod+0'], action: 'Actual size' },
     ],

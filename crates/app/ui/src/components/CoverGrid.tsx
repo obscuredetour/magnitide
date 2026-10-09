@@ -14,9 +14,7 @@ const GAP_Y = 28;
 const TEXT_H = 38; // title + author lines under the cover
 const OVERSCAN = 3; // rows rendered above/below the viewport
 
-export type ArrowKey = 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight';
-
-/** What the app needs from a view (grid, table or shelf) for keyboard navigation. */
+/** What the app needs from either view (grid or table) for keyboard navigation. */
 export type ViewHandle = {
   /** Scroll so the item is fully visible. */
   reveal(id: number): void;
@@ -25,12 +23,6 @@ export type ViewHandle = {
   /** Whether ←/→ move between items (grid) or do nothing (table). */
   horizontal: boolean;
   focus(): void;
-  /**
-   * Where an arrow key goes from `id` (null: nothing selected), for a view
-   * whose rows aren't a fixed number of columns (the shelf). Null: nowhere.
-   * Absent: the app steps by `columns()`.
-   */
-  neighbour?(id: number | null, key: ArrowKey): number | null;
 };
 
 type Props = {

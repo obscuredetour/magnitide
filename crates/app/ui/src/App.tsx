@@ -2,8 +2,7 @@ import { createEffect, createSignal, Match, on, onCleanup, onMount, Show, Switch
 
 import { BookMenuHost, openBookMenu } from './components/BookMenu';
 import { BookTable } from './components/BookTable';
-import { type ArrowKey, CoverGrid, type ViewHandle } from './components/CoverGrid';
-import { ShelfView } from './components/ShelfView';
+import { CoverGrid, type ViewHandle } from './components/CoverGrid';
 import { DetailsPanel } from './components/DetailsPanel';
 import { DropOverlay } from './components/DropOverlay';
 import { BulkEditDialog } from './components/BulkEditDialog';
@@ -135,11 +134,10 @@ export function App() {
       searchInput?.select();
       return;
     }
-    // ⌘1 / ⌘2 / ⌘3 switch views, as in Finder.
-    const mode = cmd && ({ '1': 'grid', '2': 'table', '3': 'shelf' } as const)[e.key];
-    if (mode) {
+    // ⌘1 / ⌘2 switch views, as in Finder.
+    if (cmd && (e.key === '1' || e.key === '2')) {
       e.preventDefault();
-      setViewMode(mode);
+      setViewMode(e.key === '1' ? 'grid' : 'table');
       return;
     }
     if (inField) return;
@@ -175,21 +173,15 @@ export function App() {
     } else if (e.key.startsWith('Arrow')) {
       const list = shownItems();
       if (!list.length) return;
-      const key = e.key as ArrowKey;
-      let nextId: number | null | undefined;
-      if (view?.neighbour) nextId = view.neighbour(id, key);
-      else {
-        // Views in fixed columns: step by index.
-        const cols = view?.columns() ?? 1;
-        const horizontal = view?.horizontal ? 1 : 0;
-        const step = { ArrowLeft: -horizontal, ArrowRight: horizontal, ArrowUp: -cols, ArrowDown: cols }[key];
-        if (!step) return;
-        const cur = list.findIndex((it) => it.id === id);
-        nextId = list[cur < 0 ? 0 : Math.min(list.length - 1, Math.max(0, cur + step))]?.id;
-      }
-      if (nextId === null || nextId === undefined) return;
+      const cols = view?.columns() ?? 1;
+      const horizontal = view?.horizontal ? 1 : 0;
+      const step = { ArrowLeft: -horizontal, ArrowRight: horizontal, ArrowUp: -cols, ArrowDown: cols }[e.key];
+      if (!step) return;
       e.preventDefault();
-      select(nextId, { open: detailsOpen(), reveal: true });
+      const cur = list.findIndex((it) => it.id === id);
+      const next = cur < 0 ? 0 : Math.min(list.length - 1, Math.max(0, cur + step));
+      const nextItem = list[next];
+      if (nextItem) select(nextItem.id, { open: detailsOpen(), reveal: true });
     }
   };
 
@@ -247,7 +239,8 @@ export function App() {
               <Show when={sidebarOpen()}>
                 <Sidebar />
               </Show>
-              <Switch
+              <Show
+                when={viewMode() === 'table'}
                 fallback={
                   <CoverGrid
                     ref={(h) => (view = h)}
@@ -263,34 +256,18 @@ export function App() {
                   />
                 }
               >
-                <Match when={viewMode() === 'table'}>
-                  <BookTable
-                    ref={(h) => (view = h)}
-                    rows={shownItems()}
-                    selectedId={selectedId()}
-                    selectedIds={selectedIds()}
-                    emptyMessage={emptyMessage()}
-                    emptyMark={!query().trim()}
-                    onSelect={click}
-                    onContextMenu={contextMenu}
-                    onOpen={(id) => void openBook(id)}
-                  />
-                </Match>
-                <Match when={viewMode() === 'shelf'}>
-                  <ShelfView
-                    ref={(h) => (view = h)}
-                    items={shownItems()}
-                    tileSize={coverSize()}
-                    selectedId={selectedId()}
-                    selectedIds={selectedIds()}
-                    emptyMessage={emptyMessage()}
-                    emptyMark={!query().trim()}
-                    onSelect={click}
-                    onContextMenu={contextMenu}
-                    onOpen={(id) => void openBook(id)}
-                  />
-                </Match>
-              </Switch>
+                <BookTable
+                  ref={(h) => (view = h)}
+                  rows={shownItems()}
+                  selectedId={selectedId()}
+                  selectedIds={selectedIds()}
+                  emptyMessage={emptyMessage()}
+                  emptyMark={!query().trim()}
+                  onSelect={click}
+                  onContextMenu={contextMenu}
+                  onOpen={(id) => void openBook(id)}
+                />
+              </Show>
               <Show when={detailsOpen() && selectedId()}>
                 {(id) => <DetailsPanel id={id()} onClose={() => setDetailsOpen(false)} />}
               </Show>
