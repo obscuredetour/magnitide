@@ -1,4 +1,4 @@
-import { createResource, createSignal, For, type JSX, onMount, type ParentProps, Show } from 'solid-js';
+import { createResource, createSignal, For, Index, type JSX, onMount, type ParentProps, Show } from 'solid-js';
 import { createStore, unwrap } from 'solid-js/store';
 import ChevronRight from 'lucide-solid/icons/chevron-right';
 import X from 'lucide-solid/icons/x';
@@ -55,8 +55,16 @@ const joinIdRows = (rows: IdRow[]) =>
     .map(([k, v]) => `${k}:${v}`)
     .join(', ');
 
-// Identifiers one per row, or as one line; kept while stepping through books.
+// Identifiers (and tags) one per row, or as one line; kept while stepping through books.
 const [idsExpanded, setIdsExpanded] = createSignal(false);
+const [tagsExpanded, setTagsExpanded] = createSignal(false);
+// Every tag, blank rows too, so expanding never drops what's been typed.
+const tagRowsOf = (s: string): string[] => splitList(s).filter(Boolean);
+const joinTagRows = (rows: readonly string[]) =>
+  rows
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .join(', ');
 
 function Field(props: ParentProps<{ label: string; hint?: JSX.Element; for?: string }>) {
   return (
@@ -95,6 +103,20 @@ export function EditDialog(props: { editing: Editing }) {
   const toggleIds = () => {
     if (!idsExpanded()) setIdRows(idRowsOf(identifiers()));
     setIdsExpanded((v) => !v);
+  };
+  // Tags the same way: rows while expanded, the comma line is what's saved.
+  const [tagRows, setTagRows] = createStore<string[]>(tagsExpanded() ? tagRowsOf(tags()) : []);
+  const editTagRows = (change: (rows: string[]) => string[]) => {
+    setTagRows(change);
+    setTags(joinTagRows(tagRows));
+  };
+  const setTagRow = (i: number, v: string) => {
+    setTagRows(i, v);
+    setTags(joinTagRows(tagRows));
+  };
+  const toggleTags = () => {
+    if (!tagsExpanded()) setTagRows(tagRowsOf(tags()));
+    setTagsExpanded((v) => !v);
   };
   // Until the user edits the title sort, it follows the title (empty = automatic).
   const [sortTouched, setSortTouched] = createSignal(false);
@@ -138,7 +160,10 @@ export function EditDialog(props: { editing: Editing }) {
     if (a.publisher !== undefined) setForm('publisher', a.publisher);
     if (a.published !== undefined) setForm('published', a.published);
     if (a.languages) setLanguages(joinList(a.languages));
-    if (a.tags) setTags(joinList(a.tags));
+    if (a.tags) {
+      setTags(joinList(a.tags));
+      setTagRows(tagRowsOf(tags()));
+    }
     if (a.identifiers) {
       setIdentifiers(joinIds(a.identifiers));
       setIdRows(idRowsOf(identifiers()));
@@ -457,15 +482,69 @@ export function EditDialog(props: { editing: Editing }) {
                 <input class={input} value={languages()} onInput={(e) => setLanguages(e.currentTarget.value)} />
               </Field>
               <div class="col-span-2">
-                <Field label="Tags" hint="Comma-separated.">
-                  <Autocomplete
-                    class={input}
-                    separator=","
-                    options={names()?.tags ?? []}
-                    value={tags()}
-                    onInput={setTags}
-                  />
-                </Field>
+                <div class="mb-1 flex items-center gap-1">
+                  <label for="edit-tags" class="text-xs font-medium text-muted">
+                    Tags
+                  </label>
+                  <button
+                    type="button"
+                    class="grid size-5 cursor-pointer place-items-center rounded-control text-muted hover:bg-hover hover:text-fg"
+                    aria-expanded={tagsExpanded()}
+                    aria-controls="edit-tags"
+                    title={tagsExpanded() ? 'Edit as one line' : 'Edit each tag separately'}
+                    onClick={toggleTags}
+                  >
+                    <Icon of={ChevronRight} class={`transition-transform ${tagsExpanded() ? 'rotate-90' : ''}`} />
+                  </button>
+                </div>
+                <Show
+                  when={tagsExpanded()}
+                  fallback={
+                    <>
+                      <Autocomplete
+                        id="edit-tags"
+                        class={input}
+                        separator=","
+                        options={names()?.tags ?? []}
+                        value={tags()}
+                        onInput={setTags}
+                      />
+                      <span class="mt-1 block text-[11px] text-faint">Comma-separated.</span>
+                    </>
+                  }
+                >
+                  <div id="edit-tags" role="group" aria-label="Tags" class="space-y-2">
+                    {/* Index, not For: rows are plain strings, and typing must keep its row (and focus). */}
+                    <Index each={tagRows}>
+                      {(t, i) => (
+                        <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4">
+                          <Autocomplete
+                            class={input}
+                            placeholder="Tag"
+                            options={names()?.tags ?? []}
+                            value={t()}
+                            onInput={(v) => setTagRow(i, v)}
+                          />
+                          <button
+                            type="button"
+                            class="grid size-7 cursor-pointer place-items-center rounded-control text-muted hover:bg-hover hover:text-fg"
+                            aria-label="Remove this tag"
+                            onClick={() => editTagRows((rows) => rows.filter((_, j) => j !== i))}
+                          >
+                            <Icon of={X} />
+                          </button>
+                        </div>
+                      )}
+                    </Index>
+                    <button
+                      type="button"
+                      class="cursor-pointer text-xs text-link hover:underline"
+                      onClick={() => editTagRows((rows) => [...rows, ''])}
+                    >
+                      + Another tag
+                    </button>
+                  </div>
+                </Show>
               </div>
               <div class="col-span-2">
                 <div class="mb-1 flex items-center gap-1">
