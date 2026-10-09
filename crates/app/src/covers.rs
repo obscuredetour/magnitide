@@ -136,7 +136,7 @@ struct ColorSidecar {
     v: u8,
     colors: Vec<String>,
 }
-const COLOR_VERSION: u8 = 4;
+const COLOR_VERSION: u8 = 5;
 
 /// These books' cover palettes. Books without a cover, or whose cover can't
 /// be read, are left out. Computed from the cached thumbnail (made if
@@ -187,11 +187,19 @@ fn cover_color(lib: &Loaded, id: i64) -> Result<Option<CoverColor>> {
 }
 
 /// Up to three of the cover's colours: the most common first, then the one
-/// that stands out most from what's chosen so far (perceptually, in OKLab,
-/// weighted by how much of the cover it fills), as long as it stands out
-/// enough. Red, then the gold of the emblem, then the white of the title.
+/// that stands out most from what's chosen so far, as long as it stands out
+/// enough. "Standing out" is OKLab distance with hue and saturation counting
+/// for more than lightness, and saturated colours get a lift, so a red cover
+/// gives red, then its gold, then its white, not red and two greys.
 fn palette(img: &DynamicImage) -> Vec<String> {
-    let small = img.thumbnail(32, 48).to_rgb8();
+    pick(&clusters(img)).into_iter().map(|lab| hex(srgb(lab))).collect()
+}
+
+/// The cover's colours with their share of it, most common first: shades of
+/// one colour (a textured foil, a gradient, leaves in light and shade) count
+/// as one, at the shade most seen.
+fn clusters(img: &DynamicImage) -> Vec<(f32, [f32; 3])> {
+    let small = img.thumbnail(48, 72).to_rgb8();
     let total = small.pixels().len().max(1) as f32;
     // Every pixel, quantised to 3 bits per channel: a count and a colour sum per bucket.
     let mut buckets: std::collections::HashMap<u16, (u32, [u64; 3])> = std::collections::HashMap::new();
@@ -204,42 +212,49 @@ fn palette(img: &DynamicImage) -> Vec<String> {
             *sum += u64::from(c);
         }
     }
-    let rgb = |sum: [u64; 3], n: u64| [sum[0] / n, sum[1] / n, sum[2] / n];
-    let hex = |c: [u64; 3]| format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2]);
-    // Colours filling at least 1% of the cover, with their share and OKLab position.
-    let mut candidates: Vec<(f32, [u64; 3], [f32; 3])> = buckets
-        .into_values()
-        .filter(|(n, _)| *n as f32 >= total / 100.0)
-        .map(|(n, sum)| {
-            let c = rgb(sum, u64::from(n));
-            (n as f32 / total, c, oklab(c))
-        })
-        .collect();
-    candidates.sort_by(|a, b| b.0.total_cmp(&a.0));
-    let Some(&(_, first, first_lab)) = candidates.first() else { return vec![] };
-    let mut out = vec![(first, first_lab)];
+    let mut ranked: Vec<(f32, [f32; 3])> =
+        buckets.into_values().map(|(n, sum)| (n as f32 / total, oklab(sum.map(|x| x as f32 / n as f32)))).collect();
+    ranked.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let mut clusters: Vec<(f32, [f32; 3])> = Vec::new();
+    for (share, lab) in ranked {
+        match clusters.iter_mut().find(|(_, c)| same_colour(*c, lab)) {
+            Some((s, _)) => *s += share,
+            None => clusters.push((share, lab)),
+        }
+    }
+    clusters.retain(|(share, _)| *share >= 0.005);
+    clusters.sort_by(|a, b| b.0.total_cmp(&a.0));
+    clusters
+}
+
+fn pick(clusters: &[(f32, [f32; 3])]) -> Vec<[f32; 3]> {
+    let Some(&(_, first)) = clusters.first() else { return vec![] };
+    let mut out = vec![first];
     while out.len() < 3 {
-        // The farthest from everything chosen, with a thumb on the scale for coverage.
-        let best = candidates
+        let best = clusters
             .iter()
-            .map(|&(share, c, lab)| {
-                let apart = out.iter().map(|(_, o)| distance(*o, lab)).fold(f32::INFINITY, f32::min);
-                (apart, apart * share.sqrt(), c, lab)
+            .map(|&(share, lab)| {
+                let apart = out.iter().map(|o| apartness(*o, lab)).fold(f32::INFINITY, f32::min);
+                (apart, apart * share.powf(0.25) * (1.0 + 4.0 * chroma(lab)), lab)
             })
-            .filter(|&(apart, ..)| apart >= 0.15)
+            .filter(|&(apart, ..)| apart >= 0.2)
             .max_by(|a, b| a.1.total_cmp(&b.1));
         match best {
-            Some((_, _, c, lab)) => out.push((c, lab)),
+            Some((_, _, lab)) => out.push(lab),
             None => break,
         }
     }
-    out.into_iter().map(|(c, _)| hex(c)).collect()
+    out
 }
 
-/// sRGB to OKLab, where distances match how different colours look.
-fn oklab(c: [u64; 3]) -> [f32; 3] {
-    let lin = |x: u64| {
-        let x = x as f32 / 255.0;
+fn hex(c: [u8; 3]) -> String {
+    format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2])
+}
+
+/// sRGB (0–255) to OKLab, where distances match how different colours look.
+fn oklab(c: [f32; 3]) -> [f32; 3] {
+    let lin = |x: f32| {
+        let x = x / 255.0;
         if x <= 0.04045 { x / 12.92 } else { ((x + 0.055) / 1.055).powf(2.4) }
     };
     let [r, g, b] = c.map(lin);
@@ -253,8 +268,50 @@ fn oklab(c: [u64; 3]) -> [f32; 3] {
     ]
 }
 
+fn srgb(lab: [f32; 3]) -> [u8; 3] {
+    let [l_, a, b] = lab;
+    let l = (l_ + 0.396_337_8 * a + 0.215_803_8 * b).powi(3);
+    let m = (l_ - 0.105_561_3 * a - 0.063_854_2 * b).powi(3);
+    let s = (l_ - 0.089_484_1 * a - 1.291_485_5 * b).powi(3);
+    let rgb = [
+        4.076_741_7 * l - 3.307_711_6 * m + 0.230_969_9 * s,
+        -1.268_438 * l + 2.609_757_4 * m - 0.341_319_4 * s,
+        -0.004_196_1 * l - 0.703_418_6 * m + 1.707_614_7 * s,
+    ];
+    rgb.map(|x| {
+        let x = x.clamp(0.0, 1.0);
+        let x = if x <= 0.003_130_8 { x * 12.92 } else { 1.055 * x.powf(1.0 / 2.4) - 0.055 };
+        (x * 255.0).round() as u8
+    })
+}
+
+/// How far apart two colours look, with hue and saturation counting double against lightness.
 fn distance(a: [f32; 3], b: [f32; 3]) -> f32 {
-    a.iter().zip(b).map(|(x, y)| (x - y).powi(2)).sum::<f32>().sqrt()
+    ((a[0] - b[0]).powi(2) + 4.0 * ((a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2))).sqrt()
+}
+
+/// How saturated a colour is (0 for grey, around 0.3 for a vivid one).
+fn chroma(lab: [f32; 3]) -> f32 {
+    (lab[1].powi(2) + lab[2].powi(2)).sqrt()
+}
+
+/// Whether two colours are shades of one: the same hue and saturation, within a stretch of lightness.
+fn same_colour(a: [f32; 3], b: [f32; 3]) -> bool {
+    ((a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt() < 0.07 && (a[0] - b[0]).abs() < 0.35
+}
+
+/// `distance`, but two coloured (not grey) colours of one hue count as half as far
+/// apart: a darker gold isn't a new colour beside gold.
+fn apartness(a: [f32; 3], b: [f32; 3]) -> f32 {
+    let d = distance(a, b);
+    if chroma(a) > 0.06 && chroma(b) > 0.06 {
+        let hue = |c: [f32; 3]| c[2].atan2(c[1]).to_degrees();
+        let diff = (hue(a) - hue(b)).abs();
+        if diff.min(360.0 - diff) < 30.0 {
+            return d * 0.5;
+        }
+    }
+    d
 }
 
 fn write_atomic(dest: &Path, bytes: &[u8]) -> Result<()> {
@@ -285,31 +342,63 @@ mod tests {
         }
     }
 
+    /// Hex differs by a unit or two after the round trip through OKLab, so compare loosely.
+    fn close(got: &str, want: &str) -> bool {
+        let n = |s: &str, i: usize| i64::from_str_radix(&s[i..i + 2], 16).unwrap();
+        (1..6).step_by(2).all(|i| (n(got, i) - n(want, i)).abs() <= 3)
+    }
+    fn assert_palette(img: RgbImage, want: &[&str]) {
+        let got = palette(&DynamicImage::ImageRgb8(img));
+        assert!(
+            got.len() == want.len() && got.iter().zip(want).all(|(g, w)| close(g, w)),
+            "got {got:?}, want {want:?}"
+        );
+    }
+
     #[test]
     fn solid_colour_is_itself() {
-        assert_eq!(palette(&DynamicImage::ImageRgb8(solid(20, 30, [255, 0, 0]))), ["#ff0000"]);
-        assert_eq!(palette(&DynamicImage::ImageRgb8(solid(20, 30, [128, 128, 128]))), ["#808080"]);
+        assert_palette(solid(20, 30, [255, 0, 0]), &["#ff0000"]);
+        assert_palette(solid(20, 30, [128, 128, 128]), &["#808080"]);
     }
 
     #[test]
     fn most_common_first_then_what_stands_out() {
         // A red cover with a gold emblem and a white title: red, gold, white.
-        let mut img = solid(32, 48, [166, 38, 36]);
-        band(&mut img, 20..34, [249, 224, 79]);
-        band(&mut img, 34..40, [248, 246, 254]);
-        band(&mut img, 40..44, [150, 30, 30]); // a darker red: not different enough to count
-        assert_eq!(palette(&DynamicImage::ImageRgb8(img)), ["#a62624", "#f9e04f", "#f8f6fe"]);
-        // A black cover with red lettering and a little gold: black, red, gold.
-        let mut img = solid(32, 48, [1, 1, 1]);
-        band(&mut img, 30..40, [253, 78, 78]);
-        band(&mut img, 40..44, [248, 235, 128]);
-        assert_eq!(palette(&DynamicImage::ImageRgb8(img)), ["#010101", "#fd4e4e", "#f8eb80"]);
+        let mut img = solid(48, 72, [166, 38, 36]);
+        band(&mut img, 30..50, [249, 224, 79]);
+        band(&mut img, 50..60, [248, 246, 254]);
+        band(&mut img, 60..66, [150, 30, 30]); // a darker red: gathered into the red
+        assert_palette(img, &["#a62624", "#f9e04f", "#f8f6fe"]);
+        // Black, then gold foil in two shades, then white text, with a grey badge: the gold
+        // beats the greys even though the lighter grey is farther from black in plain lightness.
+        let mut img = solid(48, 72, [3, 3, 2]);
+        band(&mut img, 0..16, [200, 170, 40]);
+        band(&mut img, 16..26, [150, 125, 30]);
+        band(&mut img, 26..34, [245, 245, 245]);
+        band(&mut img, 34..40, [175, 175, 174]);
+        let got = palette(&DynamicImage::ImageRgb8(img));
+        assert!(close(&got[0], "#030302") && close(&got[1], "#c8aa28") && close(&got[2], "#f5f5f5"), "{got:?}");
     }
 
     #[test]
     fn a_near_twin_does_not_count() {
-        let mut img = solid(32, 48, [20, 60, 200]);
-        band(&mut img, 30..48, [30, 80, 210]);
-        assert_eq!(palette(&DynamicImage::ImageRgb8(img)), ["#143cc8"]);
+        let mut img = solid(48, 72, [20, 60, 200]);
+        band(&mut img, 40..72, [30, 80, 210]);
+        assert_eq!(palette(&DynamicImage::ImageRgb8(img)).len(), 1);
+    }
+
+    /// Prints the palette of a cover: MAGNITIDE_COVER=/path/to/cover.jpg cargo test -p magnitide print_palette -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn print_palette() {
+        for path in std::env::var("MAGNITIDE_COVER").unwrap_or_default().split(':').filter(|p| !p.is_empty()) {
+            let img = thumbnail_image(Path::new(path)).unwrap();
+            println!("{path}: {:?}", palette(&img));
+            if std::env::var("MAGNITIDE_COVER_DEBUG").is_ok() {
+                for (share, lab) in clusters(&img).iter().take(12) {
+                    println!("  {:5.1}%  {}  chroma {:.2}", share * 100.0, hex(srgb(*lab)), chroma(*lab));
+                }
+            }
+        }
     }
 }
