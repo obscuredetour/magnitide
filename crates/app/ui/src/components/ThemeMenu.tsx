@@ -1,7 +1,7 @@
 import { For } from 'solid-js';
 import Contrast from 'lucide-solid/icons/contrast';
 
-import { setTheme, SYSTEM_PAIR, themeAttrs, themeChoice, themes } from '../theme';
+import { setTheme, themeAttrs, themeChoice, themes } from '../theme';
 import { AccentPicker } from './AccentPicker';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from './Menu';
 import { Icon } from './Icon';
@@ -35,8 +35,8 @@ export function ThemeMenu() {
       <MenuLabel>Theme</MenuLabel>
       <MenuItem checked={themeChoice() === 'system'} onSelect={() => setTheme('system')}>
         <span class="relative size-5 flex-none overflow-hidden rounded-full border border-line" aria-hidden="true">
-          <span {...themeAttrs(SYSTEM_PAIR.light)} class="absolute inset-y-0 left-0 w-1/2 bg-bg" />
-          <span {...themeAttrs(SYSTEM_PAIR.dark)} class="absolute inset-y-0 right-0 w-1/2 bg-bg" />
+          <span {...themeAttrs('light')} class="absolute inset-y-0 left-0 w-1/2 bg-bg" />
+          <span {...themeAttrs('dark')} class="absolute inset-y-0 right-0 w-1/2 bg-bg" />
         </span>
         Match System
       </MenuItem>

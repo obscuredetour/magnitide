@@ -55,7 +55,6 @@
    data-theme gets its own theme's roles. */
 
 @import './roles.css';
-@import './tideline.css';
 @import './magnitide.css';
 @import './catppuccin.css';
 @import './dracula.css';

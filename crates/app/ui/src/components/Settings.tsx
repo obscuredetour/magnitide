@@ -33,16 +33,7 @@ import {
 } from '../library';
 import { startImport } from '../importer';
 import { customFields, FIELD_KINDS, loadCustomFields } from '../fields';
-import {
-  addonReport,
-  addThemeFile,
-  loadThemeAddons,
-  setTheme,
-  SYSTEM_PAIR,
-  themeAttrs,
-  themeChoice,
-  themes,
-} from '../theme';
+import { addonReport, addThemeFile, loadThemeAddons, setTheme, themeAttrs, themeChoice, themes } from '../theme';
 import { AccentPicker } from './AccentPicker';
 import { toast } from '../toast';
 import { refreshGuiPlugins } from '../plugins';
@@ -55,6 +46,8 @@ import {
   resetColumnSizing,
   setColumnVisible,
   setViewMode,
+  seriesBadges,
+  setSeriesBadges,
   setZebraRows,
   viewMode,
   zebraRows,
@@ -320,10 +313,10 @@ function Appearance() {
         <ThemeCard selected={themeChoice() === 'system'} label="Match System" onSelect={() => setTheme('system')}>
           <div class="flex h-full">
             <div class="w-1/2 overflow-hidden">
-              <ThemePreview theme={SYSTEM_PAIR.light} />
+              <ThemePreview theme="light" />
             </div>
             <div class="w-1/2 overflow-hidden">
-              <ThemePreview theme={SYSTEM_PAIR.dark} />
+              <ThemePreview theme="dark" />
             </div>
           </div>
         </ThemeCard>
@@ -368,6 +361,15 @@ function Appearance() {
       </Row>
       <Row label="Cover size" description="How large covers appear in the cover view.">
         <CoverSizeSlider />
+      </Row>
+      <Row label="Series labels" description="A label on the cover with the book's place in its series.">
+        <input
+          type="checkbox"
+          class="size-4 accent-accent"
+          aria-label="Series labels on covers"
+          checked={seriesBadges()}
+          onChange={(e) => setSeriesBadges(e.currentTarget.checked)}
+        />
       </Row>
       <InterfaceSize />
     </>

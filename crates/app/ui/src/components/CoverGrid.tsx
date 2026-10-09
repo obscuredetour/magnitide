@@ -3,6 +3,7 @@ import Check from 'lucide-solid/icons/check';
 
 import type { BookRow } from '../api';
 import { onDevice } from '../devices';
+import { seriesBadges } from '../view';
 import { Cover } from './Cover';
 import { EmptyNote } from './Mark';
 import { Icon } from './Icon';
@@ -210,7 +211,7 @@ export function CoverGrid(props: Props) {
                     )}
                   </Show>
                   {/* The series as a library sticker on the bottom edge: the number, and the name when there's room. */}
-                  <Show when={item.seriesIndex}>
+                  <Show when={seriesBadges() && item.seriesIndex}>
                     {(n) => (
                       <span class="absolute bottom-0 left-2 flex max-w-[72%] rounded-t-[3px] bg-paper px-1.5 pt-px text-[10px]/[15px] font-semibold text-paper-ink tabular-nums shadow-[0_-1px_0_rgb(0_0_0/0.12)]">
                         <Show when={metrics().tileW >= 150}>

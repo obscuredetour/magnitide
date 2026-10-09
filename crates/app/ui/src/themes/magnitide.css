@@ -1,6 +1,7 @@
-/* Plain light, dark and sepia themes (Tideline, the default, is in
-   tideline.css). Accents beyond the ones they set come from Catppuccin Latte
-   (light) and Mocha (dark), for the accent picker. */
+/* Magnitide's own themes: light and dark (the defaults) with the coral of
+   the icon's bookmark as the accent and its aqua for links, and sepia. Accents
+   beyond the ones they set come from Catppuccin Latte (light) and Mocha
+   (dark), for the accent picker. */
 
 :root:not([data-theme]),
 [data-theme='light'] {
@@ -19,18 +20,20 @@
   --red: #b4372b;
   --yellow: #94640a;
   --green: #2c7a4b;
-  --teal: #1d7373;
+  --teal: #0e6a6f;
   --blue: #2462a8;
   --rosewater: #dc8a78;
   --flamingo: #dd7878;
   --pink: #ea76cb;
   --mauve: #8839ef;
   --maroon: #e64553;
-  --peach: #fe640b;
+  --peach: #e4603b;
   --sky: #04a5e5;
   --sapphire: #209fb5;
   --lavender: #7287fd;
 
+  --accent: var(--peach);
+  --link: var(--teal);
   --field: #ffffff;
   --on-accent: #ffffff;
   --border: rgb(0 0 0 / 0.08);
@@ -55,18 +58,21 @@
   --red: #f07a6e;
   --yellow: #e5c06a;
   --green: #6cc58a;
-  --teal: #5cc4c0;
+  --teal: #67c7c2;
   --blue: #6aa7ec;
   --rosewater: #f5e0dc;
   --flamingo: #f2cdcd;
   --pink: #f5c2e7;
   --mauve: #cba6f7;
   --maroon: #eba0ac;
-  --peach: #fab387;
+  --peach: #f67d5b;
   --sky: #89dceb;
   --sapphire: #74c7ec;
   --lavender: #b4befe;
 
+  --accent: var(--peach);
+  --link: var(--teal);
+  --on-accent: #0e0e10;
   --field: var(--mantle);
   --border: rgb(255 255 255 / 0.08);
   --text-selection: color-mix(in srgb, var(--accent) 20%, transparent);
