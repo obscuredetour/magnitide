@@ -26,6 +26,12 @@ core with a Tauri desktop app, built to stay quick with 50,000 books and more.
   added, metadata readers and writers for formats, and library tools in the book menu that work on the selected books,
   with progress in the job bar and questions mid-run. Written in any language with a WebAssembly toolchain; a Rust SDK,
   a template and two sources (Open Library, Goodreads) are in the repository ([docs/plugin-api.md](docs/plugin-api.md)).
+- **Covers set the mood.** Open a book and the details panel takes on its cover: the three colours that define
+  it, the one it's mostly made of and the two that stand out most against it, laid as a soft gradient behind the
+  text, the way a now-playing screen takes on album art. The colours are read from the cover itself, judged by hue
+  and saturation rather than brightness, so a black cover with gold lettering gives black and gold, not black and
+  grey, and the gilt and ivy on a navy cover both come through. Built for the Light and Dark themes; a setting turns
+  it on for every theme.
 - **Make it yours.** Themes (light, dark, sepia, Catppuccin, Dracula and more), accent colours, and interface size.
 
 ### Calibre Plugins Support

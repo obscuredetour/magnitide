@@ -46,7 +46,9 @@ import {
   resetColumnSizing,
   setColumnVisible,
   setViewMode,
+  blendAllThemes,
   seriesBadges,
+  setBlendAllThemes,
   setSeriesBadges,
   setZebraRows,
   viewMode,
@@ -336,6 +338,19 @@ function Appearance() {
       </div>
 
       <ThemeAddonsSection />
+
+      <Row
+        label="Cover colours behind the details"
+        description="On every theme, not only Light and Dark. Those two are made for it; on a themed palette the colours may clash."
+      >
+        <input
+          type="checkbox"
+          class="size-4 accent-accent"
+          aria-label="Cover colours behind the details on every theme"
+          checked={blendAllThemes()}
+          onChange={(e) => setBlendAllThemes(e.currentTarget.checked)}
+        />
+      </Row>
 
       <Row label="View" description={`Also ${keys('mod+1')} and ${keys('mod+2')}.`}>
         <div class="flex rounded-control bg-element p-0.5" role="group" aria-label="View">
