@@ -417,6 +417,11 @@ fn calibres_edit_metadata_and_remove_books_are_magnitides() {
 /// Wait for an event of `kind` (skipping others); the host's log is shown
 /// if none comes in 60 s.
 fn next_event(plugins: &Plugins, events: &mpsc::Receiver<Value>, kind: &str) -> Value {
+    next_event_of(plugins, events, &[kind])
+}
+
+/// Wait for the first event of any of `kinds` (skipping others).
+fn next_event_of(plugins: &Plugins, events: &mpsc::Receiver<Value>, kinds: &[&str]) -> Value {
     loop {
         let e = events.recv_timeout(Duration::from_secs(60)).unwrap_or_else(|_| {
             // Why the host thinks a plugin is still working.
@@ -427,9 +432,9 @@ fn next_event(plugins: &Plugins, events: &mpsc::Receiver<Value>, kind: &str) -> 
                     Duration::from_secs(10),
                 )
             });
-            panic!("no {kind} event; busy: {why:?}; the host said:\n{}", plugins.log().join("\n"))
+            panic!("no {} event; busy: {why:?}; the host said:\n{}", kinds.join("/"), plugins.log().join("\n"))
         });
-        if e["event"] == kind {
+        if kinds.iter().any(|k| e["event"] == *k) {
             return e;
         }
     }
@@ -684,9 +689,15 @@ fn jobs_search_view_download_and_convert_from_a_gui_plugin() {
     let started = next_event(&plugins, &events, "job-start");
     assert_eq!(started["description"], "Test job on 2 books");
     assert_eq!(started["plugin"], "Magnitide Test Action");
-    let progress = next_event(&plugins, &events, "job-progress");
-    assert!(progress["percent"].as_u64().unwrap() > 0, "{progress}");
-    let finished = next_event(&plugins, &events, "job-done");
+    // Progress is polled (every 500 ms), so a short job may be done before
+    // any is reported: take whichever comes first.
+    let first = next_event_of(&plugins, &events, &["job-progress", "job-done"]);
+    let finished = if first["event"] == "job-progress" {
+        assert!(first["percent"].as_u64().unwrap() > 0, "{first}");
+        next_event(&plugins, &events, "job-done")
+    } else {
+        first
+    };
     assert_eq!(finished["failed"], false);
     assert!(finished["details"].as_str().unwrap().contains("worked on 2"), "{finished}");
     next_event(&plugins, &events, "gui-idle");
