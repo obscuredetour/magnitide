@@ -29,7 +29,7 @@ export function LibraryMenu() {
       panelClass="w-80"
       button={
         <>
-          <span class="truncate text-sm font-[650]">{library()?.name ?? 'Magnitide'}</span>
+          <span class="truncate font-serif text-[15px] font-semibold">{library()?.name ?? 'Magnitide'}</span>
           <Icon of={ChevronDown} size={12} class="self-center text-muted" />
         </>
       }

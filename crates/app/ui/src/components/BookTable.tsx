@@ -78,14 +78,14 @@ function stars(rating: number | null) {
   if (!rating) return null;
   const full = Math.floor(rating / 2);
   return (
-    <span class="tracking-[1px] text-star" title={`${rating / 2} of 5`}>
+    <span class="tracking-[1px] text-star tabular-nums" title={`${rating / 2} of 5`}>
       {'★'.repeat(full)}
       {rating % 2 ? '½' : ''}
     </span>
   );
 }
 
-const muted = (text: string | null) => <span class="text-muted">{text}</span>;
+const muted = (text: string | null) => <span class="text-muted tabular-nums">{text}</span>;
 
 const columns: ColumnDef<typeof features, BookRow, any>[] = [
   col.accessor('title', {

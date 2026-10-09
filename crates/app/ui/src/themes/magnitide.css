@@ -1,5 +1,6 @@
-/* Magnitide's own themes. Accents beyond the ones they set come from
-   Catppuccin Latte (light) and Mocha (dark), for the accent picker. */
+/* Plain light, dark and sepia themes (Tideline, the default, is in
+   tideline.css). Accents beyond the ones they set come from Catppuccin Latte
+   (light) and Mocha (dark), for the accent picker. */
 
 :root:not([data-theme]),
 [data-theme='light'] {

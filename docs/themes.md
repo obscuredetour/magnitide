@@ -1,5 +1,8 @@
 # Theme files
 
+Built in: Tideline and Tideline Light (the default, following the OS setting), Light,
+Dark, Sepia, Catppuccin's four flavours, Dracula and Alucard. Beyond those:
+
 Magnitide themes are a **palette** (named colours) plus optional **role** overrides
 (what the UI paints with). Add-on themes are JSON files in the app's themes folder:
 Settings → Appearance → Theme add-ons → **Add Theme File…** copies one in, and

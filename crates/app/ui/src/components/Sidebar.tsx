@@ -12,7 +12,7 @@ import { ContextMenu, MenuItem } from './Menu';
 
 const row =
   'group flex h-7 w-full cursor-default items-center gap-2 rounded-control px-2 text-left text-sm outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-focus aria-[current=true]:bg-highlight aria-[current=true]:text-accent';
-const label = 'px-2 pt-4 pb-1 text-[11px] font-semibold tracking-[.06em] text-muted uppercase';
+const label = 'px-2 pt-4 pb-1 font-serif text-[13px] tracking-[.04em] text-muted small-caps';
 
 /** A name field for creating or renaming a shelf: Enter saves, Esc or leaving cancels. */
 function NameField(props: { value?: string; onDone(name: string | null): void }) {

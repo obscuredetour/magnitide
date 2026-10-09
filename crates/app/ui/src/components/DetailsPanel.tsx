@@ -280,7 +280,7 @@ function Details(props: { book: BookDetails }) {
               {([label, value]) => (
                 <>
                   <dt class="text-muted">{label}</dt>
-                  <dd class="[overflow-wrap:anywhere]">{value}</dd>
+                  <dd class="[overflow-wrap:anywhere] tabular-nums">{value}</dd>
                 </>
               )}
             </For>

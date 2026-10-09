@@ -33,7 +33,16 @@ import {
 } from '../library';
 import { startImport } from '../importer';
 import { customFields, FIELD_KINDS, loadCustomFields } from '../fields';
-import { addonReport, addThemeFile, loadThemeAddons, setTheme, themeAttrs, themeChoice, themes } from '../theme';
+import {
+  addonReport,
+  addThemeFile,
+  loadThemeAddons,
+  setTheme,
+  SYSTEM_PAIR,
+  themeAttrs,
+  themeChoice,
+  themes,
+} from '../theme';
 import { AccentPicker } from './AccentPicker';
 import { toast } from '../toast';
 import { refreshGuiPlugins } from '../plugins';
@@ -310,10 +319,10 @@ function Appearance() {
         <ThemeCard selected={themeChoice() === 'system'} label="Match System" onSelect={() => setTheme('system')}>
           <div class="flex h-full">
             <div class="w-1/2 overflow-hidden">
-              <ThemePreview theme="light" />
+              <ThemePreview theme={SYSTEM_PAIR.light} />
             </div>
             <div class="w-1/2 overflow-hidden">
-              <ThemePreview theme="dark" />
+              <ThemePreview theme={SYSTEM_PAIR.dark} />
             </div>
           </div>
         </ThemeCard>

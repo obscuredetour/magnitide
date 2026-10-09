@@ -52,6 +52,8 @@ export type Theme = {
 };
 
 export const BUILTIN_THEMES: readonly Theme[] = [
+  { id: 'tideline', label: 'Tideline', appearance: 'dark', accents: CATPPUCCIN_ACCENTS },
+  { id: 'tideline-light', label: 'Tideline Light', appearance: 'light', accents: CATPPUCCIN_ACCENTS },
   { id: 'light', label: 'Light', appearance: 'light', accents: CATPPUCCIN_ACCENTS },
   { id: 'dark', label: 'Dark', appearance: 'dark', accents: CATPPUCCIN_ACCENTS },
   { id: 'sepia', label: 'Sepia', appearance: 'light', accents: CATPPUCCIN_ACCENTS },
@@ -62,6 +64,9 @@ export const BUILTIN_THEMES: readonly Theme[] = [
   { id: 'dracula', label: 'Dracula', appearance: 'dark', accents: DRACULA_ACCENTS },
   { id: 'alucard', label: 'Alucard', appearance: 'light', accents: DRACULA_ACCENTS },
 ];
+
+/** What `system` resolves to: the app's own look, by the OS setting. */
+export const SYSTEM_PAIR = { light: 'tideline-light', dark: 'tideline' } as const;
 
 // ---------- Add-ons (theme files; see docs/themes.md) ----------
 
@@ -156,7 +161,7 @@ const [accents, setAccents] = createSignal<Record<string, string>>(loadAccents()
 export const currentTheme = (): string => {
   const c = choice();
   if (c !== 'system' && themes().some((t) => t.id === c)) return c;
-  return systemIsDark() ? 'dark' : 'light';
+  return systemIsDark() ? SYSTEM_PAIR.dark : SYSTEM_PAIR.light;
 };
 
 /** The accents the theme in use offers. */
