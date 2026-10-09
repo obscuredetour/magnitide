@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/gui2/dialogs/message_box.py (calibre 9.15).
+# Copyright: 2011, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.gui2.dialogs.message_box` (calibre 9.15):
 `MessageBox` (behind `error_dialog`, `info_dialog`, `question_dialog`),
 `ViewLog`, `JobError` and `ErrorNotification`."""

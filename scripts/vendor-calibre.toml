@@ -1,5 +1,5 @@
 # What scripts/vendor-calibre.py takes from a calibre checkout, should the
-# from-scratch compat package (crates/plugins/python/compat) ever be replaced by
+# Magnitide-written compat package (crates/plugins/python/compat) ever be replaced by
 # calibre's own modules (see docs/calibre-plugins.md, "The fallback").
 # Not wired in: nothing reads this at build or run time.
 

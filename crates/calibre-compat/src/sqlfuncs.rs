@@ -1,3 +1,7 @@
+// Derived from calibre's src/calibre/ebooks/metadata/__init__.py (title_sort) (calibre 9.15).
+// Copyright: 2008, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+// Ported to Rust for Magnitide, 2026.
+
 //! SQL functions calibre registers on every connection.
 //!
 //! calibre's schema has triggers that call application-defined functions, so

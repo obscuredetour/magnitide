@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/customize/ui.py (calibre 9.15).
+# Copyright: 2008, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.customize.ui` (calibre 9.15): the registry of
 plugins and the functions calibre's code (and plugins) use to find and run
 them.

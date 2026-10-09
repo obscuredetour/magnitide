@@ -1,3 +1,6 @@
+-- Derived from calibre's resources/metadata_sqlite.sql (calibre 9.15).
+-- Copyright: Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+-- Modified for Magnitide, 2026.
 CREATE TABLE authors ( id   INTEGER PRIMARY KEY,
                               name TEXT NOT NULL COLLATE NOCASE,
                               sort TEXT COLLATE NOCASE,

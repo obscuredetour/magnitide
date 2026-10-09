@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/library/field_metadata.py (calibre 9.15).
+# Copyright: 2010, Charles Haley. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.library.field_metadata` (calibre 9.15): the
 description of every field in a library, standard and custom: its table,
 datatype, whether it's multiple, how it's searched and shown.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The fallback to the from-scratch compat package: copy the subset of
+"""The fallback to Magnitide's own compat package: copy the subset of
 calibre's own (GPL) Python that plugins and the host need from a calibre
 checkout, replacing only the edges, into crates/plugins/python-vendor/.
 

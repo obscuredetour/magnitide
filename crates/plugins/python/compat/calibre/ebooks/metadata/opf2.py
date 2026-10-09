@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/ebooks/metadata/opf2.py (calibre 9.15).
+# Copyright: 2008, Kovid Goyal kovid@kovidgoyal.net. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.ebooks.metadata.opf2` (calibre 9.15): reading
 and writing OPF 2 package files, with calibre's own `<meta>` extensions
 (series, rating, timestamp, title sort, user metadata).

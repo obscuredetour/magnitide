@@ -28,6 +28,9 @@ const CATPPUCCIN_ACCENTS: Accent[] = [
   'Lavender',
 ].map((label) => ({ name: label.toLowerCase(), label }));
 
+/** Magnitide's own themes: their coral first, then Catppuccin's. */
+const MAGNITIDE_ACCENTS: Accent[] = [{ name: 'coral', label: 'Coral' }, ...CATPPUCCIN_ACCENTS];
+
 /** Dracula's accents, by its own names (mapped onto the palette's in dracula.css). */
 const DRACULA_ACCENTS: Accent[] = [
   { name: 'red', label: 'Red' },
@@ -52,9 +55,9 @@ export type Theme = {
 };
 
 export const BUILTIN_THEMES: readonly Theme[] = [
-  { id: 'light', label: 'Light', appearance: 'light', accents: CATPPUCCIN_ACCENTS },
-  { id: 'dark', label: 'Dark', appearance: 'dark', accents: CATPPUCCIN_ACCENTS },
-  { id: 'sepia', label: 'Sepia', appearance: 'light', accents: CATPPUCCIN_ACCENTS },
+  { id: 'light', label: 'Light', appearance: 'light', accents: MAGNITIDE_ACCENTS },
+  { id: 'dark', label: 'Dark', appearance: 'dark', accents: MAGNITIDE_ACCENTS },
+  { id: 'sepia', label: 'Sepia', appearance: 'light', accents: MAGNITIDE_ACCENTS },
   { id: 'catppuccin-latte', label: 'Catppuccin Latte', appearance: 'light', accents: CATPPUCCIN_ACCENTS },
   { id: 'catppuccin-frappe', label: 'Catppuccin Frappé', appearance: 'dark', accents: CATPPUCCIN_ACCENTS },
   { id: 'catppuccin-macchiato', label: 'Catppuccin Macchiato', appearance: 'dark', accents: CATPPUCCIN_ACCENTS },

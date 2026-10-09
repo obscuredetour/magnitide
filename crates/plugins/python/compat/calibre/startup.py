@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/startup.py (calibre 9.15).
+# Copyright: 2008, Kovid Goyal kovid@kovidgoyal.net. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.startup` (calibre 9.15): what calibre does
 before anything else runs, so plugins find the built-in names calibre gives
 every module: `_` and `ngettext` (translation), `P` and `I` (resource paths),

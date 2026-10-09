@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/gui2/complete2.py (calibre 9.15).
+# Copyright: 2012, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.gui2.complete2`: `EditWithComplete`, the
 combo box with completion over a list of items (tags, authors, …) that
 plugins put in their dialogs, and `LineEdit`."""

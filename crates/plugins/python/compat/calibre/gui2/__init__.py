@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/gui2/__init__.py (calibre 9.15).
+# Copyright: 2008, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.gui2` package root (calibre 9.15): the
 `Application`, the GUI settings (`gprefs`, `config`, `dynamic`), the
 message dialogs (`error_dialog`, `info_dialog`, `question_dialog`), file

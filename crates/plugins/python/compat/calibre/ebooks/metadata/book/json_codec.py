@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/ebooks/metadata/book/json_codec.py (calibre 9.15).
+# Copyright: 2010, Charles Haley. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.ebooks.metadata.book.json_codec`: Metadata
 objects to and from JSON (used for device metadata caches)."""
 

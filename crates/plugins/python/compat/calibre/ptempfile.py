@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/ptempfile.py (calibre 9.15).
+# Copyright: 2008, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.ptempfile` (calibre 9.15): temporary files and
 folders under one per-process base folder, removed when the process ends.
 `PersistentTemporaryFile` and `PersistentTemporaryDirectory` outlive their

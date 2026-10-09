@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/utils/localization.py (calibre 9.15).
+# Copyright: 2009, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.utils.localization` (calibre 9.15): the user
 interface language, translations, and language codes and names.
 

@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/ebooks/metadata/book/base.py (calibre 9.15).
+# Copyright: 2010, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.ebooks.metadata.book.base` (calibre 9.15): the
 `Metadata` object, which carries a book's metadata between calibre's
 database, its file readers and writers, and plugins.

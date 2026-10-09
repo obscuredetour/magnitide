@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/gui2/dnd.py (calibre 9.15).
+# Copyright: 2011, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.gui2.dnd`: reading dropped files and images
 from mime data."""
 

@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/db/categories.py (calibre 9.15).
+# Copyright: 2013, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.db.categories`: the Tag browser's data, as
 `db.get_categories()` gives it: field → list of `Tag`."""
 

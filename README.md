@@ -1,12 +1,14 @@
 # Magnitide
 
 A fast, modern ebook library manager that starts from the calibre library you already have.
-[magnitide.com](https://magnitide.com) · GPL-3.0-or-later ([LICENSE](LICENSE))
+[magnitide.com](https://magnitide.com) · GPL-3.0-or-later ([LICENSE](LICENSE)) · [NOTICE](NOTICE) credits [calibre](https://calibre-ebook.com) and Kovid Goyal
 
 Magnitide opens your calibre library as it is, read-only, so calibre keeps working alongside it. When you're ready
 to edit, import it into a Magnitide library of its own: books are copied as copy-on-write clones where the disk
 supports it (no extra space on APFS, Btrfs or XFS), and your custom columns come too. Underneath is a native Rust
 core with a Tauri desktop app, built to stay quick with 50,000 books and more.
+
+_**This wouldn't exist without [calibre](https://github.com/kovidgoyal/calibre) and the incredible work of [Kovid Goyal](https://github.com/kovidgoyal), all contributors to calibre, and its community.**_
 
 ## What it does
 
@@ -167,3 +169,9 @@ What's done and what's next, item by item: [docs/roadmap.md](docs/roadmap.md). O
 metadata reader, MOBI/AZW3 → EPUB, Kindle cover thumbnails, MTP devices, Find Duplicates, export to a calibre library,
 reading positions in the app, a headless server with accounts and Kobo sync (and plugins answering by policy there),
 and a public home for the plugin SDK.
+
+## Why
+
+This began as a fun design exercise: what would I want an ebook manager to look like? Then it became unhinged. Yes, this whole project is a bit unhinged. "What would it look like?" turned into "Can I actually build this?", and every answer pushed the idea further until it grew into Magnitide.
+
+So, honestly, Magnitide exists for me and because I wanted to see if I could do it. But it's also here to offer everything great about calibre with a modern interface, a consistent theming system and a better experience overall.

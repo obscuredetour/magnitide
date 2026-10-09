@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/ebooks/metadata/sources/base.py (calibre 9.15).
+# Copyright: 2011, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.ebooks.metadata.sources.base` (calibre 9.15):
 the `Source` base class of metadata download plugins, and its helpers.
 

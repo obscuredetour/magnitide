@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/gui2/progress_indicator/__init__.py (calibre 9.15).
+# Copyright: 2015, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.gui2.progress_indicator`: the spinning
 "working" indicator (`ProgressIndicator`) and `WaitPanel`, drawn in Python
 (calibre's is C++)."""

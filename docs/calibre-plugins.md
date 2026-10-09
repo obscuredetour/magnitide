@@ -217,7 +217,7 @@ plugins do).
 
 ### The fallback: vendoring calibre
 
-If the from-scratch package turns out to need more of calibre than is
+If the compat package turns out to need more of calibre than is
 reasonable to write, `scripts/vendor-calibre.py` (with
 `scripts/vendor-calibre.toml`) copies the needed subset of calibre's own
 GPL modules from a calibre checkout, replacing only the edges

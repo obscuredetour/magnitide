@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/utils/search_query_parser.py (calibre 9.15).
+# Copyright: 2008, Kovid Goyal kovid@kovidgoyal.net. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.utils.search_query_parser` (calibre 9.15): the
 grammar of calibre's search language, split from what each `field:value`
 term matches (`get_matches`, which the database's search implements).

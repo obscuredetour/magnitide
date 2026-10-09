@@ -1,3 +1,7 @@
+// Derived from calibre's src/calibre/ebooks/mobi/writer8/index.py (calibre 9.15).
+// Copyright: 2012, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+// Ported to Rust for Magnitide, 2026.
+
 //! KF8 index records (INDX): the skeleton, fragment ("chunk"), NCX (table of
 //! contents) and guide indexes. Each index is a header record describing its
 //! tags (TAGX), entry records holding the entries, and CNCX records for the

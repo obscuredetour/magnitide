@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/utils/img.py (calibre 9.15).
+# Copyright: 2015-2019, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.utils.img`: image helpers over Qt's QImage
 (calibre uses its own C extension for some; here it's all Qt)."""
 

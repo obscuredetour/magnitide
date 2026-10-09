@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/gui2/dialogs/add_empty_book.py (calibre 9.15).
+# Copyright: 2008, Kovid Goyal kovid@kovidgoyal.net. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.gui2.dialogs.add_empty_book`: how many empty
 books to add, by which authors (and series)."""
 

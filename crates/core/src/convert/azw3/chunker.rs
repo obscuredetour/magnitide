@@ -1,3 +1,7 @@
+// Derived from calibre's src/calibre/ebooks/mobi/writer8/skeleton.py (calibre 9.15).
+// Copyright: 2012, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+// Ported to Rust for Magnitide, 2026.
+
 //! Splitting each HTML file into a skeleton and fragments ("chunks"), the
 //! way kindlegen does (ported from calibre's writer8/skeleton.py).
 //!

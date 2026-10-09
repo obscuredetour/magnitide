@@ -1,9 +1,10 @@
 [package]
 name = "magnitide-catalog"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 description = "In-memory book catalog shared by every library kind: model, search and sort"
 license = "GPL-3.0-or-later"
+publish = false
 
 [features]
 # Export TypeScript bindings for UI-facing types (used by the app).

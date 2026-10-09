@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/utils/ipc/job.py (calibre 9.15).
+# Copyright: 2009, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.utils.ipc.job`: the job objects the GUI's
 JobManager holds (`BaseJob`, `ParallelJob`)."""
 

@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/gui2/preferences/__init__.py (calibre 9.15).
+# Copyright: 2010, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.gui2.preferences` (calibre 9.15): the base of
 settings pages (`ConfigWidgetBase`, `ConfigWidgetInterface`) and the
 `Setting` binding between a widget and a preference."""

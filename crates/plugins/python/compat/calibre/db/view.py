@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/db/view.py (calibre 9.15).
+# Copyright: 2011, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.db.view` (calibre 9.15): the row-oriented view
 of the library (`db.data`), where plugins written for the old API index
 books by row: `db.data[row][db.FIELD_MAP['title']]`, `db.id(row)`,

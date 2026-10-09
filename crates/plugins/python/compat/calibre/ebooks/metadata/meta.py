@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/ebooks/metadata/meta.py (calibre 9.15).
+# Copyright: 2008, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.ebooks.metadata.meta` (calibre 9.15): reading
 metadata from a book file through the metadata reader plugins, with the
 file name as a fallback, and writing it through the writer plugins."""
