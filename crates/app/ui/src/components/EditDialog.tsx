@@ -1,5 +1,6 @@
 import { createResource, createSignal, For, type JSX, onMount, type ParentProps, Show } from 'solid-js';
 import { createStore, unwrap } from 'solid-js/store';
+import ChevronRight from 'lucide-solid/icons/chevron-right';
 import X from 'lucide-solid/icons/x';
 
 import { api, type AuthorSort, type BookEdit, type BookRow } from '../api';
@@ -7,6 +8,7 @@ import { Autocomplete } from './Autocomplete';
 import { changeCover, closeEditor, type Editing, saveEdit } from '../editor';
 import { items } from '../library';
 import { customFields } from '../fields';
+import { identifierOrder } from '../identifiers';
 import { CustomFieldInput, customFieldHint } from './CustomFieldInput';
 import { Cover } from './Cover';
 import { type Applied, MatchDialog } from './MatchDialog';
@@ -26,6 +28,7 @@ const joinList = (v: string[]) => v.join(', ');
 const splitList = (s: string) => s.split(',').map((t) => t.trim());
 const joinIds = (ids: Record<string, string | undefined>) =>
   Object.entries(ids)
+    .sort(identifierOrder)
     .map(([k, v]) => `${k}:${v ?? ''}`)
     .join(', ');
 const splitIds = (s: string): Record<string, string> =>
@@ -34,6 +37,26 @@ const splitIds = (s: string): Record<string, string> =>
       .map((pair) => pair.split(/:(.*)/s).map((x) => x.trim()))
       .filter(([k, v]) => k && v),
   );
+
+/** One identifier in the expanded Identifiers field. */
+type IdRow = { scheme: string; value: string };
+// Every pair, unfinished ones too, so expanding never drops what's been typed.
+const idRowsOf = (s: string): IdRow[] =>
+  splitList(s)
+    .filter(Boolean)
+    .map((pair) => {
+      const [scheme = '', value = ''] = pair.split(/:(.*)/s).map((x) => x.trim());
+      return { scheme, value };
+    });
+const joinIdRows = (rows: IdRow[]) =>
+  rows
+    .map((r) => [r.scheme.trim(), r.value.trim()])
+    .filter(([k, v]) => k || v)
+    .map(([k, v]) => `${k}:${v}`)
+    .join(', ');
+
+// Identifiers one per row, or as one line; kept while stepping through books.
+const [idsExpanded, setIdsExpanded] = createSignal(false);
 
 function Field(props: ParentProps<{ label: string; hint?: JSX.Element; for?: string }>) {
   return (
@@ -58,6 +81,21 @@ export function EditDialog(props: { editing: Editing }) {
   const [tags, setTags] = createSignal(joinList(form.tags));
   const [languages, setLanguages] = createSignal(joinList(form.languages));
   const [identifiers, setIdentifiers] = createSignal(joinIds(form.identifiers));
+  // The expanded field's rows; the text above stays the value saved.
+  const [idRows, setIdRows] = createStore<IdRow[]>(idsExpanded() ? idRowsOf(identifiers()) : []);
+  const editIdRows = (change: (rows: IdRow[]) => IdRow[]) => {
+    setIdRows(change);
+    setIdentifiers(joinIdRows(idRows));
+  };
+  // By path, so the row (and its focused input) is kept.
+  const setIdRow = (i: number, key: keyof IdRow, v: string) => {
+    setIdRows(i, key, v);
+    setIdentifiers(joinIdRows(idRows));
+  };
+  const toggleIds = () => {
+    if (!idsExpanded()) setIdRows(idRowsOf(identifiers()));
+    setIdsExpanded((v) => !v);
+  };
   // Until the user edits the title sort, it follows the title (empty = automatic).
   const [sortTouched, setSortTouched] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
@@ -101,7 +139,10 @@ export function EditDialog(props: { editing: Editing }) {
     if (a.published !== undefined) setForm('published', a.published);
     if (a.languages) setLanguages(joinList(a.languages));
     if (a.tags) setTags(joinList(a.tags));
-    if (a.identifiers) setIdentifiers(joinIds(a.identifiers));
+    if (a.identifiers) {
+      setIdentifiers(joinIds(a.identifiers));
+      setIdRows(idRowsOf(identifiers()));
+    }
     if (a.descriptionHtml !== undefined) description.innerHTML = a.descriptionHtml;
     if (a.coverUrl) void changeCover(id, { url: a.coverUrl });
   };
@@ -427,9 +468,75 @@ export function EditDialog(props: { editing: Editing }) {
                 </Field>
               </div>
               <div class="col-span-2">
-                <Field label="Identifiers" hint="scheme:value, comma-separated (isbn:9780…, google:…).">
-                  <input class={input} value={identifiers()} onInput={(e) => setIdentifiers(e.currentTarget.value)} />
-                </Field>
+                <div class="mb-1 flex items-center gap-1">
+                  <label for="edit-identifiers" class="text-xs font-medium text-muted">
+                    Identifiers
+                  </label>
+                  <button
+                    type="button"
+                    class="grid size-5 cursor-pointer place-items-center rounded-control text-muted hover:bg-hover hover:text-fg"
+                    aria-expanded={idsExpanded()}
+                    aria-controls="edit-identifiers"
+                    title={idsExpanded() ? 'Edit as one line' : 'Edit each identifier separately'}
+                    onClick={toggleIds}
+                  >
+                    <Icon of={ChevronRight} class={`transition-transform ${idsExpanded() ? 'rotate-90' : ''}`} />
+                  </button>
+                </div>
+                <Show
+                  when={idsExpanded()}
+                  fallback={
+                    <>
+                      <input
+                        id="edit-identifiers"
+                        class={input}
+                        value={identifiers()}
+                        onInput={(e) => setIdentifiers(e.currentTarget.value)}
+                      />
+                      <span class="mt-1 block text-[11px] text-faint">
+                        scheme:value, comma-separated (isbn:9780…, google:…).
+                      </span>
+                    </>
+                  }
+                >
+                  <div id="edit-identifiers" role="group" aria-label="Identifiers" class="space-y-2">
+                    <For each={idRows}>
+                      {(r, i) => (
+                        <div class="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)_auto] items-center gap-x-4">
+                          <input
+                            class={input}
+                            placeholder="Scheme"
+                            aria-label="Scheme"
+                            value={r.scheme}
+                            onInput={(e) => setIdRow(i(), 'scheme', e.currentTarget.value)}
+                          />
+                          <input
+                            class={input}
+                            placeholder="Value"
+                            aria-label={r.scheme ? `${r.scheme} value` : 'Value'}
+                            value={r.value}
+                            onInput={(e) => setIdRow(i(), 'value', e.currentTarget.value)}
+                          />
+                          <button
+                            type="button"
+                            class="grid size-7 cursor-pointer place-items-center rounded-control text-muted hover:bg-hover hover:text-fg"
+                            aria-label="Remove this identifier"
+                            onClick={() => editIdRows((rows) => rows.filter((_, j) => j !== i()))}
+                          >
+                            <Icon of={X} />
+                          </button>
+                        </div>
+                      )}
+                    </For>
+                    <button
+                      type="button"
+                      class="cursor-pointer text-xs text-link hover:underline"
+                      onClick={() => editIdRows((rows) => [...rows, { scheme: '', value: '' }])}
+                    >
+                      + Another identifier
+                    </button>
+                  </div>
+                </Show>
               </div>
               <Show when={customFields().length}>
                 <h3 class="col-span-2 mt-2 border-t border-line pt-3 text-xs font-semibold tracking-[.06em] text-muted uppercase">

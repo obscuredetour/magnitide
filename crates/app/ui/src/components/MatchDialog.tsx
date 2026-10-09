@@ -17,6 +17,7 @@ import {
 import { Icon } from './Icon';
 import { Select } from './Select';
 import { primaryButton, secondaryButton } from '../buttons';
+import { identifierOrder } from '../identifiers';
 import { keys } from '../keys';
 
 /** A series and the book's number in it. */
@@ -98,7 +99,7 @@ const seriesText = (v: Value) => {
 };
 const idsText = (v: Value) =>
   Object.entries(v as Record<string, string>)
-    .sort(([a], [b]) => a.localeCompare(b))
+    .sort((x, y) => identifierOrder(x, y) || x[0].localeCompare(y[0]))
     .map(([k, x]) => `${k}:${x}`)
     .join(', ');
 
