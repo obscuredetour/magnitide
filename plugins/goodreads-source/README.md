@@ -8,6 +8,13 @@ the series and the book's number in it, publisher, publication date,
 ISBN and ASIN, language, up to eight genres as tags, the description and
 the cover.
 
+A port of the [Goodreads plugin](https://github.com/kiwidude68/calibre_plugins/tree/main/goodreads)
+for calibre by [kiwidude](https://github.com/kiwidude68) (GPL-3.0), whose
+years of keeping up with goodreads.com's changes are what this plugin
+builds on: the search query, which results to trust, and where the book
+data sits on the page come from it. Rewritten in Rust; bugs here are
+Magnitide's, not kiwidude's.
+
 - Build: `scripts/build-plugin.sh plugins/goodreads-source` (from the
   Magnitide repository) → `target/plugins/goodreads-source.mgp`.
 - Test the parser: `cargo test` in this folder runs on saved pages in

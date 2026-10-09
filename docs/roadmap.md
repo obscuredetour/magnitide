@@ -1,0 +1,69 @@
+# Roadmap
+
+What's done and what's next, in roughly the order it happened. The
+[README](../README.md) says what Magnitide does today;
+[architecture.md](architecture.md) records the decisions behind it.
+
+- [x] Read calibre libraries natively (`calibre-compat`)
+- [x] Cover grid, search, sort, details panel, open in default app
+- [x] Solid + TypeScript UI with types generated from Rust
+- [x] Toolbar (library menu, cover size, theme picker) and table view (sortable, resizable, choosable columns)
+- [x] Settings panel (⌘,): appearance, library, list columns, thumbnail cache, about
+- [x] List view zebra stripes (setting, on by default)
+- [x] Theme roles: zebra stripes, hover, selection and highlight are theme variables (`--row-stripe`, `--hover`, `--selection`, `--highlight`), consistent across themes; Catppuccin (all four flavours), Dracula and Alucard built in
+- [x] Clear search button (Jamie)
+- [x] Resizable details panel: drag its edge (300–680px, always leaving the list 320px), double-click to reset, or focus the edge and use ←/→
+- [x] Add slight app blur behind dialogs (every dialog dims and blurs the app behind it, tinted per theme)
+- [x] Covers view keeps the selected book where it was on screen when the panel opens or resizes, or the cover size changes
+- [x] "Send to device" & "Convert" are real buttons under the formats in the details panel (Send is the panel's main action when a device is connected)
+- [x] Table column reordering: drag a header sideways (or ⌥←/⌥→ on a focused one); reset from the ⋯ menu or Settings
+- [x] Right-click menu for books (also the keyboard's menu key or Shift-F10): open, edit, send/remove from devices, convert, remove a format, write metadata, show in Finder, merge, move to Trash
+- [x] Native Magnitide library (schema v1) and calibre import, in the app with progress (also `cargo run --release -p magnitide-core --example import_calibre -- <calibre> <dest>`)
+- [x] Library safety: single-writer lock (`.magnitide.lock`), warning for libraries on network shares
+- [x] Drag and drop (and "Add Books…") to add books: EPUB metadata and covers, file-name fallback, formats grouped, duplicates skipped
+- [x] MOBI/AZW/AZW3 metadata and covers (adding books, device matching); "Surname, Given" authors turned around
+- [ ] PDF metadata reader (drag and drop uses file names for PDFs today)
+- [x] Native EPUB → AZW3 converter (KF8, a port of calibre's writer): Kindles no longer need calibre installed; calibre is a fallback for unusual books
+- [ ] MOBI/AZW3 → EPUB (upgrading old Kindle files)
+- [x] Adding a new format of a book already in the library (same title and first author) adds it to that book instead of creating another
+- [x] Metadata editing (⌘E): all built-in fields, rich-text description, cover change/remove; folder and file names follow title and first author (all-or-nothing with the database)
+- [x] Autocomplete for authors, tags, series and publishers in the edit form
+- [x] Author sort names: "Sorted as …" under Authors in the edit form, with per-author overrides ("Le Guin, Ursula K.") that apply to all of that author's books
+- [x] Custom fields: make, rename and delete them (Settings › Library), see them in the details panel and as list columns, edit them with a book or several at once, sort and search by them (`#pages:300`). calibre libraries’ custom columns show too, read-only
+- [x] File name clean-up: names follow edits, and Settings → Library → "Tidy file names" fixes drifted books and reports files missing from disk
+- [x] Write metadata and covers back into EPUB/KEPUB files (details panel "Write to file", Settings → Library for every book, optional write on save); only files that differ are rewritten
+- [x] Metadata lookup from Open Library and Google Books (your own API key) with a field-by-field matching dialog: "Find Metadata…" in the edit window, sources in Settings → Metadata Sources. On request only; ranking is plain string matching
+- [x] E-reader detection (Kobo, Kindle, any calibre-managed USB device): plugged-in devices appear in the top bar, books on them get an "On Device" column, a cover badge and a line in the details panel, and the list can be filtered to books on or not on a device. Matched by calibre's uuid, ISBN, identical file, then title and author; Eject from the device menu
+- [x] File transfer: send selected books to a device (the format it reads best; EPUBs get the library's metadata, cover and id written into the copy), remove them (with KOReader's notes), and add a device's other files to the library
+- [x] Format conversion: "Convert…" in the details panel and selection bar adds the new format to the book. EPUB → KEPUB (Kobo spans, like kepubify) and EPUB → AZW3 are built in; MOBI, PDF and others use calibre's `ebook-convert` when installed (detected, never bundled). Sending converts on the way when a device's default format is missing, or when a Kindle gets an EPUB-only book
+- [x] Send asks which format when a book has several the device reads; Settings → Devices sets a default per kind of device
+- [ ] Kindle covers: write cover thumbnails on send and restore the ones the Kindle deletes once online (calibre's workaround)
+- [x] Multi-select (⌘-click, Shift-click, ⌘A) with a selection bar; "Merge…" for two records of the same book
+- [x] Delete books (⌘⌫, or Delete): their folders move to the Trash after a confirmation
+- [x] Bulk editing (⌘E with several books selected): fields show what the books share or "Mixed", only changed fields are saved; add/remove tags, series numbering in list order; "Edit One by One" steps through the selection with Previous/Next
+- [x] Omnibus editions and several series per book: an "Omnibus" tick turns the number into a range ("Books 1–3"), "+ Another series" adds more, and "Collects" links an omnibus to the books it contains (shown both ways in the details panel). Magnitide-only; files and e-readers get the first series and number
+- [x] Find Metadata for a selection: the Find Metadata dialog steps through the books ("2 / 4", Previous / Skip / Use & Next), saving each one's chosen fields; the next book's search runs ahead
+- [x] Shelves: a sidebar of your own shelves (drag covers or rows onto one, or "Add to Shelf" in the right-click menu); click one to show its books (`shelf:"Name"` in search). Clickable series in the details panel
+- [x] Shelves on a Kobo: written as collections for Kobo's own app and KOReader when sending (or "Sync Shelves" in the device menu). Only Magnitide's shelves and books are touched; Kobo's database is backed up first
+- [ ] MTP devices (newer Kindles)
+- [x] Interface size: Settings → Appearance (80–200% in steps; a new size asks to be kept and reverts by itself after 15 s, like a display resolution), or ⌘+ / ⌘− / ⌘0 (View menu on macOS). The whole window zooms, remembered per device; the macOS title bar stays native size, and the window's minimum size grows with it so the toolbar always fits
+- [x] Keyboard shortcuts shown the platform's way (⌘E on macOS, Ctrl+E elsewhere), all listed in Settings → Keyboard Shortcuts
+- [x] calibre plugins, step 1: Settings → Plugins installs calibre plugin zips with their own settings; metadata-source plugins are asked in Find Metadata alongside the built-in sources (survey, design and status: [docs/calibre-plugins.md](docs/calibre-plugins.md))
+- [x] calibre plugins, step 2: GUI plugins on a calibre-format shadow library, run from the toolbar's Plugins button and the book menu; their changes come back into the library, and calibre's Edit Metadata, Remove Books, metadata download, Convert Books, Add Books and View are Magnitide's
+- [x] calibre plugins, step 3: no calibre needed. Magnitide's own plugin runtime (downloaded once) and its own `calibre` package; file-type, metadata reader/writer, preferences and library-closed plugins too. Checked against Count Pages, Reading List, Goodreads Sync, Generate Cover, Manage Series, Quality Check, FanFicFare, EpubMerge, EpubSplit and Comments Cleaner ([coverage](docs/calibre-plugins-coverage.md)); Ebook Translator needs calibre's conversion pipeline and isn't supported
+- [x] calibre plugins, three hosts: Settings → Plugins chooses where they run: the installed calibre (`calibre-debug`), a calibre Magnitide downloads from calibre's releases (hash-pinned, with calibre's own server as the second source), or Magnitide's runtime; fixes flow between the tracks
+- [x] Magnitide plugins, step 1: a native plugin API (WebAssembly components, sandboxed, any language) with metadata sources as the first kind; `.mgp` packages added in Settings → Plugins, asked in Find Metadata. A Rust SDK and an Open Library example plugin ([docs/plugin-api.md](docs/plugin-api.md))
+- [x] Magnitide plugins, step 2: import hooks (run on files being added, in a sandbox that holds only that file) and file-metadata plugins (readers and writers for formats) on the native API, beside calibre's
+- [x] Magnitide plugins, step 3: library actions on the native API: menu items in the book menu and the Plugins button that run on the selected books, with host functions for reading, searching and editing the library, book files through the sandbox, and progress in the job bar
+- [x] Magnitide plugins, questions mid-run: a library action can ask the user to choose or to type a line (`ui.ask`, `ui.ask-text`), waiting without that counting as its time
+- [x] Magnitide plugins, a template: `scripts/new-plugin.sh` starts a plugin of any kind from [`plugins/template`](plugins/template) (with a README and a release workflow for its own repository), and the `mgp` tool checks and runs a package without the app
+- [x] Magnitide plugins, a port: the calibre Goodreads metadata source rewritten on the native API ([`plugins/goodreads-source`](plugins/goodreads-source)), with its parser tested natively on saved pages
+- [x] Series from metadata sources: source records carry the series and number (calibre plugins and the Goodreads plugin give them), and Find Metadata shows a Series row to take
+- [ ] Magnitide plugins, a public home for the SDK (a public repository or crates.io) so plugins can live in their own repositories and depend on it by version
+- [ ] Find Duplicates, built in
+- [ ] Export to a calibre library
+- [x] Library server (Settings → Library Server, off by default): the open library on your Wi-Fi, read-only, with an optional password. Kobo's browser (and any other) gets a plain, script-free page to browse, search and download from, with KEPUBs made on the fly from EPUBs; KOReader and other reading apps add `http://<address>/opds` as an OPDS catalogue. Shows the address and a QR code
+- [x] KOReader progress sync: the library server is also a KOReader sync server (Tools → Progress sync → Custom sync server). Positions are kept per user name in their own database, outside the library
+- [ ] Reading positions in the app: match synced positions to library books (by KOReader's fingerprint of the copy on the device) and show how far you are
+- [ ] Server mode: a headless server (Docker, NAS) with accounts, Kobo sync
+- [ ] Server mode, plugins: Magnitide plugins run the same there; questions mid-run (`ui.ask`) answered by a per-library policy instead of a dialog

@@ -20,41 +20,69 @@ core with a Tauri desktop app, built to stay quick with 50,000 books and more.
   on a Kobo, for Kobo's own app and KOReader alike.
 - **On your network.** An optional library server with an OPDS catalogue for reading apps, a simple page for
   e-reader browsers, and KOReader progress sync.
-- **Plugins.** Magnitide's own plugins are small sandboxed WebAssembly components (Settings → Plugins, `.mgp`
-  files); metadata sources are the first kind, and a Rust SDK with an example is in the repository. calibre plugins
-  run unchanged too: in your installed calibre when you have one, in a
-  calibre Magnitide downloads for you, or without calibre at all through Magnitide's own plugin runtime. Metadata sources
-  join Find Metadata. Toolbar plugins work on the selected books from the Plugins button or the book menu; their
-  windows open as in calibre, and what they change comes back into the library through Magnitide's own editing.
-  File-type plugins run when books are added, metadata readers and writers handle their formats, and plugins'
-  own settings open from Settings. Conversion, catalog, device, store, viewer and editor plugins aren't supported.
+- **Magnitide plugins.** Small, sandboxed WebAssembly components (`.mgp` files, added in Settings → Plugins) that
+  can do only what their package declares. Four kinds: metadata sources in Find Metadata, import hooks on files being
+  added, metadata readers and writers for formats, and library tools in the book menu that work on the selected books,
+  with progress in the job bar and questions mid-run. Written in any language with a WebAssembly toolchain; a Rust SDK,
+  a template and two sources (Open Library, Goodreads) are in the repository ([docs/plugin-api.md](docs/plugin-api.md)).
 - **Make it yours.** Themes (light, dark, sepia, Catppuccin, Dracula and more), accent colours, and interface size.
 
-Magnitide is in active development: the [roadmap](#roadmap) tracks what's done and what's next. How the pieces fit,
-and the decisions behind them: [docs/architecture.md](docs/architecture.md).
+### Calibre Plugins Support
+
+The calibre plugins you rely on run unchanged, in whichever host you choose in Settings → Plugins:
+
+- **Your already installed calibre**
+- **A calibre (latest) Magnitide downloads for you, unpacked and used only by Magnitide**
+- **(Experimental) Magnitide's own plugin runtime, which needs no calibre at all. This is still under development and may not support all plugins.**
+
+Metadata sources join Find Metadata. Toolbar plugins work on the selected books from the Plugins button or the book menu (right click); their windows open as in calibre, and what they change comes back into the library through Magnitide's own editing.
+File-type plugins run when books are added, metadata readers and writers handle their formats, and plugins' own settings open from Settings. Conversion, catalog, device, store, viewer and editor plugins aren't supported ([docs/calibre-plugins.md](docs/calibre-plugins.md)).
+
+Magnitide is in active development: the [roadmap](docs/roadmap.md) tracks what's done and what's next.
+
+## Docs
+
+- [docs/architecture.md](docs/architecture.md): how the pieces fit, and the decisions behind them
+- [docs/plugin-api.md](docs/plugin-api.md): Magnitide's plugin API, the sandbox, the `.mgp` format, writing a plugin
+- [docs/calibre-plugins.md](docs/calibre-plugins.md): calibre plugins: the three hosts, what each kind of plugin gets,
+  the compatibility package, the plugin runtime; [coverage](docs/calibre-plugins-coverage.md) of real plugins
+- [docs/themes.md](docs/themes.md): themes and add-on theme files
+- [docs/roadmap.md](docs/roadmap.md): what's done and what's next
 
 ## Crates
 
-| Crate                                     | What it is                                                                                                                                                                          |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`app`](crates/app)                       | The desktop app: Tauri 2, with a Solid + TypeScript UI in [`crates/app/ui`](crates/app/ui). Browse, search, edit, import and look up metadata                                       |
-| [`core`](crates/core)                     | `magnitide-core`: the native Magnitide library (schema, migrations, edits), calibre import, adding book files with EPUB metadata. No Tauri code, so the planned server can share it |
-| [`catalog`](crates/catalog)               | `magnitide-catalog`: the in-memory book model, search and sort that every kind of library loads into                                                                                |
-| [`sources`](crates/sources)               | `magnitide-sources`: metadata lookup from Open Library and Google Books, on request only                                                                                            |
-| [`plugins`](crates/plugins)               | `magnitide-plugins`: runs calibre plugins in an installed calibre or in Magnitide's own plugin runtime (CPython + PyQt6, downloaded once, with a calibre compatibility package of its own) |
-| [`plugins-wasm`](crates/plugins-wasm)     | `magnitide-plugins-wasm`: runs Magnitide's own plugins, WebAssembly components on the `magnitide:plugin` API, sandboxed in wasmtime ([docs/plugin-api.md](docs/plugin-api.md))             |
-| [`plugin-sdk`](crates/plugin-sdk)         | `magnitide-plugin-sdk`: the API's WIT definitions and the Rust bindings for writing a plugin; [`plugins/`](plugins) holds the template, the Open Library example and the Goodreads port                                     |
-| [`server`](crates/server)                 | `magnitide-server`: serves a library read-only on the local network, as a plain web page for e-reader browsers and an OPDS catalogue for reading apps                               |
-| [`calibre-compat`](crates/calibre-compat) | Read-only access to calibre libraries (`metadata.db` + book folders), plus a CLI to inspect them                                                                                    |
+| Crate                                     | What it is                                                                                                                                                                                                                                                        |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`app`](crates/app)                       | The desktop app: Tauri 2, with a Solid + TypeScript UI in [`crates/app/ui`](crates/app/ui). Browse, search, edit, import and look up metadata                                                                                                                     |
+| [`core`](crates/core)                     | `magnitide-core`: the native Magnitide library (schema, migrations, edits), calibre import, adding book files with EPUB metadata. No Tauri code, so the planned server can share it                                                                               |
+| [`catalog`](crates/catalog)               | `magnitide-catalog`: the in-memory book model, search and sort that every kind of library loads into                                                                                                                                                              |
+| [`sources`](crates/sources)               | `magnitide-sources`: metadata lookup from Open Library and Google Books, on request only                                                                                                                                                                          |
+| [`plugins`](crates/plugins)               | `magnitide-plugins`: runs calibre plugins through one of three hosts: the user's installed calibre, a calibre Magnitide downloads, or Magnitide's own plugin runtime (CPython + PyQt6, downloaded once) with its own `calibre` compatibility package in `python/` |
+| [`plugins-wasm`](crates/plugins-wasm)     | `magnitide-plugins-wasm`: runs Magnitide's own plugins, WebAssembly components on the `magnitide:plugin` API, sandboxed in wasmtime ([docs/plugin-api.md](docs/plugin-api.md))                                                                                    |
+| [`plugin-sdk`](crates/plugin-sdk)         | `magnitide-plugin-sdk`: the API's WIT definitions and the Rust bindings for writing a plugin; [`plugins/`](plugins) holds the template, the Open Library example and the Goodreads port                                                                           |
+| [`server`](crates/server)                 | `magnitide-server`: serves a library read-only on the local network, as a plain web page for e-reader browsers and an OPDS catalogue for reading apps                                                                                                             |
+| [`calibre-compat`](crates/calibre-compat) | Read-only access to calibre libraries (`metadata.db` + book folders), plus a CLI to inspect them                                                                                                                                                                  |
+
+Beside the crates: [`plugins/`](plugins) holds Magnitide plugins written in Rust (the template, the Open Library
+example and the Goodreads port, each its own crate); [`scripts/`](scripts) holds `new-plugin.sh` and `build-plugin.sh`
+for them, [`scripts/plugin-runtime/`](scripts/plugin-runtime) builds and fetches the plugin runtime that CI publishes
+as `plugin-runtime-v<N>` releases, and [`scripts/calibre-release/`](scripts/calibre-release) pins the calibre release
+Magnitide can download.
 
 ## Setup
 
-Needs Rust, Node with [pnpm](https://pnpm.io), and the Tauri CLI:
+Needs Rust with the `wasm32-wasip2` target (the plugin tests build a WebAssembly fixture), Node with
+[pnpm](https://pnpm.io), and the Tauri CLI:
 
 ```bash
+rustup target add wasm32-wasip2
 cargo install tauri-cli --version "^2" --locked
 pnpm --dir crates/app/ui install
 ```
+
+The calibre plugin host tests need a host: `scripts/plugin-runtime/fetch.sh` downloads the published plugin runtime
+into `target/plugin-runtime/current` (they're skipped without one), and `MAGNITIDE_PLUGIN_HOST=calibre` runs them in
+an installed calibre instead. Details in [docs/calibre-plugins.md](docs/calibre-plugins.md#developing).
 
 ### Supported systems
 
@@ -90,8 +118,16 @@ Search accepts `author:`, `tag:`, `series:`, `title:`, `#custom:`, quotes and `-
 
 ```bash
 cargo test                             # all crates; also regenerates the UI's TypeScript bindings
-pnpm --dir crates/app/ui lint                 # typecheck + formatting (`format` to fix)
+pnpm --dir crates/app/ui lint          # typecheck + formatting (`format` to fix)
 cargo run -p calibre-compat -- info    # CLI against the default library
+```
+
+Plugins:
+
+```bash
+scripts/new-plugin.sh plugins/my-source "My Source" metadata-source   # a plugin from the template (any kind)
+scripts/build-plugin.sh plugins/my-source                             # → target/plugins/my-source.mgp
+cargo run -p magnitide-plugins-wasm --bin mgp -- check target/plugins/my-source.mgp   # or identify, read, hook
 ```
 
 Styling is [Tailwind v4](https://tailwindcss.com) utilities in the components. Icons are [Lucide](https://lucide.dev), always through `components/Icon.tsx`. Colours
@@ -120,64 +156,7 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
 
 ## Roadmap
 
-- [x] Read calibre libraries natively (`calibre-compat`)
-- [x] Cover grid, search, sort, details panel, open in default app
-- [x] Solid + TypeScript UI with types generated from Rust
-- [x] Toolbar (library menu, cover size, theme picker) and table view (sortable, resizable, choosable columns)
-- [x] Settings panel (⌘,): appearance, library, list columns, thumbnail cache, about
-- [x] List view zebra stripes (setting, on by default)
-- [x] Theme roles: zebra stripes, hover, selection and highlight are theme variables (`--row-stripe`, `--hover`, `--selection`, `--highlight`), consistent across themes; Catppuccin (all four flavours), Dracula and Alucard built in
-- [x] Clear search button (Jamie)
-- [x] Resizable details panel: drag its edge (300–680px, always leaving the list 320px), double-click to reset, or focus the edge and use ←/→
-- [x] Add slight app blur behind dialogs (every dialog dims and blurs the app behind it, tinted per theme)
-- [x] Covers view keeps the selected book where it was on screen when the panel opens or resizes, or the cover size changes
-- [x] "Send to device" & "Convert" are real buttons under the formats in the details panel (Send is the panel's main action when a device is connected)
-- [x] Table column reordering: drag a header sideways (or ⌥←/⌥→ on a focused one); reset from the ⋯ menu or Settings
-- [x] Right-click menu for books (also the keyboard's menu key or Shift-F10): open, edit, send/remove from devices, convert, remove a format, write metadata, show in Finder, merge, move to Trash
-- [x] Native Magnitide library (schema v1) and calibre import, in the app with progress (also `cargo run --release -p magnitide-core --example import_calibre -- <calibre> <dest>`)
-- [x] Library safety: single-writer lock (`.magnitide.lock`), warning for libraries on network shares
-- [x] Drag and drop (and "Add Books…") to add books: EPUB metadata and covers, file-name fallback, formats grouped, duplicates skipped
-- [x] MOBI/AZW/AZW3 metadata and covers (adding books, device matching); "Surname, Given" authors turned around
-- [ ] PDF metadata reader (drag and drop uses file names for PDFs today)
-- [x] Native EPUB → AZW3 converter (KF8, a port of calibre's writer): Kindles no longer need calibre installed; calibre is a fallback for unusual books
-- [ ] MOBI/AZW3 → EPUB (upgrading old Kindle files)
-- [x] Adding a new format of a book already in the library (same title and first author) adds it to that book instead of creating another
-- [x] Metadata editing (⌘E): all built-in fields, rich-text description, cover change/remove; folder and file names follow title and first author (all-or-nothing with the database)
-- [x] Autocomplete for authors, tags, series and publishers in the edit form
-- [x] Author sort names: "Sorted as …" under Authors in the edit form, with per-author overrides ("Le Guin, Ursula K.") that apply to all of that author's books
-- [x] Custom fields: make, rename and delete them (Settings › Library), see them in the details panel and as list columns, edit them with a book or several at once, sort and search by them (`#pages:300`). calibre libraries’ custom columns show too, read-only
-- [x] File name clean-up: names follow edits, and Settings → Library → "Tidy file names" fixes drifted books and reports files missing from disk
-- [x] Write metadata and covers back into EPUB/KEPUB files (details panel "Write to file", Settings → Library for every book, optional write on save); only files that differ are rewritten
-- [x] Metadata lookup from Open Library and Google Books (your own API key) with a field-by-field matching dialog: "Find Metadata…" in the edit window, sources in Settings → Metadata Sources. On request only; ranking is plain string matching
-- [x] E-reader detection (Kobo, Kindle, any calibre-managed USB device): plugged-in devices appear in the top bar, books on them get an "On Device" column, a cover badge and a line in the details panel, and the list can be filtered to books on or not on a device. Matched by calibre's uuid, ISBN, identical file, then title and author; Eject from the device menu
-- [x] File transfer: send selected books to a device (the format it reads best; EPUBs get the library's metadata, cover and id written into the copy), remove them (with KOReader's notes), and add a device's other files to the library
-- [x] Format conversion: "Convert…" in the details panel and selection bar adds the new format to the book. EPUB → KEPUB (Kobo spans, like kepubify) and EPUB → AZW3 are built in; MOBI, PDF and others use calibre's `ebook-convert` when installed (detected, never bundled). Sending converts on the way when a device's default format is missing, or when a Kindle gets an EPUB-only book
-- [x] Send asks which format when a book has several the device reads; Settings → Devices sets a default per kind of device
-- [ ] Kindle covers: write cover thumbnails on send and restore the ones the Kindle deletes once online (calibre's workaround)
-- [x] Multi-select (⌘-click, Shift-click, ⌘A) with a selection bar; "Merge…" for two records of the same book
-- [x] Delete books (⌘⌫, or Delete): their folders move to the Trash after a confirmation
-- [x] Bulk editing (⌘E with several books selected): fields show what the books share or "Mixed", only changed fields are saved; add/remove tags, series numbering in list order; "Edit One by One" steps through the selection with Previous/Next
-- [x] Omnibus editions and several series per book: an "Omnibus" tick turns the number into a range ("Books 1–3"), "+ Another series" adds more, and "Collects" links an omnibus to the books it contains (shown both ways in the details panel). Magnitide-only; files and e-readers get the first series and number
-- [x] Find Metadata for a selection: the Find Metadata dialog steps through the books ("2 / 4", Previous / Skip / Use & Next), saving each one's chosen fields; the next book's search runs ahead
-- [x] Shelves: a sidebar of your own shelves (drag covers or rows onto one, or "Add to Shelf" in the right-click menu); click one to show its books (`shelf:"Name"` in search). Clickable series in the details panel
-- [x] Shelves on a Kobo: written as collections for Kobo's own app and KOReader when sending (or "Sync Shelves" in the device menu). Only Magnitide's shelves and books are touched; Kobo's database is backed up first
-- [ ] MTP devices (newer Kindles)
-- [x] Interface size: Settings → Appearance (80–200% in steps; a new size asks to be kept and reverts by itself after 15 s, like a display resolution), or ⌘+ / ⌘− / ⌘0 (View menu on macOS). The whole window zooms, remembered per device; the macOS title bar stays native size, and the window's minimum size grows with it so the toolbar always fits
-- [x] Keyboard shortcuts shown the platform's way (⌘E on macOS, Ctrl+E elsewhere), all listed in Settings → Keyboard Shortcuts
-- [x] calibre plugins, step 1: Settings → Plugins installs calibre plugin zips with their own settings; metadata-source plugins are asked in Find Metadata alongside the built-in sources (survey, design and status: [docs/calibre-plugins.md](docs/calibre-plugins.md))
-- [x] calibre plugins, step 2: GUI plugins on a calibre-format shadow library, run from the toolbar's Plugins button and the book menu; their changes come back into the library, and calibre's Edit Metadata, Remove Books, metadata download, Convert Books, Add Books and View are Magnitide's
-- [x] calibre plugins, step 3: no calibre needed. Magnitide's own plugin runtime (downloaded once) and its own `calibre` package; file-type, metadata reader/writer, preferences and library-closed plugins too. Checked against Count Pages, Reading List, Goodreads Sync, Generate Cover, Manage Series, Quality Check, FanFicFare, EpubMerge, EpubSplit and Comments Cleaner ([coverage](docs/calibre-plugins-coverage.md)); Ebook Translator needs calibre's conversion pipeline and isn't supported
-- [x] Magnitide plugins, step 1: a native plugin API (WebAssembly components, sandboxed, any language) with metadata sources as the first kind; `.mgp` packages added in Settings → Plugins, asked in Find Metadata. A Rust SDK and an Open Library example plugin ([docs/plugin-api.md](docs/plugin-api.md))
-- [x] Magnitide plugins, step 2: import hooks (run on files being added, in a sandbox that holds only that file) and file-metadata plugins (readers and writers for formats) on the native API, beside calibre's
-- [x] Magnitide plugins, a port: the calibre Goodreads metadata source rewritten on the native API ([`plugins/goodreads-source`](plugins/goodreads-source)), with its parser tested natively on saved pages
-- [x] Magnitide plugins, questions mid-run: a library action can ask the user to choose or to type a line (`ui.ask`, `ui.ask-text`), waiting without that counting as its time
-- [x] Series from metadata sources: source records carry the series and number (calibre plugins and the Goodreads plugin give them), and Find Metadata shows a Series row to take
-- [x] Magnitide plugins, a template: `scripts/new-plugin.sh` starts a plugin of any kind from [`plugins/template`](plugins/template) (with a README and a release workflow for its own repository), and the `mgp` tool checks and runs a package without the app
-- [x] Magnitide plugins, step 3: library actions on the native API: menu items in the book menu and the Plugins button that run on the selected books, with host functions for reading, searching and editing the library, book files through the sandbox, and progress in the job bar
-- [ ] Find Duplicates, built in
-- [ ] Built-in reader
-- [ ] Export to a calibre library
-- [x] Library server (Settings → Library Server, off by default): the open library on your Wi-Fi, read-only, with an optional password. Kobo's browser (and any other) gets a plain, script-free page to browse, search and download from, with KEPUBs made on the fly from EPUBs; KOReader and other reading apps add `http://<address>/opds` as an OPDS catalogue. Shows the address and a QR code
-- [x] KOReader progress sync: the library server is also a KOReader sync server (Tools → Progress sync → Custom sync server). Positions are kept per user name in their own database, outside the library
-- [ ] Reading positions in the app: match synced positions to library books (by KOReader's fingerprint of the copy on the device) and show how far you are
-- [ ] Server mode: a headless server (Docker, NAS) with accounts, Kobo sync
+What's done and what's next, item by item: [docs/roadmap.md](docs/roadmap.md). Open as of this version: a PDF
+metadata reader, MOBI/AZW3 → EPUB, Kindle cover thumbnails, MTP devices, Find Duplicates, export to a calibre library,
+reading positions in the app, a headless server with accounts and Kobo sync (and plugins answering by policy there),
+and a public home for the plugin SDK.

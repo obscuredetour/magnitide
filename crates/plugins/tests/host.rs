@@ -133,7 +133,7 @@ fn metadata_source_end_to_end() {
     let crashed = plugins.identify(&Lookup { title: "Crash".into(), ..Default::default() });
     assert!(crashed[0].1.as_ref().unwrap_err().contains("the plugin crashed"), "{crashed:?}");
     assert!(plugins.host().unwrap().is_alive());
-    assert!(plugins.log().iter().any(|l| l.contains("must not break the protocol")), "plugin output goes to the log");
+    assert!(log_says(&plugins, "must not break the protocol"), "plugin output goes to the log: {:?}", plugins.log());
 
     // Removing it.
     plugins.remove(&installed.name).unwrap();
@@ -435,6 +435,22 @@ fn next_event(plugins: &Plugins, events: &mpsc::Receiver<Value>, kind: &str) -> 
     }
 }
 
+/// Whether the host's log has a line saying `needle`, waiting a little:
+/// what a plugin prints reaches the log on the host's stderr, read by its
+/// own thread, so it can land just after the reply on stdout.
+fn log_says(plugins: &Plugins, needle: &str) -> bool {
+    let started = std::time::Instant::now();
+    loop {
+        if plugins.log().iter().any(|l| l.contains(needle)) {
+            return true;
+        }
+        if started.elapsed() > Duration::from_secs(5) {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
 #[test]
 fn file_type_plugins_rewrite_added_files_and_run_afterwards() {
     let dir = tempfile::tempdir().unwrap();
@@ -462,7 +478,7 @@ fn file_type_plugins_rewrite_added_files_and_run_afterwards() {
     let crash = dir.path().join("crash.txt");
     std::fs::write(&crash, "x").unwrap();
     assert_eq!(plugins.on_import(&crash, "TXT"), ImportOutcome::Unchanged);
-    assert!(plugins.log().iter().any(|l| l.contains("crashed on purpose")));
+    assert!(log_says(&plugins, "crashed on purpose"), "{:?}", plugins.log());
 
     // Post hooks, on the shadow library, without a plugin window.
     let root = dir.path().join("library");
