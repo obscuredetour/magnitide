@@ -172,6 +172,6 @@ and a public home for the plugin SDK.
 
 ## Why
 
-This began as a design exercise. What would I like an ebook management application to look like? It then became unhinged. Yes, this entire project is a bit unhinged. It became a journey of can I do this? A question that pushed the boundaries from the initial idea, evolving into a full-fledged vision for Magnitide.
+This began as a fun design exercise: what would I want an ebook manager to look like? Then it became unhinged. Yes, this whole project is a bit unhinged. "What would it look like?" turned into "Can I actually build this?", and every answer pushed the idea further until it grew into Magnitide.
 
-Magnitide was created to provide all the great things calibre offers, but with a modern interface, a consistent theming system, and an overall improved user experience.
+So, honestly, Magnitide exists for me and because I wanted to see if I could do it. But it's also here to offer everything great about calibre with a modern interface, a consistent theming system and a better experience overall.
