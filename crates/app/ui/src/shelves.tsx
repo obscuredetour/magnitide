@@ -3,7 +3,7 @@
 
 import { createSignal } from 'solid-js';
 
-import { api, errorMessage, type Shelf } from './api';
+import { api, errorMessage, type Shelf, type ShelfSource } from './api';
 import { confirm } from './confirm';
 import { library, query, refresh, search, setEditRevision } from './library';
 import { toast } from './toast';
@@ -103,6 +103,33 @@ export async function newShelfFor(ids: number[]): Promise<void> {
     confirm: 'Create',
   });
   if (ok && name().trim()) await createShelf(name(), ids);
+}
+
+/** Ask, then make a shelf per series or per author (with at least two books). */
+export async function makeShelvesFrom(source: ShelfSource): Promise<void> {
+  const what = source === 'series' ? 'series' : 'author';
+  const ok = await confirm({
+    title: source === 'series' ? 'Shelves from Series' : 'Shelves from Authors',
+    message: () => (
+      <p>
+        A shelf for each {what} with at least two books, named after it. A shelf already called that gets the books
+        instead.
+      </p>
+    ),
+    confirm: 'Make Shelves',
+  });
+  if (!ok) return;
+  try {
+    const made = await api.makeShelves(source, 2);
+    await afterChange();
+    toast(
+      made.shelves || made.books
+        ? `Made ${plural(made.shelves, 'shelf', 'shelves')}, shelving ${plural(made.books, 'book', 'books')}`
+        : `Every ${what} with two or more books already has its shelf`,
+    );
+  } catch (err) {
+    toast(errorMessage(err), { error: true });
+  }
 }
 
 export async function renameShelf(shelf: Shelf, name: string): Promise<void> {

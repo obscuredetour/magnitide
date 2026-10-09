@@ -144,6 +144,7 @@ fn main() {
             commands::rename_shelf,
             commands::delete_shelf,
             commands::add_to_shelf,
+            commands::make_shelves,
             commands::remove_from_shelf,
             devices::sync_device_shelves,
             themes::theme_addons,

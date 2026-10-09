@@ -1061,6 +1061,16 @@ pub async fn delete_shelf(state: State<'_, AppState>, id: i64) -> CmdResult<()> 
     write_library(&state, move |lib| lib.delete_shelf(id)).await
 }
 
+/// A shelf per series or per author with at least `min_books` books (see `Library::make_shelves`).
+#[tauri::command]
+pub async fn make_shelves(
+    state: State<'_, AppState>,
+    source: magnitide_core::shelves::ShelfSource,
+    min_books: usize,
+) -> CmdResult<magnitide_core::shelves::ShelvesMade> {
+    write_library(&state, move |lib| lib.make_shelves(source, min_books)).await
+}
+
 /// Put books on a shelf; how many weren't on it already.
 #[tauri::command]
 pub async fn add_to_shelf(state: State<'_, AppState>, id: i64, book_ids: Vec<i64>) -> CmdResult<usize> {

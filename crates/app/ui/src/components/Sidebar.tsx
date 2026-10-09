@@ -8,9 +8,9 @@ import { drag } from '../bookDrag';
 import { editRevision, library, query } from '../library';
 import { formatSize } from '../sizes';
 import { plural } from '../writeback';
-import { activeShelf, createShelf, deleteShelf, renameShelf, shelves, showShelf } from '../shelves';
+import { activeShelf, createShelf, deleteShelf, makeShelvesFrom, renameShelf, shelves, showShelf } from '../shelves';
 import { Icon } from './Icon';
-import { ContextMenu, MenuItem } from './Menu';
+import { ContextMenu, MenuItem, MenuSeparator } from './Menu';
 
 const row =
   'group flex h-7 w-full cursor-default items-center gap-2 rounded-control px-2 text-left text-sm outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-focus aria-[current=true]:bg-highlight aria-[current=true]:text-accent';
@@ -40,6 +40,8 @@ export function Sidebar() {
   const [creating, setCreating] = createSignal(false);
   const [renaming, setRenaming] = createSignal<number | null>(null);
   const [menu, setMenu] = createSignal<{ x: number; y: number; shelf: Shelf } | null>(null);
+  /** The + menu: a new shelf, or shelves made from series or authors. */
+  const [addMenu, setAddMenu] = createSignal<{ x: number; y: number } | null>(null);
   const editable = () => library()?.kind === 'magnitide';
   const over = (target: number | 'new') => drag()?.over === target;
   // Totals along the bottom. They follow the catalog: opening, adding and
@@ -68,10 +70,15 @@ export function Sidebar() {
         <div class="flex items-center">
           <div class={`${label} flex-1`}>Shelves</div>
           <button
-            class="mt-3 grid size-6 cursor-pointer place-items-center rounded-control text-muted hover:bg-hover hover:text-fg"
-            title="New shelf"
-            aria-label="New shelf"
-            onClick={() => setCreating(true)}
+            class="mt-3 grid size-6 cursor-pointer place-items-center rounded-control text-muted hover:bg-hover hover:text-fg aria-expanded:bg-hover aria-expanded:text-fg"
+            title="Add shelves"
+            aria-label="Add shelves"
+            aria-haspopup="menu"
+            aria-expanded={addMenu() !== null}
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setAddMenu({ x: r.left, y: r.bottom + 4 });
+            }}
           >
             <Icon of={Plus} />
           </button>
@@ -152,6 +159,17 @@ export function Sidebar() {
             </p>
             <p>{formatSize(s().totalBytes)}</p>
           </div>
+        )}
+      </Show>
+
+      <Show when={addMenu()}>
+        {(m) => (
+          <ContextMenu label="Add shelves" x={m().x} y={m().y} onClose={() => setAddMenu(null)}>
+            <MenuItem onSelect={() => setCreating(true)}>New Shelf</MenuItem>
+            <MenuSeparator />
+            <MenuItem onSelect={() => void makeShelvesFrom('series')}>Shelves from Series…</MenuItem>
+            <MenuItem onSelect={() => void makeShelvesFrom('authors')}>Shelves from Authors…</MenuItem>
+          </ContextMenu>
         )}
       </Show>
 

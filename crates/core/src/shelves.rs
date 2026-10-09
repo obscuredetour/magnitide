@@ -3,7 +3,7 @@
 //! written to e-readers as collections.
 
 use rusqlite::{OptionalExtension, params};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 use crate::library::{BookId, Library, now};
@@ -18,6 +18,26 @@ pub struct Shelf {
     pub id: ShelfId,
     pub name: String,
     pub count: usize,
+}
+
+/// What shelves are made from (`make_shelves`).
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "lowercase")]
+pub enum ShelfSource {
+    Series,
+    Authors,
+}
+
+/// What `make_shelves` did.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct ShelvesMade {
+    /// Shelves created (a shelf of the same name already there is reused).
+    pub shelves: usize,
+    /// Books put on a shelf they weren't on.
+    pub books: usize,
 }
 
 /// A shelf name: trimmed, not empty, at most 100 characters.
@@ -107,6 +127,44 @@ impl Library {
         }
         tx.commit()?;
         Ok(removed)
+    }
+
+    /// A shelf per series, or per author, that has at least `min_books`
+    /// books, named after it and holding those books. A shelf already called
+    /// that gets the books instead of a new one.
+    pub fn make_shelves(&mut self, source: ShelfSource, min_books: usize) -> Result<ShelvesMade> {
+        // Grouped case-insensitively, keeping the first spelling seen.
+        let mut groups: std::collections::BTreeMap<String, (String, Vec<BookId>)> = Default::default();
+        for b in &self.load_catalog()?.books {
+            let names: Vec<&str> = match source {
+                ShelfSource::Series => {
+                    b.series.iter().map(String::as_str).chain(b.more_series.iter().map(|s| s.name.as_str())).collect()
+                }
+                ShelfSource::Authors => b.authors.iter().map(String::as_str).collect(),
+            };
+            for name in names {
+                let name: String = name.trim().chars().take(100).collect();
+                if name.is_empty() {
+                    continue;
+                }
+                groups.entry(name.to_lowercase()).or_insert_with(|| (name, Vec::new())).1.push(b.id);
+            }
+        }
+        let mut made = ShelvesMade { shelves: 0, books: 0 };
+        for (name, books) in groups.into_values() {
+            if books.len() < min_books.max(1) {
+                continue;
+            }
+            let id = match self.shelf_named(&name)? {
+                Some(id) => id,
+                None => {
+                    made.shelves += 1;
+                    self.create_shelf(&name)?.id
+                }
+            };
+            made.books += self.add_to_shelf(id, &books)?;
+        }
+        Ok(made)
     }
 
     /// Each shelf's books, by name, in the order they were added (for writing to devices).

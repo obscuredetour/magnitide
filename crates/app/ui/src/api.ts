@@ -28,6 +28,8 @@ import type { CollectionsReport } from './bindings/CollectionsReport';
 import type { DeleteReport } from './bindings/DeleteReport';
 import type { SeriesLine } from './bindings/SeriesLine';
 import type { Shelf } from './bindings/Shelf';
+import type { ShelfSource } from './bindings/ShelfSource';
+import type { ShelvesMade } from './bindings/ShelvesMade';
 import type { ThemeAddon } from './bindings/ThemeAddon';
 import type { ThemeAddons } from './bindings/ThemeAddons';
 import type { MergeOutcome } from './bindings/MergeOutcome';
@@ -142,6 +144,8 @@ export type {
   DeleteReport,
   SeriesLine,
   Shelf,
+  ShelfSource,
+  ShelvesMade,
   ThemeAddon,
   ThemeAddons,
   MergeOutcome,
@@ -263,6 +267,9 @@ export const api = {
 
   /** The open library's shelves (none for calibre libraries). */
   listShelves: () => invoke<Shelf[]>('list_shelves'),
+
+  /** A shelf per series or per author with at least `minBooks` books; existing shelves of the same name get the books. */
+  makeShelves: (source: ShelfSource, minBooks: number) => invoke<ShelvesMade>('make_shelves', { source, minBooks }),
   createShelf: (name: string) => invoke<Shelf>('create_shelf', { name }),
   renameShelf: (id: number, name: string) => invoke<void>('rename_shelf', { id, name }),
   deleteShelf: (id: number) => invoke<void>('delete_shelf', { id }),
