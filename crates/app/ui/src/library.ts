@@ -9,6 +9,7 @@ import {
   coverLibraryChanged,
   errorMessage,
   type LibraryInfo,
+  type LibraryKind,
   type SortDir,
   type SortKey,
 } from './api';
@@ -113,14 +114,17 @@ export const [sortDir, setSortDirSignal] = createSignal<SortDir>(
   isSortDir(storedDir) ? storedDir : NATURAL_DIR[sort()],
 );
 
-export type RecentLibrary = { path: string; name: string };
+export type RecentLibrary = { path: string; name: string; kind?: LibraryKind };
 const MAX_RECENT = 6;
 
 function loadRecent(): RecentLibrary[] {
   try {
     const parsed: unknown = JSON.parse(storage.get('recentLibraries') ?? '[]');
     return Array.isArray(parsed)
-      ? parsed.filter((r): r is RecentLibrary => typeof r?.path === 'string' && typeof r?.name === 'string')
+      ? parsed
+          .filter((r): r is RecentLibrary => typeof r?.path === 'string' && typeof r?.name === 'string')
+          // Entries saved before the kind was kept have none.
+          .map((r) => ({ ...r, kind: r.kind === 'magnitide' || r.kind === 'calibre' ? r.kind : undefined }))
       : [];
   } catch {
     return [];
@@ -138,10 +142,10 @@ export function forgetRecentLibrary(path: string): void {
 }
 
 function rememberLibrary(info: LibraryInfo): void {
-  const next = [{ path: info.path, name: info.name }, ...recentLibraries().filter((r) => r.path !== info.path)].slice(
-    0,
-    MAX_RECENT,
-  );
+  const next = [
+    { path: info.path, name: info.name, kind: info.kind },
+    ...recentLibraries().filter((r) => r.path !== info.path),
+  ].slice(0, MAX_RECENT);
   setRecentLibraries(next);
   storage.set('recentLibraries', JSON.stringify(next));
 }
