@@ -69,12 +69,13 @@ export function Cover(props: Props) {
       <Show when={props.size === 'full'}>
         <img class="absolute inset-0 size-full object-cover blur-[2px]" src={coverUrl('thumb', props.id)} alt="" />
       </Show>
-      {/* Contained: a 2:3 ghost until the image has a size of its own (aspect-ratio: auto 2/3), then its own. */}
+      {/* Contained: a 2:3 ghost until the image has a size of its own (aspect-ratio: auto 2/3), then its own;
+          positioned, so it paints over the blurred stand-in above. */}
       <img
         class="opacity-0 transition-opacity duration-200 data-loaded:opacity-100"
         classList={{
           'absolute inset-0 size-full object-cover': props.fit !== 'contain',
-          'block aspect-[auto_2/3] h-(--cover-h) max-h-(--cover-h) w-auto max-w-(--cover-w) object-contain data-loaded:h-auto':
+          'relative block aspect-[auto_2/3] h-(--cover-h) max-h-(--cover-h) w-auto max-w-(--cover-w) object-contain data-loaded:h-auto':
             props.fit === 'contain',
         }}
         src={coverUrl(props.size, props.id)}

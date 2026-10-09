@@ -14,7 +14,7 @@ import { addFromDevice, removeFormat, removeFromDevice, sendToDevice } from '../
 import { writeBookFiles } from '../writeback';
 import { ConvertMenu } from './ConvertMenu';
 import { Cover } from './Cover';
-import { coverTint, coverVivid, requestCoverColors } from '../coverColors';
+import { coverPalette, requestCoverColors } from '../coverColors';
 import { formatSize } from '../sizes';
 import { Icon } from './Icon';
 import { primaryButton, secondaryButton } from '../buttons';
@@ -81,27 +81,28 @@ export function DetailsPanel(props: Props) {
       return b;
     },
   );
-  // The panel takes a little of the cover's colour (see coverColors.ts and `cover-tint` in styles.css).
+  // The panel's background blends toward the cover's colours (see coverColors.ts and `cover-blend` in styles.css).
   createEffect(() => {
     const b = book();
     if (b?.hasCover) requestCoverColors([b.id]);
   });
-  const tint = () => {
+  const palette = () => {
     const b = book();
-    return b ? coverTint(b.id, b.hasCover) : undefined;
-  };
-  const vivid = () => {
-    const b = book();
-    return !!b && coverVivid(b.id, b.hasCover);
+    return b ? coverPalette(b.id, b.hasCover) : undefined;
   };
 
   return (
     <aside
       ref={(el) => widthFlags(el, { wide: 416 })}
-      class="group/details relative flex-none animate-slide-in border-l border-line cover-tint transition-colors duration-300 select-text max-[760px]:absolute max-[760px]:inset-y-0 max-[760px]:right-0 max-[760px]:w-[min(28rem,100%_-_2rem)]! max-[760px]:max-w-full! max-[760px]:shadow-lift"
+      class="group/details relative flex-none animate-slide-in border-l border-line cover-blend select-text max-[760px]:absolute max-[760px]:inset-y-0 max-[760px]:right-0 max-[760px]:w-[min(28rem,100%_-_2rem)]! max-[760px]:max-w-full! max-[760px]:shadow-lift"
       // The list keeps at least 320px beside it.
-      style={{ width: `${detailsWidth()}px`, 'max-width': 'calc(100% - 320px)', '--cover': tint() }}
-      data-cover-vivid={vivid() || undefined}
+      style={{
+        width: `${detailsWidth()}px`,
+        'max-width': 'calc(100% - 320px)',
+        '--cover-1': palette()?.[0],
+        '--cover-2': palette()?.[1] ?? palette()?.[0],
+        '--cover-3': palette()?.[2] ?? palette()?.[1] ?? palette()?.[0],
+      }}
       aria-label="Book details"
     >
       <ResizeHandle />
@@ -226,8 +227,21 @@ function Details(props: { book: BookDetails }) {
       {/* Sections are spaced by the container (gap), not their own margins, so
         the one- and two-column layouts space them alike and hidden ones leave no gap. */}
       <div class="flex flex-col gap-6 px-7 pt-7 group-data-wide/details:grid group-data-wide/details:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] group-data-wide/details:grid-rows-[repeat(5,auto)] group-data-wide/details:gap-x-7">
-        <div class="relative aspect-2/3 w-[62%] overflow-hidden rounded-lg bg-element shadow-lift group-data-wide/details:w-full group-data-wide/details:min-w-32">
-          <Cover id={b().id} title={b().title} authors={b().authors.join(' & ')} hasCover={b().hasCover} size="full" />
+        {/* The cover at its own proportions, as wide as this box at most (container units, so the width
+            follows the layout); a 2:3 ghost until it loads. */}
+        <div class="@container w-[62%] group-data-wide/details:w-full group-data-wide/details:min-w-32">
+          <div class="flex [--cover-h:150cqw] [--cover-w:100cqw]">
+            <div class="relative flex overflow-hidden rounded-lg bg-element shadow-lift">
+              <Cover
+                id={b().id}
+                title={b().title}
+                authors={b().authors.join(' & ')}
+                hasCover={b().hasCover}
+                size="full"
+                fit="contain"
+              />
+            </div>
+          </div>
         </div>
 
         <div class="space-y-4.5">
@@ -252,7 +266,7 @@ function Details(props: { book: BookDetails }) {
                     <p>
                       {s.omnibus ? 'Books' : 'Book'} {s.number} of{' '}
                       <button
-                        class="cursor-pointer text-cover-ink hover:underline"
+                        class="cursor-pointer text-link hover:underline"
                         onClick={() => searchFor('series', s.name)}
                       >
                         {s.name}
@@ -279,7 +293,7 @@ function Details(props: { book: BookDetails }) {
             </Show>
             <Show when={stars()}>
               {(s) => (
-                <div class="text-sm tracking-[1px] text-cover-star" title={`${b().stars} of 5`}>
+                <div class="text-sm tracking-[1px] text-star" title={`${b().stars} of 5`}>
                   {s()}
                 </div>
               )}
@@ -469,7 +483,7 @@ function Details(props: { book: BookDetails }) {
                     <dt class="text-muted">{c.name}</dt>
                     <Switch fallback={<dd class="[overflow-wrap:anywhere]">{formatCustom(c.kind, c.value)}</dd>}>
                       <Match when={c.kind === 'rating'}>
-                        <dd class="tracking-[1px] text-cover-star" title={`${Number(c.value) / 2} of 5`}>
+                        <dd class="tracking-[1px] text-star" title={`${Number(c.value) / 2} of 5`}>
                           {'★'.repeat(Math.floor(Number(c.value) / 2))}
                           {Number(c.value) % 2 ? '½' : ''}
                         </dd>

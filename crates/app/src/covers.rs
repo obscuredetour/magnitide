@@ -1,11 +1,11 @@
 //! The `cover://` protocol: `/thumb/<id>` (cached thumbnail), `/full/<id>`, and
 //! `/remote/<key>` (a metadata source's cover, downloaded on request). Also
-//! `cover_colors`: a cover's representative colour, for the UI to paint with.
+//! `cover_colors`: a cover's main colours, for the UI to paint with.
 //!
 //! Thumbnails live in the app cache, keyed by book id and the cover file's
 //! modification time, so a changed cover gets a fresh thumbnail. A cover's
-//! colour is cached beside its thumbnail under the same key, so it follows
-//! the same invalidation and is cleared with the thumbnails.
+//! colours are cached beside its thumbnail under the same key, so they follow
+//! the same invalidation and are cleared with the thumbnails.
 
 use std::fs;
 use std::io::Cursor;
@@ -16,7 +16,7 @@ use std::time::UNIX_EPOCH;
 use anyhow::{Context, Result};
 use image::codecs::jpeg::JpegEncoder;
 use image::imageops::FilterType;
-use image::{DynamicImage, GenericImageView, ImageReader};
+use image::{DynamicImage, ImageReader};
 use serde::{Deserialize, Serialize};
 use tauri::http::{Response, StatusCode, header};
 use tauri::{AppHandle, Manager, State};
@@ -118,21 +118,15 @@ fn encode_jpeg(img: &DynamicImage) -> Result<Vec<u8>> {
 
 // ---------- Cover colours ----------
 
-/// A cover's representative colour and the thumbnail's size (the cover's
-/// proportions within the thumbnail bounds), for tinting the details panel
-/// and painting a spine.
+/// A cover's palette: its most common colours, most common first, for the
+/// details panel to blend its background toward. One to three entries.
 #[derive(Clone, Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct CoverColor {
     pub id: i64,
-    /// `#rrggbb`.
-    pub color: String,
-    /// Whether `color` is a real hue rather than the grey of a mostly white
-    /// or black cover, so text may be coloured with it.
-    pub vivid: bool,
-    pub width: u32,
-    pub height: u32,
+    /// `#rrggbb` each.
+    pub colors: Vec<String>,
 }
 
 /// What's cached beside the thumbnail (`{id}-{mtime}.color`). `v` is bumped
@@ -140,14 +134,11 @@ pub struct CoverColor {
 #[derive(Serialize, Deserialize)]
 struct ColorSidecar {
     v: u8,
-    color: String,
-    vivid: bool,
-    width: u32,
-    height: u32,
+    colors: Vec<String>,
 }
-const COLOR_VERSION: u8 = 1;
+const COLOR_VERSION: u8 = 2;
 
-/// These books' cover colours. Books without a cover, or whose cover can't
+/// These books' cover palettes. Books without a cover, or whose cover can't
 /// be read, are left out. Computed from the cached thumbnail (made if
 /// missing, so the thumbnail cache fills too) and cached beside it. Costs a
 /// stat and a tiny read per book when cached, a decode when not: ask for
@@ -183,22 +174,22 @@ fn cover_color(lib: &Loaded, id: i64) -> Result<Option<CoverColor>> {
         .and_then(|bytes| serde_json::from_slice::<ColorSidecar>(&bytes).ok())
         .filter(|c| c.v == COLOR_VERSION)
     {
-        return Ok(Some(CoverColor { id, color: c.color, vivid: c.vivid, width: c.width, height: c.height }));
+        return Ok(Some(CoverColor { id, colors: c.colors }));
     }
     let bytes = cached_thumbnail(lib, id, &src, mtime)?;
     let img = image::load_from_memory_with_format(&bytes, image::ImageFormat::Jpeg)?;
-    let (width, height) = img.dimensions();
-    let (color, vivid) = dominant_color(&img);
-    let side = ColorSidecar { v: COLOR_VERSION, color: color.clone(), vivid, width, height };
+    let colors = palette(&img);
+    let side = ColorSidecar { v: COLOR_VERSION, colors: colors.clone() };
     if let Err(e) = serde_json::to_vec(&side).map_err(anyhow::Error::from).and_then(|b| write_atomic(&sidecar, &b)) {
         eprintln!("caching {}: {e:#}", sidecar.display());
     }
-    Ok(Some(CoverColor { id, color, vivid, width, height }))
+    Ok(Some(CoverColor { id, colors }))
 }
 
-/// The most common saturated colour, as hex, and true; or, for a mostly
-/// white, grey or black cover, the mean colour and false.
-fn dominant_color(img: &DynamicImage) -> (String, bool) {
+/// Up to three of the cover's most common colours that carry a hue, most
+/// common first and each clearly different from the ones before it; for a
+/// cover that's all white, grey or black, its mean colour alone.
+fn palette(img: &DynamicImage) -> Vec<String> {
     let small = img.thumbnail(32, 48).to_rgb8();
     let total = small.pixels().len().max(1);
     // Saturated pixels, quantised to 4 bits per channel: a count and a colour sum per bucket.
@@ -221,11 +212,28 @@ fn dominant_color(img: &DynamicImage) -> (String, bool) {
             *sum += u64::from(c);
         }
     }
-    let hex = |rgb: [u64; 3], n: u64| format!("#{:02x}{:02x}{:02x}", rgb[0] / n, rgb[1] / n, rgb[2] / n);
-    match buckets.values().max_by_key(|(n, _)| *n) {
-        Some((n, sum)) if *n as usize * 20 >= total => (hex(*sum, u64::from(*n)), true),
-        _ => (hex(mean, total as u64), false),
+    let rgb = |sum: [u64; 3], n: u64| [sum[0] / n, sum[1] / n, sum[2] / n];
+    let hex = |c: [u64; 3]| format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2]);
+    let mut ranked: Vec<(u32, [u64; 3])> = buckets.into_values().map(|(n, sum)| (n, rgb(sum, u64::from(n)))).collect();
+    ranked.sort_by_key(|&(n, _)| std::cmp::Reverse(n));
+    let mut out: Vec<[u64; 3]> = Vec::new();
+    for (n, c) in ranked {
+        // At least 3% of the cover, and not a near-twin of a colour already chosen.
+        if n as usize * 33 < total {
+            break;
+        }
+        let twin = out.iter().any(|o| o.iter().zip(c).map(|(a, b)| a.abs_diff(b)).sum::<u64>() < 96);
+        if !twin {
+            out.push(c);
+        }
+        if out.len() == 3 {
+            break;
+        }
     }
+    if out.is_empty() {
+        out.push(rgb(mean, total as u64));
+    }
+    out.into_iter().map(hex).collect()
 }
 
 fn write_atomic(dest: &Path, bytes: &[u8]) -> Result<()> {
@@ -250,24 +258,27 @@ mod tests {
 
     #[test]
     fn solid_colour_is_itself() {
-        assert_eq!(dominant_color(&DynamicImage::ImageRgb8(solid(20, 30, [255, 0, 0]))), ("#ff0000".into(), true));
+        assert_eq!(palette(&DynamicImage::ImageRgb8(solid(20, 30, [255, 0, 0]))), ["#ff0000"]);
     }
 
     #[test]
-    fn grey_is_not_vivid() {
-        let (c, vivid) = dominant_color(&DynamicImage::ImageRgb8(solid(20, 30, [128, 128, 128])));
-        assert_eq!(c, "#808080");
-        assert!(!vivid);
+    fn grey_cover_gives_its_mean() {
+        assert_eq!(palette(&DynamicImage::ImageRgb8(solid(20, 30, [128, 128, 128]))), ["#808080"]);
     }
 
     #[test]
-    fn white_cover_with_a_blue_band_is_blue() {
+    fn bands_come_most_common_first() {
         let mut img = solid(32, 48, [255, 255, 255]);
-        for y in 0..14 {
+        for y in 0..20 {
             for x in 0..32 {
                 img.put_pixel(x, y, Rgb([20, 60, 200]));
             }
         }
-        assert_eq!(dominant_color(&DynamicImage::ImageRgb8(img)), ("#143cc8".into(), true));
+        for y in 20..30 {
+            for x in 0..32 {
+                img.put_pixel(x, y, Rgb([200, 40, 30]));
+            }
+        }
+        assert_eq!(palette(&DynamicImage::ImageRgb8(img)), ["#143cc8", "#c8281e"]);
     }
 }

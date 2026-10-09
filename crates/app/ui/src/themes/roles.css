@@ -48,8 +48,6 @@
   --chip-radius: 9999px; /* text pills: tags, formats, badges */
 
   /* Dark-theme defaults; light themes override them below. */
-  /* Lightness (oklch) for text in a cover's hue (see cover-tint in styles.css). */
-  --cover-ink-l: 0.8;
   --inverse: var(--crust);
   --on-inverse: var(--text);
   --scrim: rgb(0 0 0 / 0.38);
@@ -67,7 +65,6 @@
 :root:not([data-theme]),
 [data-appearance='light'] {
   color-scheme: light;
-  --cover-ink-l: 0.47;
   --inverse: var(--text);
   --on-inverse: var(--base);
   --scrim: color-mix(in srgb, var(--text) 22%, transparent);

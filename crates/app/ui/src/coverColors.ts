@@ -1,6 +1,6 @@
-// Cover colours (and thumbnail sizes) from Rust, for tinting the details
-// panel and painting spines. Views ask for the ids they show; requests are
-// batched and deduplicated. Reset when another library opens; a book's entry
+// Cover palettes from Rust, for the details panel to blend its background
+// toward. Whoever shows a book asks for its colours; requests are batched
+// and deduplicated. Reset when another library opens; a book's entry
 // is dropped when its cover changes (coverChanged in api.ts).
 
 import { createEffect, createRoot, createSignal, on } from 'solid-js';
@@ -58,16 +58,10 @@ async function flush(): Promise<void> {
   }
 }
 
-/** A book's cover colour: undefined until answered, null when it has no readable cover. Reactive. */
-export const coverColor = (id: number): CoverColor | null | undefined => colors().get(id);
-
-/** A CSS colour for tinting: the cover's, or the generated cover's for a book without one; undefined while unknown. */
-export function coverTint(id: number, hasCover: boolean): string | undefined {
-  return hasCover ? coverColor(id)?.color : placeholderColor(id);
+/** A book's cover palette, most common colour first: the generated cover's for a book without one; undefined while unknown. Reactive. */
+export function coverPalette(id: number, hasCover: boolean): readonly string[] | undefined {
+  return hasCover ? colors().get(id)?.colors : [placeholderColor(id)];
 }
-
-/** Whether `coverTint` is a real hue (safe for text); the generated cover's always is. */
-export const coverVivid = (id: number, hasCover: boolean): boolean => !hasCover || coverColor(id)?.vivid === true;
 
 createRoot(() => {
   // Another library: its ids mean other books.
