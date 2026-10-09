@@ -44,6 +44,17 @@ export function BrowsePanel(props: Props) {
   /** Proposals unticked, by key ("m3", "s1"); and the spelling picked for a merge group. */
   const [skipped, setSkipped] = createSignal<ReadonlySet<string>>(new Set());
   const [targets, setTargets] = createSignal<ReadonlyMap<number, string>>(new Map());
+  /** What a split becomes, as edited ("Fantasy, General" → just "Fantasy"); parsed on apply. */
+  const [splitInto, setSplitInto] = createSignal<ReadonlyMap<number, string>>(new Map());
+  const partsOf = (s: Split, i: number): string[] => {
+    const edited = splitInto().get(i);
+    if (edited === undefined) return s.into;
+    const seen = new Set<string>();
+    return edited
+      .split(',')
+      .map((p) => p.trim())
+      .filter((p) => p && !seen.has(p.toLowerCase()) && seen.add(p.toLowerCase()));
+  };
   const editable = () => c().merge !== null && library()?.kind === 'magnitide';
   const isTags = () => c().key === 'tags';
 
@@ -174,6 +185,7 @@ export function BrowsePanel(props: Props) {
     const p = { groups: tidyGroups(values()), splits: isTags() ? tidySplits(values()) : [] };
     setSkipped(new Set<string>());
     setTargets(new Map<number, string>());
+    setSplitInto(new Map<number, string>());
     setProposals(p);
     if (!p.groups.length && !p.splits.length) toast(`Nothing to tidy among the ${c().label.toLowerCase()}`);
   };
@@ -182,6 +194,10 @@ export function BrowsePanel(props: Props) {
     if (on) next.delete(key);
     else next.add(key);
     setSkipped(next);
+  };
+  const allKeys = () => {
+    const p = proposals();
+    return p ? [...p.groups.map((_, i) => `m${i}`), ...p.splits.map((_, i) => `s${i}`)] : [];
   };
   const chosenProposals = () => {
     const p = proposals();
@@ -192,8 +208,9 @@ export function BrowsePanel(props: Props) {
       )
       .filter((m): m is [string[], string] => m !== null);
     const splits = p.splits
-      .filter((_, i) => !skipped().has(`s${i}`))
-      .map((s) => ({ from: s.from.value, into: s.into }));
+      .map((s, i) => ({ from: s.from.value, into: partsOf(s, i), skip: skipped().has(`s${i}`) }))
+      .filter((s) => !s.skip && s.into.length)
+      .map(({ from, into }) => ({ from, into }));
     return { merges, splits };
   };
   const applyProposals = () => {
@@ -332,11 +349,21 @@ export function BrowsePanel(props: Props) {
       >
         {(p) => (
           <>
-            <p class="px-4 pb-2 text-xs text-muted">
-              {p().groups.length || p().splits.length
-                ? 'Untick anything to leave as it is. Merges keep the spelling you pick.'
-                : `Nothing to tidy among the ${c().label.toLowerCase()}.`}
-            </p>
+            <div class="flex items-start gap-2 px-4 pb-2 text-xs text-muted">
+              <p class="flex-1">
+                {p().groups.length || p().splits.length
+                  ? 'Untick anything to leave as it is. Merges keep the spelling you pick; a split becomes what you type.'
+                  : `Nothing to tidy among the ${c().label.toLowerCase()}.`}
+              </p>
+              <Show when={allKeys().length}>
+                <button class={smallButton} onClick={() => setSkipped(new Set<string>())}>
+                  All
+                </button>
+                <button class={smallButton} onClick={() => setSkipped(new Set(allKeys()))}>
+                  None
+                </button>
+              </Show>
+            </div>
             <ul class="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 pb-2" role="list">
               <For each={p().groups}>
                 {(g, i) => (
@@ -344,6 +371,7 @@ export function BrowsePanel(props: Props) {
                     <div class="flex items-center gap-2">
                       <input
                         type="checkbox"
+                        id={`tidy-m${i()}`}
                         class={tick}
                         aria-label="Merge this group"
                         checked={!skipped().has(`m${i()}`)}
@@ -369,7 +397,7 @@ export function BrowsePanel(props: Props) {
                         {g.reason}
                       </span>
                     </div>
-                    <p class="mt-1.5 pl-5.5 text-xs text-muted">
+                    <label for={`tidy-m${i()}`} class="mt-1.5 block cursor-default pl-5.5 text-xs text-muted">
                       <For each={g.members}>
                         {(m, j) => (
                           <>
@@ -380,7 +408,7 @@ export function BrowsePanel(props: Props) {
                           </>
                         )}
                       </For>
-                    </p>
+                    </label>
                   </li>
                 )}
               </For>
@@ -390,14 +418,19 @@ export function BrowsePanel(props: Props) {
                     <div class="flex items-center gap-2">
                       <input
                         type="checkbox"
+                        id={`tidy-s${i()}`}
                         class={tick}
                         aria-label="Split this tag"
                         checked={!skipped().has(`s${i()}`)}
                         onChange={(e) => skip(`s${i()}`, e.currentTarget.checked)}
                       />
-                      <span class="min-w-0 flex-1 truncate text-sm" title={s.from.value}>
+                      <label
+                        for={`tidy-s${i()}`}
+                        class="min-w-0 flex-1 cursor-default truncate text-sm"
+                        title={s.from.value}
+                      >
                         {s.from.value} <span class="text-xs text-faint tabular-nums">{s.from.count}</span>
-                      </span>
+                      </label>
                       <span
                         class="flex-none rounded-chip bg-element px-1.5 text-[10px] text-muted"
                         title="Several tags in one"
@@ -405,7 +438,17 @@ export function BrowsePanel(props: Props) {
                         split
                       </span>
                     </div>
-                    <p class="mt-1.5 pl-5.5 text-xs text-muted">→ {s.into.join(' · ')}</p>
+                    {/* Becomes these, comma-separated: cut a part to drop it, or leave one to rename. */}
+                    <div class="mt-1.5 flex items-center gap-1.5 pl-5.5 text-xs text-muted">
+                      <span>→</span>
+                      <input
+                        class="h-6 min-w-0 flex-1 rounded-control border border-line bg-field px-2 text-xs text-fg outline-none select-text focus:border-focus"
+                        aria-label="Becomes"
+                        value={splitInto().get(i()) ?? s.into.join(', ')}
+                        onInput={(e) => setSplitInto(new Map(splitInto()).set(i(), e.currentTarget.value))}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      />
+                    </div>
                   </li>
                 )}
               </For>
