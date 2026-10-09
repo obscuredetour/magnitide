@@ -1,13 +1,33 @@
 import { For, Show } from 'solid-js';
 import ChevronDown from 'lucide-solid/icons/chevron-down';
 
-import { api, errorMessage, fileManagerName } from '../api';
+import { api, errorMessage, fileManagerName, type LibraryKind } from '../api';
 import { chooseLibrary, library, openLibrary, recentLibraries } from '../library';
 import { startImport } from '../importer';
 import { chooseAndAddBooks } from '../adder';
 import { toast } from '../toast';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from './Menu';
 import { Icon } from './Icon';
+
+/** What kind of library it is: Magnitide's own, or a calibre one (read-only). */
+function KindBadge(props: { kind: LibraryKind; class?: string }) {
+  return (
+    <span
+      class={`flex-none rounded-chip px-2 py-px text-[11px] font-medium ${props.class ?? ''}`}
+      classList={{
+        'bg-accent/15 text-accent': props.kind === 'magnitide',
+        'bg-element text-muted': props.kind === 'calibre',
+      }}
+      title={
+        props.kind === 'magnitide'
+          ? 'A Magnitide library'
+          : 'A calibre library, opened read-only. Import it to make changes.'
+      }
+    >
+      {props.kind === 'magnitide' ? 'Magnitide' : 'calibre · read-only'}
+    </span>
+  );
+}
 
 export function LibraryMenu() {
   const others = () => recentLibraries().filter((r) => r.path !== library()?.path);
@@ -29,7 +49,7 @@ export function LibraryMenu() {
       panelClass="w-80"
       button={
         <>
-          <span class="truncate text-sm font-[650]">{library()?.name ?? 'Magnitide'}</span>
+          <span class="truncate font-sans text-[15px] font-semibold">{library()?.name ?? 'Magnitide'}</span>
           <Icon of={ChevronDown} size={12} class="self-center text-muted" />
         </>
       }
@@ -42,20 +62,7 @@ export function LibraryMenu() {
                 <span class="truncate font-semibold" title={lib().path}>
                   {lib().name}
                 </span>
-                <span
-                  class="flex-none rounded-chip px-2 py-px text-[11px] font-medium"
-                  classList={{
-                    'bg-accent/15 text-accent': lib().kind === 'magnitide',
-                    'bg-element text-muted': lib().kind === 'calibre',
-                  }}
-                  title={
-                    lib().kind === 'magnitide'
-                      ? 'A Magnitide library'
-                      : 'A calibre library, opened read-only. Import it to make changes.'
-                  }
-                >
-                  {lib().kind === 'magnitide' ? 'Magnitide' : 'calibre · read-only'}
-                </span>
+                <KindBadge kind={lib().kind} />
               </div>
               <div class="truncate text-xs text-muted" title={lib().path}>
                 {lib().path}
@@ -81,6 +88,7 @@ export function LibraryMenu() {
           {(r) => (
             <MenuItem onSelect={() => void openLibrary(r.path)} title={r.path}>
               <span class="truncate">{r.name}</span>
+              <Show when={r.kind}>{(kind) => <KindBadge kind={kind()} class="ml-auto" />}</Show>
             </MenuItem>
           )}
         </For>

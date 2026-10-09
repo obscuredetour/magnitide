@@ -25,7 +25,7 @@ export function StatusBar() {
   };
   return (
     <footer class="fixed inset-x-0 bottom-0 z-10 flex h-(--statusbar-h) items-center gap-3 border-t border-line bg-bg pr-2 pl-4 text-xs text-muted">
-      <span class="whitespace-nowrap tabular-nums">{count()}</span>
+      <span class="font-sans text-[12.5px] whitespace-nowrap tabular-nums">{count()}</span>
       <div class="ml-auto flex min-w-0 items-center gap-2">
         <Show when={runningJob()}>
           {(job) => (

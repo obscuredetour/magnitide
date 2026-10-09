@@ -9,6 +9,9 @@
   --color-*: initial;
   --color-white: #fff;
   --color-black: #000;
+  /* A paper label on cover art (not a themed surface): the series sticker. */
+  --color-paper: #f6f1e6;
+  --color-paper-ink: #2a2520;
 
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
   --font-serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
@@ -118,6 +121,44 @@
     outline: 2px solid var(--focus);
     outline-offset: 2px;
   }
+}
+
+/* The details panel's background blends toward the book's cover, like
+   artwork behind a now-playing screen: DetailsPanel.tsx sets --cover-1..3
+   (its main colours, from coverColors.ts). Only on the app's own light and
+   dark themes, whose neutrals take any colour; a themed palette keeps its
+   panel. Colour sits where the cover is and fades out below. */
+@utility cover-blend {
+  background-color: var(--panel);
+}
+:root[data-theme='light'] .cover-blend,
+:root[data-theme='dark'] .cover-blend {
+  background-image:
+    radial-gradient(
+      70% 40% at 100% 0%,
+      color-mix(in oklch, var(--cover-2, var(--panel)) var(--blend-2), transparent),
+      transparent
+    ),
+    radial-gradient(
+      60% 45% at 0% 18%,
+      color-mix(in oklch, var(--cover-3, var(--panel)) var(--blend-3), transparent),
+      transparent
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklch, var(--cover-1, var(--panel)) var(--blend-1), transparent) 0%,
+      transparent 75%
+    );
+}
+:root[data-theme='light'] .cover-blend {
+  --blend-1: 22%;
+  --blend-2: 20%;
+  --blend-3: 16%;
+}
+:root[data-theme='dark'] .cover-blend {
+  --blend-1: 45%;
+  --blend-2: 40%;
+  --blend-3: 32%;
 }
 
 /* Generated cover for books without one; --hue is set per book. */

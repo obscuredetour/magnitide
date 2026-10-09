@@ -109,6 +109,15 @@ export function resetColumnOrder(): void {
   setColumnOrder([]);
 }
 
+/** The series label on covers in the cover view; on unless turned off. */
+const [seriesBadges, setSeriesBadgesSignal] = createSignal(storage.get('seriesBadges') !== 'off');
+export { seriesBadges };
+
+export function setSeriesBadges(on: boolean): void {
+  setSeriesBadgesSignal(on);
+  storage.set('seriesBadges', on ? 'on' : 'off');
+}
+
 /** Alternating row colours in the list view; on unless turned off. */
 const [zebraRows, setZebraRowsSignal] = createSignal(storage.get('tableZebra') !== 'off');
 export { zebraRows };

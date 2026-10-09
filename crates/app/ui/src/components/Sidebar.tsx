@@ -1,14 +1,16 @@
-import { createSignal, For, Show } from 'solid-js';
+import { createResource, createSignal, For, Show } from 'solid-js';
 import LibraryBig from 'lucide-solid/icons/library-big';
 import Plus from 'lucide-solid/icons/plus';
 import SquareLibrary from 'lucide-solid/icons/square-library';
 
-import type { Shelf } from '../api';
+import { api, type Shelf } from '../api';
 import { drag } from '../bookDrag';
-import { library, query } from '../library';
-import { activeShelf, createShelf, deleteShelf, renameShelf, shelves, showShelf } from '../shelves';
+import { editRevision, library, query } from '../library';
+import { formatSize } from '../sizes';
+import { plural } from '../writeback';
+import { activeShelf, createShelf, deleteShelf, makeShelvesFrom, renameShelf, shelves, showShelf } from '../shelves';
 import { Icon } from './Icon';
-import { ContextMenu, MenuItem } from './Menu';
+import { ContextMenu, MenuItem, MenuSeparator } from './Menu';
 
 const row =
   'group flex h-7 w-full cursor-default items-center gap-2 rounded-control px-2 text-left text-sm outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-focus aria-[current=true]:bg-highlight aria-[current=true]:text-accent';
@@ -38,8 +40,20 @@ export function Sidebar() {
   const [creating, setCreating] = createSignal(false);
   const [renaming, setRenaming] = createSignal<number | null>(null);
   const [menu, setMenu] = createSignal<{ x: number; y: number; shelf: Shelf } | null>(null);
+  /** The + menu: a new shelf, or shelves made from series or authors. */
+  const [addMenu, setAddMenu] = createSignal<{ x: number; y: number } | null>(null);
   const editable = () => library()?.kind === 'magnitide';
   const over = (target: number | 'new') => drag()?.over === target;
+  // Totals along the bottom. They follow the catalog: opening, adding and
+  // deleting (library) and edits (editRevision), as devices.ts does.
+  const [stats] = createResource(
+    () => [library(), editRevision()] as const,
+    ([lib]) => (lib ? api.libraryStats().catch(() => null) : null),
+  );
+  const formatLine = () =>
+    stats()
+      ?.formats.map((f) => `${f.format} ${f.count.toLocaleString()}`)
+      .join(' · ') ?? '';
 
   return (
     <nav class="flex w-52 flex-none flex-col overflow-y-auto border-r border-line bg-panel p-2" aria-label="Library">
@@ -56,10 +70,15 @@ export function Sidebar() {
         <div class="flex items-center">
           <div class={`${label} flex-1`}>Shelves</div>
           <button
-            class="mt-3 grid size-6 cursor-pointer place-items-center rounded-control text-muted hover:bg-hover hover:text-fg"
-            title="New shelf"
-            aria-label="New shelf"
-            onClick={() => setCreating(true)}
+            class="mt-3 grid size-6 cursor-pointer place-items-center rounded-control text-muted hover:bg-hover hover:text-fg aria-expanded:bg-hover aria-expanded:text-fg"
+            title="Add shelves"
+            aria-label="Add shelves"
+            aria-haspopup="menu"
+            aria-expanded={addMenu() !== null}
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setAddMenu({ x: r.left, y: r.bottom + 4 });
+            }}
           >
             <Icon of={Plus} />
           </button>
@@ -92,7 +111,7 @@ export function Sidebar() {
                   setMenu({ x: e.clientX, y: e.clientY, shelf });
                 }}
               >
-                <Icon of={SquareLibrary} class="text-muted group-aria-[current=true]:text-accent" />
+                <Icon of={SquareLibrary} class="text-muted group-aria-current:text-accent" />
                 <span class="min-w-0 flex-1 truncate">{shelf.name}</span>
                 <span class="text-xs text-faint tabular-nums">{shelf.count.toLocaleString()}</span>
               </button>
@@ -124,6 +143,34 @@ export function Sidebar() {
         <Show when={!shelves().length && !creating() && !drag()}>
           <p class="px-2 pt-1 text-xs text-faint">Make a shelf with +, then drag books onto it.</p>
         </Show>
+      </Show>
+
+      <Show when={stats()}>
+        {(s) => (
+          <div
+            class="mt-auto space-y-0.5 px-2 pt-6 pb-1 text-[11px]/4 text-faint tabular-nums"
+            aria-label="Library totals"
+          >
+            <p>
+              {plural(s().authors, 'author', 'authors')} · {plural(s().series, 'series', 'series')}
+            </p>
+            <p class="truncate" title={formatLine().replaceAll(' · ', '\n')}>
+              {formatLine()}
+            </p>
+            <p>{formatSize(s().totalBytes)}</p>
+          </div>
+        )}
+      </Show>
+
+      <Show when={addMenu()}>
+        {(m) => (
+          <ContextMenu label="Add shelves" x={m().x} y={m().y} onClose={() => setAddMenu(null)}>
+            <MenuItem onSelect={() => setCreating(true)}>New Shelf</MenuItem>
+            <MenuSeparator />
+            <MenuItem onSelect={() => void makeShelvesFrom('series')}>Shelves from Series…</MenuItem>
+            <MenuItem onSelect={() => void makeShelvesFrom('authors')}>Shelves from Authors…</MenuItem>
+          </ContextMenu>
+        )}
       </Show>
 
       <Show when={menu()}>

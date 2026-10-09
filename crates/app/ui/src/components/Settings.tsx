@@ -46,6 +46,8 @@ import {
   resetColumnSizing,
   setColumnVisible,
   setViewMode,
+  seriesBadges,
+  setSeriesBadges,
   setZebraRows,
   viewMode,
   zebraRows,
@@ -60,6 +62,7 @@ import { Select } from './Select';
 import { smallButton } from '../buttons';
 import { backdropDismiss } from '../backdrop';
 import { keys, SHORTCUTS } from '../keys';
+import { formatSize } from '../sizes';
 
 export type SettingsSection = Section;
 type Section = 'appearance' | 'library' | 'list' | 'devices' | 'server' | 'sources' | 'plugins' | 'shortcuts' | 'about';
@@ -359,16 +362,18 @@ function Appearance() {
       <Row label="Cover size" description="How large covers appear in the cover view.">
         <CoverSizeSlider />
       </Row>
+      <Row label="Series labels" description="A label on the cover with the book's place in its series.">
+        <input
+          type="checkbox"
+          class="size-4 accent-accent"
+          aria-label="Series labels on covers"
+          checked={seriesBadges()}
+          onChange={(e) => setSeriesBadges(e.currentTarget.checked)}
+        />
+      </Row>
       <InterfaceSize />
     </>
   );
-}
-
-function formatBytes(n: number): string {
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)} GB`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)} MB`;
-  if (n >= 1e3) return `${Math.round(n / 1e3)} KB`;
-  return `${n} B`;
 }
 
 /** "Date Read" → "date_read", as Rust makes lookup names (a preview only). */
@@ -670,7 +675,7 @@ function LibrarySettings() {
             {/* JSX (not a template string) so it updates when the cache is cleared. */}
             {(c) => (
               <>
-                {c().files.toLocaleString()} cached · {formatBytes(c().bytes)}. Rebuilt automatically as covers are
+                {c().files.toLocaleString()} cached · {formatSize(c().bytes)}. Rebuilt automatically as covers are
                 shown.
               </>
             )}

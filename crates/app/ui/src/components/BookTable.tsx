@@ -34,6 +34,8 @@ import {
   zebraRows,
 } from '../view';
 import { Cover } from './Cover';
+import { EmptyNote } from './Mark';
+import { formatSize } from '../sizes';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from './Menu';
 import type { ViewHandle } from './CoverGrid';
 import { Icon } from './Icon';
@@ -68,24 +70,18 @@ const dateFormat = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 
 /** `YYYY-MM-DD` (from Rust) in the user's locale, without timezone shifts. */
 const formatDate = (iso: string | null) => (iso ? dateFormat.format(new Date(`${iso}T00:00:00`)) : '');
 
-function formatSize(bytes: number | null): string {
-  if (bytes === null) return '';
-  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`;
-  return `${Math.max(1, Math.round(bytes / 1e3))} KB`;
-}
-
 function stars(rating: number | null) {
   if (!rating) return null;
   const full = Math.floor(rating / 2);
   return (
-    <span class="tracking-[1px] text-star" title={`${rating / 2} of 5`}>
+    <span class="tracking-[1px] text-star tabular-nums" title={`${rating / 2} of 5`}>
       {'★'.repeat(full)}
       {rating % 2 ? '½' : ''}
     </span>
   );
 }
 
-const muted = (text: string | null) => <span class="text-muted">{text}</span>;
+const muted = (text: string | null) => <span class="text-muted tabular-nums">{text}</span>;
 
 const columns: ColumnDef<typeof features, BookRow, any>[] = [
   col.accessor('title', {
@@ -180,7 +176,7 @@ const columns: ColumnDef<typeof features, BookRow, any>[] = [
     size: 90,
     meta: { sortKey: 'size', align: 'end', label: 'Size' } satisfies Meta,
     header: 'Size',
-    cell: (info) => muted(formatSize(info.getValue())),
+    cell: (info) => muted(info.getValue() === null ? '' : formatSize(info.getValue()!)),
   }),
 ];
 
@@ -240,6 +236,8 @@ type Props = {
   /** Every selected book (highlighted). */
   selectedIds: ReadonlySet<number>;
   emptyMessage: string;
+  /** Show the mark with the message (the library is empty, rather than a search with no matches). */
+  emptyMark: boolean;
   /** A click; modifier keys (⌘, Shift) extend the selection. */
   onSelect(id: number, e: MouseEvent): void;
   /** Right-click (or the keyboard's menu key) on a book. */
@@ -427,7 +425,7 @@ export function BookTable(props: Props) {
       </div>
 
       <Show when={props.rows.length === 0}>
-        <p class="absolute inset-x-0 top-[30%] text-center text-sm text-muted">{props.emptyMessage}</p>
+        <EmptyNote message={props.emptyMessage} mark={props.emptyMark} />
       </Show>
 
       <div

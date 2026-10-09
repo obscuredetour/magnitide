@@ -1,6 +1,7 @@
-import { createResource, createSignal, For, Match, Show, Switch } from 'solid-js';
+import { createEffect, createResource, createSignal, For, Match, Show, Switch } from 'solid-js';
 import SquareLibrary from 'lucide-solid/icons/square-library';
 import X from 'lucide-solid/icons/x';
+import Pencil from 'lucide-solid/icons/pencil';
 
 import { api, type BookDetails, errorMessage, fileManagerName, type MatchedBy } from '../api';
 import { openEditor } from '../editor';
@@ -14,6 +15,8 @@ import { addFromDevice, removeFormat, removeFromDevice, sendToDevice } from '../
 import { writeBookFiles } from '../writeback';
 import { ConvertMenu } from './ConvertMenu';
 import { Cover } from './Cover';
+import { coverPalette, requestCoverColors } from '../coverColors';
+import { formatSize } from '../sizes';
 import { Icon } from './Icon';
 import { primaryButton, secondaryButton } from '../buttons';
 import { widthFlags } from '../widths';
@@ -38,12 +41,6 @@ function languageName(code: string): string {
   } catch {
     return code;
   }
-}
-
-function formatSize(bytes: number): string {
-  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`;
-  if (bytes >= 1e3) return `${Math.round(bytes / 1e3)} KB`;
-  return `${bytes} B`;
 }
 
 const searchFor = (field: string, value: string) => search(`${field}:"${value}"`);
@@ -85,27 +82,33 @@ export function DetailsPanel(props: Props) {
       return b;
     },
   );
+  // The panel's background blends toward the cover's colours (see coverColors.ts and `cover-blend` in styles.css).
+  createEffect(() => {
+    const b = book();
+    if (b?.hasCover) requestCoverColors([b.id]);
+  });
+  const palette = () => {
+    const b = book();
+    return b ? coverPalette(b.id, b.hasCover) : undefined;
+  };
 
   return (
     <aside
       ref={(el) => widthFlags(el, { wide: 416 })}
-      class="group/details relative flex-none animate-slide-in border-l border-line bg-panel select-text max-[760px]:absolute max-[760px]:inset-y-0 max-[760px]:right-0 max-[760px]:w-[min(28rem,100%_-_2rem)]! max-[760px]:max-w-full! max-[760px]:shadow-lift"
+      class="group/details relative flex-none animate-slide-in border-l border-line cover-blend select-text max-[760px]:absolute max-[760px]:inset-y-0 max-[760px]:right-0 max-[760px]:w-[min(28rem,100%-2rem)]! max-[760px]:max-w-full! max-[760px]:shadow-lift"
       // The list keeps at least 320px beside it.
-      style={{ width: `${detailsWidth()}px`, 'max-width': 'calc(100% - 320px)' }}
+      style={{
+        width: `${detailsWidth()}px`,
+        'max-width': 'calc(100% - 320px)',
+        '--cover-1': palette()?.[0],
+        '--cover-2': palette()?.[1] ?? palette()?.[0],
+        '--cover-3': palette()?.[2] ?? palette()?.[1] ?? palette()?.[0],
+      }}
       aria-label="Book details"
     >
       <ResizeHandle />
       <div class="h-full overflow-y-auto" ref={scroller}>
-        <div class="absolute top-2.5 right-2.5 z-1 flex items-center gap-1.5">
-          <Show when={library()?.kind === 'magnitide'}>
-            <button
-              class={`h-7 rounded-chip px-3 text-xs font-medium ${glass}`}
-              title={`Edit (${keys('mod+E')})`}
-              onClick={() => void openEditor(props.id)}
-            >
-              Edit
-            </button>
-          </Show>
+        <div class="absolute top-2.5 right-2.5 z-1 flex flex-col items-center gap-1.5">
           <button
             class={`grid size-7 place-items-center rounded-full ${glass}`}
             title="Close (Esc)"
@@ -113,6 +116,15 @@ export function DetailsPanel(props: Props) {
           >
             <Icon of={X} class="text-muted" />
           </button>
+          <Show when={library()?.kind === 'magnitide'}>
+            <button
+              class={`grid size-7 place-items-center rounded-full ${glass}`}
+              title={`Edit (${keys('mod+E')})`}
+              onClick={() => void openEditor(props.id)}
+            >
+              <Icon of={Pencil} class="text-muted" />
+            </button>
+          </Show>
         </div>
         <Show when={book()}>{(b) => <Details book={b()} />}</Show>
       </div>
@@ -216,8 +228,21 @@ function Details(props: { book: BookDetails }) {
       {/* Sections are spaced by the container (gap), not their own margins, so
         the one- and two-column layouts space them alike and hidden ones leave no gap. */}
       <div class="flex flex-col gap-6 px-7 pt-7 group-data-wide/details:grid group-data-wide/details:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] group-data-wide/details:grid-rows-[repeat(5,auto)] group-data-wide/details:gap-x-7">
-        <div class="relative aspect-2/3 w-[62%] overflow-hidden rounded-lg bg-element shadow-lift group-data-wide/details:w-full group-data-wide/details:min-w-32">
-          <Cover id={b().id} title={b().title} authors={b().authors.join(' & ')} hasCover={b().hasCover} size="full" />
+        {/* The cover at its own proportions, as wide as this box at most (container units, so the width
+            follows the layout); a 2:3 ghost until it loads. */}
+        <div class="@container w-[62%] group-data-wide/details:w-full group-data-wide/details:min-w-32">
+          <div class="flex [--cover-h:150cqw] [--cover-w:100cqw]">
+            <div class="relative flex overflow-hidden rounded-lg bg-element shadow-lift">
+              <Cover
+                id={b().id}
+                title={b().title}
+                authors={b().authors.join(' & ')}
+                hasCover={b().hasCover}
+                size="full"
+                fit="contain"
+              />
+            </div>
+          </div>
         </div>
 
         <div class="space-y-4.5">
@@ -280,7 +305,7 @@ function Details(props: { book: BookDetails }) {
               {([label, value]) => (
                 <>
                   <dt class="text-muted">{label}</dt>
-                  <dd class="[overflow-wrap:anywhere]">{value}</dd>
+                  <dd class="wrap-anywhere tabular-nums">{value}</dd>
                 </>
               )}
             </For>
@@ -366,7 +391,7 @@ function Details(props: { book: BookDetails }) {
                         </Show>
                         <Show when={library()?.kind === 'magnitide'}>
                           <button
-                            class="absolute -top-1.5 -right-1.5 grid size-[18px] cursor-pointer place-items-center rounded-full bg-popover text-xs leading-none text-muted opacity-0 shadow-sm ring-1 ring-line group-hover/format:opacity-100 hover:bg-danger hover:text-on-status hover:ring-danger focus-visible:opacity-100"
+                            class="absolute -top-1.5 -right-1.5 grid size-4.5 cursor-pointer place-items-center rounded-full bg-popover text-xs leading-none text-muted opacity-0 shadow-sm ring-1 ring-line group-hover/format:opacity-100 hover:bg-danger hover:text-on-status hover:ring-danger focus-visible:opacity-100"
                             title={`Remove the ${f.format}`}
                             aria-label={`Remove the ${f.format}`}
                             onClick={() => void removeFormat(b(), f.format)}

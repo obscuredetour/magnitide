@@ -9,7 +9,10 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open, save } from '@tauri-apps/plugin-dialog';
 
 import type { BookDetails } from './bindings/BookDetails';
+import type { CoverColor } from './bindings/CoverColor';
 import type { CustomDetail } from './bindings/CustomDetail';
+import type { FormatCount } from './bindings/FormatCount';
+import type { LibraryStats } from './bindings/LibraryStats';
 import type { CustomField } from './bindings/CustomField';
 import type { FieldKind } from './bindings/FieldKind';
 import type { FieldValue } from './bindings/FieldValue';
@@ -25,6 +28,8 @@ import type { CollectionsReport } from './bindings/CollectionsReport';
 import type { DeleteReport } from './bindings/DeleteReport';
 import type { SeriesLine } from './bindings/SeriesLine';
 import type { Shelf } from './bindings/Shelf';
+import type { ShelfSource } from './bindings/ShelfSource';
+import type { ShelvesMade } from './bindings/ShelvesMade';
 import type { ThemeAddon } from './bindings/ThemeAddon';
 import type { ThemeAddons } from './bindings/ThemeAddons';
 import type { MergeOutcome } from './bindings/MergeOutcome';
@@ -87,6 +92,9 @@ import type { SortDir } from './bindings/SortDir';
 import type { SortKey } from './bindings/SortKey';
 
 export type {
+  CoverColor,
+  FormatCount,
+  LibraryStats,
   CustomDetail,
   CustomField,
   FieldKind,
@@ -136,6 +144,8 @@ export type {
   DeleteReport,
   SeriesLine,
   Shelf,
+  ShelfSource,
+  ShelvesMade,
   ThemeAddon,
   ThemeAddons,
   MergeOutcome,
@@ -203,6 +213,12 @@ export const api = {
 
   clearThumbnailCache: () => invoke<void>('clear_thumbnail_cache'),
 
+  /** These books' cover colours and thumbnail sizes (books without a readable cover are left out). Ask for what's on screen, in chunks. */
+  coverColors: (ids: number[]) => invoke<CoverColor[]>('cover_colors', { ids }),
+
+  /** Totals for the sidebar (authors, series, formats, the files' size), from the catalog as it is now. */
+  libraryStats: () => invoke<LibraryStats>('library_stats'),
+
   /**
    * Import the open calibre library into a Magnitide library at `dest`
    * (created if new; a repeat import adds only new books). Progress arrives
@@ -251,6 +267,9 @@ export const api = {
 
   /** The open library's shelves (none for calibre libraries). */
   listShelves: () => invoke<Shelf[]>('list_shelves'),
+
+  /** A shelf per series or per author with at least `minBooks` books; existing shelves of the same name get the books. */
+  makeShelves: (source: ShelfSource, minBooks: number) => invoke<ShelvesMade>('make_shelves', { source, minBooks }),
   createShelf: (name: string) => invoke<Shelf>('create_shelf', { name }),
   renameShelf: (id: number, name: string) => invoke<void>('rename_shelf', { id, name }),
   deleteShelf: (id: number) => invoke<void>('delete_shelf', { id }),
@@ -515,6 +534,7 @@ let coverBase: string | undefined;
 // Bumped when a cover changes, so the webview fetches it again instead of
 // showing its cached copy. The Rust protocol ignores the query string.
 const [coverVersions, setCoverVersions] = createSignal<ReadonlyMap<number, number>>(new Map());
+export { coverVersions };
 
 // Book ids are only unique within a library, so the open library's key is part
 // of every cover URL: otherwise, after switching libraries (e.g. calibre → its
