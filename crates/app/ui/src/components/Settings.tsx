@@ -344,13 +344,14 @@ function Appearance() {
 
       <ThemeAddonsSection />
 
-      <Row label="View" description={`Also ${keys('mod+1')} and ${keys('mod+2')}.`}>
+      <Row label="View" description={`Also ${keys('mod+1')}, ${keys('mod+2')} and ${keys('mod+3')}.`}>
         <div class="flex rounded-control bg-element p-0.5" role="group" aria-label="View">
           <For
             each={
               [
                 ['grid', 'Covers'],
                 ['table', 'List'],
+                ['shelf', 'Shelf'],
               ] as const
             }
           >
@@ -366,7 +367,7 @@ function Appearance() {
           </For>
         </div>
       </Row>
-      <Row label="Cover size" description="How large covers appear in the cover view.">
+      <Row label="Cover size" description="How large covers appear in the cover view, and how tall the shelves are.">
         <CoverSizeSlider />
       </Row>
       <InterfaceSize />

@@ -15,6 +15,7 @@ What's done and what's next, in roughly the order it happened. The
 - [x] Resizable details panel: drag its edge (300–680px, always leaving the list 320px), double-click to reset, or focus the edge and use ←/→
 - [x] Add slight app blur behind dialogs (every dialog dims and blurs the app behind it, tinted per theme)
 - [x] Covers view keeps the selected book where it was on screen when the panel opens or resizes, or the cover size changes
+- [x] Shelf view (⌘3): books as spines on shelves, thickness from page count or file size, colour from the cover, the hovered or selected book's cover floating above its spine. Tideline, the app's own theme from the icon's palette, is the default; covers keep their own proportions in the grid; a cover's colour tints the details panel
 - [x] "Send to device" & "Convert" are real buttons under the formats in the details panel (Send is the panel's main action when a device is connected)
 - [x] Table column reordering: drag a header sideways (or ⌥←/⌥→ on a focused one); reset from the ⋯ menu or Settings
 - [x] Right-click menu for books (also the keyboard's menu key or Shift-F10): open, edit, send/remove from devices, convert, remove a format, write metadata, show in Finder, merge, move to Trash

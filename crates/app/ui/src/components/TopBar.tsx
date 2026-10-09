@@ -2,6 +2,7 @@ import { onCleanup, Show } from 'solid-js';
 import ArrowDownWideNarrow from 'lucide-solid/icons/arrow-down-wide-narrow';
 import ArrowUpNarrowWide from 'lucide-solid/icons/arrow-up-narrow-wide';
 import LayoutGrid from 'lucide-solid/icons/layout-grid';
+import Library from 'lucide-solid/icons/library';
 import List from 'lucide-solid/icons/list';
 import PanelLeft from 'lucide-solid/icons/panel-left';
 import Search from 'lucide-solid/icons/search';
@@ -53,6 +54,14 @@ function ViewSwitcher() {
         onClick={() => setViewMode('table')}
       >
         <Icon of={List} />
+      </button>
+      <button
+        class={segment}
+        aria-pressed={viewMode() === 'shelf'}
+        title={`Shelf (${keys('mod+3')})`}
+        onClick={() => setViewMode('shelf')}
+      >
+        <Icon of={Library} />
       </button>
     </div>
   );
@@ -137,7 +146,7 @@ export function TopBar(props: Props) {
       </div>
 
       <div class="flex items-center gap-3 justify-self-end">
-        <Show when={viewMode() === 'grid'}>
+        <Show when={viewMode() !== 'table'}>
           <div class="max-[1080px]:hidden">
             <CoverSizeSlider />
           </div>

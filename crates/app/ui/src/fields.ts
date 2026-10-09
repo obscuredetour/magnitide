@@ -39,6 +39,11 @@ export function isNumeric(kind: FieldKind): boolean {
   return kind === 'integer' || kind === 'number';
 }
 
+/** The custom field holding a page count, if the library has one (by key, then by name). */
+export const pagesField = (): CustomField | undefined =>
+  customFields().find((f) => isNumeric(f.kind) && /^(pages?|page_?count|num_?pages)$/i.test(f.key)) ??
+  customFields().find((f) => isNumeric(f.kind) && /\bpages?\b/i.test(f.name));
+
 const dateFormat = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 
 /**
