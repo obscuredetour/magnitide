@@ -136,7 +136,7 @@ struct ColorSidecar {
     v: u8,
     colors: Vec<String>,
 }
-const COLOR_VERSION: u8 = 2;
+const COLOR_VERSION: u8 = 3;
 
 /// These books' cover palettes. Books without a cover, or whose cover can't
 /// be read, are left out. Computed from the cached thumbnail (made if
@@ -186,9 +186,10 @@ fn cover_color(lib: &Loaded, id: i64) -> Result<Option<CoverColor>> {
     Ok(Some(CoverColor { id, colors }))
 }
 
-/// Up to three of the cover's most common colours that carry a hue, most
-/// common first and each clearly different from the ones before it; for a
-/// cover that's all white, grey or black, its mean colour alone.
+/// Up to three of the cover's common colours, the most common first, then
+/// ones of a clearly different hue (or, failing that, clearly lighter or
+/// darker), so a gradient from them has somewhere to go; for a cover that's
+/// all white, grey or black, its mean colour alone.
 fn palette(img: &DynamicImage) -> Vec<String> {
     let small = img.thumbnail(32, 48).to_rgb8();
     let total = small.pixels().len().max(1);
@@ -216,24 +217,57 @@ fn palette(img: &DynamicImage) -> Vec<String> {
     let hex = |c: [u64; 3]| format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2]);
     let mut ranked: Vec<(u32, [u64; 3])> = buckets.into_values().map(|(n, sum)| (n, rgb(sum, u64::from(n)))).collect();
     ranked.sort_by_key(|&(n, _)| std::cmp::Reverse(n));
-    let mut out: Vec<[u64; 3]> = Vec::new();
-    for (n, c) in ranked {
-        // At least 3% of the cover, and not a near-twin of a colour already chosen.
-        if n as usize * 33 < total {
-            break;
+    // The first needs 3% of the cover; the others, which only add variety, 1.5%.
+    let Some(&(_, first)) = ranked.first().filter(|(n, _)| *n as usize * 33 >= total) else {
+        return vec![hex(rgb(mean, total as u64))];
+    };
+    let mut out = vec![first];
+    let candidates: Vec<[u64; 3]> = ranked.iter().filter(|(n, _)| *n as usize * 66 >= total).map(|&(_, c)| c).collect();
+    while out.len() < 3 {
+        // Another hue if there is one (35° away from every colour chosen), else another lightness.
+        let far = |c: &[u64; 3], by_hue: bool| {
+            out.iter().all(|o| {
+                if by_hue { hue_distance(*o, *c) >= 35.0 } else { (lightness(*o) - lightness(*c)).abs() >= 0.3 }
+            })
+        };
+        let next =
+            candidates.iter().find(|c| far(c, true)).or_else(|| candidates.iter().find(|c| far(c, false))).copied();
+        match next {
+            Some(c) => out.push(c),
+            None => break,
         }
-        let twin = out.iter().any(|o| o.iter().zip(c).map(|(a, b)| a.abs_diff(b)).sum::<u64>() < 96);
-        if !twin {
-            out.push(c);
-        }
-        if out.len() == 3 {
-            break;
-        }
-    }
-    if out.is_empty() {
-        out.push(rgb(mean, total as u64));
     }
     out.into_iter().map(hex).collect()
+}
+
+/// Hue in degrees, 0–360 (0 for grey).
+fn hue(c: [u64; 3]) -> f32 {
+    let [r, g, b] = c.map(|x| x as f32 / 255.0);
+    let (max, min) = (r.max(g).max(b), r.min(g).min(b));
+    let d = max - min;
+    if d < 1e-6 {
+        return 0.0;
+    }
+    let h = if max == r {
+        ((g - b) / d) % 6.0
+    } else if max == g {
+        (b - r) / d + 2.0
+    } else {
+        (r - g) / d + 4.0
+    };
+    (h * 60.0).rem_euclid(360.0)
+}
+
+/// How far apart two hues are, 0–180.
+fn hue_distance(a: [u64; 3], b: [u64; 3]) -> f32 {
+    let d = (hue(a) - hue(b)).abs();
+    d.min(360.0 - d)
+}
+
+/// HSL lightness, 0–1.
+fn lightness(c: [u64; 3]) -> f32 {
+    let [r, g, b] = c.map(|x| x as f32 / 255.0);
+    (r.max(g).max(b) + r.min(g).min(b)) / 2.0
 }
 
 fn write_atomic(dest: &Path, bytes: &[u8]) -> Result<()> {
@@ -264,6 +298,32 @@ mod tests {
     #[test]
     fn grey_cover_gives_its_mean() {
         assert_eq!(palette(&DynamicImage::ImageRgb8(solid(20, 30, [128, 128, 128]))), ["#808080"]);
+    }
+
+    #[test]
+    fn picks_different_hues_over_neighbours() {
+        // Mostly one blue with a slightly different blue beside it, plus a little orange:
+        // the orange is the second colour, not the other blue.
+        let mut img = solid(32, 48, [20, 60, 200]);
+        for y in 30..44 {
+            for x in 0..32 {
+                img.put_pixel(x, y, Rgb([30, 80, 210]));
+            }
+        }
+        for y in 44..48 {
+            for x in 0..32 {
+                img.put_pixel(x, y, Rgb([230, 120, 20]));
+            }
+        }
+        assert_eq!(palette(&DynamicImage::ImageRgb8(img)), ["#143cc8", "#e67814"]);
+        // The same hue in two clearly different lightnesses still gives two colours.
+        let mut img = solid(32, 48, [20, 60, 200]);
+        for y in 30..48 {
+            for x in 0..32 {
+                img.put_pixel(x, y, Rgb([150, 170, 240]));
+            }
+        }
+        assert_eq!(palette(&DynamicImage::ImageRgb8(img)), ["#143cc8", "#96aaf0"]);
     }
 
     #[test]

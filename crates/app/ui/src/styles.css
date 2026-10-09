@@ -126,13 +126,15 @@
 /* The details panel's background blends toward the book's cover, like
    artwork behind a now-playing screen: DetailsPanel.tsx sets --cover-1..3
    (its main colours, from coverColors.ts). Only on the app's own light and
-   dark themes, whose neutrals take any colour; a themed palette keeps its
-   panel. Colour sits where the cover is and fades out below. */
+   dark themes, whose neutrals take any colour, unless the setting puts it on
+   every theme (data-blend-all, view.ts). Colour sits where the cover is and
+   fades out below. */
 @utility cover-blend {
   background-color: var(--panel);
 }
 :root[data-theme='light'] .cover-blend,
-:root[data-theme='dark'] .cover-blend {
+:root[data-theme='dark'] .cover-blend,
+:root[data-blend-all] .cover-blend {
   background-image:
     radial-gradient(
       70% 40% at 100% 0%,
@@ -150,12 +152,14 @@
       transparent 75%
     );
 }
-:root[data-theme='light'] .cover-blend {
+:root[data-theme='light'] .cover-blend,
+:root[data-blend-all][data-appearance='light'] .cover-blend {
   --blend-1: 22%;
   --blend-2: 20%;
   --blend-3: 16%;
 }
-:root[data-theme='dark'] .cover-blend {
+:root[data-theme='dark'] .cover-blend,
+:root[data-blend-all][data-appearance='dark'] .cover-blend {
   --blend-1: 45%;
   --blend-2: 40%;
   --blend-3: 32%;

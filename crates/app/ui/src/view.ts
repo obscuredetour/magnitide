@@ -118,6 +118,22 @@ export function setSeriesBadges(on: boolean): void {
   storage.set('seriesBadges', on ? 'on' : 'off');
 }
 
+/** The cover's colours behind the details on every theme, not only Light and Dark; off unless turned on. */
+const [blendAllThemes, setBlendAllThemesSignal] = createSignal(storage.get('blendAllThemes') === 'on');
+export { blendAllThemes };
+
+function applyBlendAll(on: boolean): void {
+  if (on) document.documentElement.dataset.blendAll = '';
+  else delete document.documentElement.dataset.blendAll;
+}
+applyBlendAll(blendAllThemes());
+
+export function setBlendAllThemes(on: boolean): void {
+  setBlendAllThemesSignal(on);
+  applyBlendAll(on);
+  storage.set('blendAllThemes', on ? 'on' : 'off');
+}
+
 /** Alternating row colours in the list view; on unless turned off. */
 const [zebraRows, setZebraRowsSignal] = createSignal(storage.get('tableZebra') !== 'off');
 export { zebraRows };
