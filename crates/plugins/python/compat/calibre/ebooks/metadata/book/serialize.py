@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/ebooks/metadata/book/serialize.py (calibre 9.15).
+# Copyright: 2017, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.ebooks.metadata.book.serialize`: a Metadata as
 a plain dict and back (what `calibre.utils.serialize` uses)."""
 

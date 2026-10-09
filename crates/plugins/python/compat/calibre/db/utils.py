@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/db/utils.py (calibre 9.15).
+# Copyright: 2013, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.db.utils`: helpers shared by the database
 code and some plugins (`fuzzy_title`, `find_identical_books`)."""
 

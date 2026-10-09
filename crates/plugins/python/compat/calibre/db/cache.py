@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/db/cache.py (calibre 9.15).
+# Copyright: 2011, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.db.cache` (calibre 9.15): `Cache`, the API
 behind `db.new_api`. Every call reads or writes the shadow's SQLite
 database directly (calibre caches tables in memory; the shadow is small

@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/ebooks/oeb/polish/container.py (calibre 9.15).
+# Copyright: 2013, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.ebooks.oeb.polish.container` for EPUB: a
 `Container` is the book unpacked in a temporary directory, with its OPF
 manifest and spine, names (paths relative to the root) and hrefs, parsed

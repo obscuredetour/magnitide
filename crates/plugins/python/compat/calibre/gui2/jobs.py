@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/gui2/jobs.py (calibre 9.15).
+# Copyright: 2008, Kovid Goyal kovid@kovidgoyal.net. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.gui2.jobs` (calibre 9.15): the `JobManager`
 plugins run background work through (`run_job` for another process,
 `run_threaded_job` for a thread), with its signals. Jobs are reported to

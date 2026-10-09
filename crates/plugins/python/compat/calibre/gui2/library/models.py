@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/gui2/library/models.py (calibre 9.15).
+# Copyright: 2010, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors the names plugins import from calibre's `calibre.gui2.library.models`:
 `BooksModel` (the book list's model; the host's own model is an instance of
 a compatible class) and `DeviceBooksModel`."""

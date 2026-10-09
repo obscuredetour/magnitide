@@ -1,3 +1,7 @@
+// Derived from calibre's src/calibre/db/backend.py (create_custom_column) (calibre 9.15).
+// Copyright: 2011, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+// Ported to Rust for Magnitide, 2026.
+
 //! Write a [`Catalog`] as a calibre library's `metadata.db`.
 //!
 //! The mirror of [`crate::library`]: what this writes, the reader reads back

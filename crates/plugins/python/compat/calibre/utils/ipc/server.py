@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/utils/ipc/server.py (calibre 9.15).
+# Copyright: 2009, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.utils.ipc.server`: the `Server` that runs the
 GUI's `ParallelJob`s in worker processes, a few at a time."""
 

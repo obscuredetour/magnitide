@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/utils/date.py (calibre 9.15).
+# Copyright: 2010, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.utils.date` (calibre 9.15): parsing and
 formatting dates the way calibre does, with calibre's special dates
 (`UNDEFINED_DATE`, `DEFAULT_DATE`) and its `format_date` tokens.

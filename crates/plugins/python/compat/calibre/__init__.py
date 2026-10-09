@@ -1,7 +1,11 @@
+# Derived from calibre's src/calibre/__init__.py (calibre 9.15).
+# Copyright: 2008, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Magnitide's compatibility package for calibre plugins: the `calibre`
-package plugins import, written for Magnitide (no calibre code), mirroring
-calibre 9.15's public API where plugins use it. Each module's docstring says
-what it mirrors and what it leaves out.
+package plugins import, written for Magnitide, mirroring calibre 9.15's
+public API where plugins use it. Each module's docstring says what it mirrors
+and what it leaves out; modules that reuse calibre's own code say so at the
+top (see NOTICE).
 
 This module mirrors `calibre/__init__.py`: the odds and ends plugins import
 from the top level (`prints`, `force_unicode`, `browser`, `fit_image`, …).

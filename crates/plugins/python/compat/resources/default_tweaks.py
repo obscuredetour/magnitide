@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+# Derived from calibre's resources/default_tweaks.py (calibre 9.15).
+# Copyright: 2010, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
+
 # The defaults for calibre's "tweaks", as Magnitide's compatibility package
 # provides them (calibre keeps its own at resources/default_tweaks.py). A
 # plugin or user may override any of them in <config_dir>/tweaks.json.

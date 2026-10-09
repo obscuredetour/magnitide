@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/utils/resources.py (calibre 9.15).
+# Copyright: 2009, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.utils.resources` (calibre 9.15): `P()` and
 `I()`, which calibre installs as built-ins for finding resource files.
 

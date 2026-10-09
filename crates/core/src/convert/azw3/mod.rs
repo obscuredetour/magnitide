@@ -1,3 +1,7 @@
+// Derived from calibre's src/calibre/ebooks/mobi/writer8/ (main.py, exth.py) (calibre 9.15).
+// Copyright: 2012, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+// Ported to Rust for Magnitide, 2026.
+
 //! EPUB → AZW3 (KF8), natively: the Kindle format, without calibre.
 //!
 //! Follows calibre's KF8 writer (writer8/, GPL-3.0 like Magnitide):

@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/gui2/keyboard.py (calibre 9.15).
+# Copyright: 2011, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.gui2.keyboard`: the keyboard-shortcut
 `Manager`. Shortcuts plugins register are kept (and any the user set in
 calibre's `shortcuts/main.json` honoured) and applied to the actions on

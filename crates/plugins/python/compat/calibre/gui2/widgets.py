@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/gui2/widgets.py (calibre 9.15).
+# Copyright: 2008, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors the widgets plugins borrow from calibre's `calibre.gui2.widgets`
 (calibre 9.15): line edits with history and completion, an image view, and
 a few small ones."""

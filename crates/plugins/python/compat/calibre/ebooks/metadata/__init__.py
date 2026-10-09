@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/ebooks/metadata/__init__.py (calibre 9.15).
+# Copyright: 2008, Kovid Goyal kovid@kovidgoyal.net. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.ebooks.metadata` package root (calibre 9.15):
 title and author sort names, author string parsing, ISBN checks and the
 `MetaInformation` alias."""

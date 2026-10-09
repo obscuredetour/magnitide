@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/db/backend.py (calibre 9.15).
+# Copyright: 2011, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.db.backend` (calibre 9.15) for Magnitide: the
 SQLite layer under `Cache`, on the shadow library's `metadata.db`.
 

@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/utils/logging.py (calibre 9.15).
+# Copyright: 2009, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.utils.logging` (calibre 9.15): the `Log` that
 calibre hands plugins (metadata sources get one per lookup), with its levels
 and output streams."""

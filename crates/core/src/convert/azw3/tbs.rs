@@ -1,3 +1,7 @@
+// Derived from calibre's src/calibre/ebooks/mobi/writer8/tbs.py (calibre 9.15).
+// Copyright: 2012, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+// Ported to Rust for Magnitide, 2026.
+
 //! Trailing byte sequences (TBS): appended to each text record, they say
 //! which table of contents entries start, end, span or sit inside that
 //! record, so a Kindle can jump chapter to chapter. Ported from calibre's

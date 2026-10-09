@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/utils/config.py (calibre 9.15).
+# Copyright: 2008, Kovid Goyal kovid@kovidgoyal.net. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.utils.config` (calibre 9.15): `JSONConfig`
 (what plugins keep their settings in), `DynamicConfig` (`dynamic`), the
 `Config`/`StringConfig`/`ConfigProxy` family from `config_base`, `prefs`,

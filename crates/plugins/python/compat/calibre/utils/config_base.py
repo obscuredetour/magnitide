@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/utils/config_base.py (calibre 9.15).
+# Copyright: 2011, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.utils.config_base` (calibre 9.15): the
 configuration machinery (options, `Config`, `StringConfig`, `ConfigProxy`),
 calibre's global `prefs`, the `tweaks`, and JSON helpers.

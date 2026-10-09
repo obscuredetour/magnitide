@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/db/adding.py (calibre 9.15).
+# Copyright: 2013, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.db.adding`: finding book files in folders
 (what Add Books does with a folder)."""
 

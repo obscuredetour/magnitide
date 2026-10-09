@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/gui2/comments_editor.py (calibre 9.15).
+# Copyright: 2010, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.gui2.comments_editor`: the rich-text editor
 for a book's comments. `EditorWidget` is a QTextEdit with calibre's `html`
 property and the `plugin_actions` hook (Comments Cleaner adds a toolbar

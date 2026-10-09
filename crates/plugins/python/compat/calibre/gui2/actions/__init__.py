@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/gui2/actions/__init__.py (calibre 9.15).
+# Copyright: 2010, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.gui2.actions` (calibre 9.15): `InterfaceAction`,
 the base of GUI plugins, with its action/menu helpers and lifecycle hooks."""
 

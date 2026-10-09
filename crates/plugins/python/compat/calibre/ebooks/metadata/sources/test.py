@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/ebooks/metadata/sources/test.py (calibre 9.15).
+# Copyright: 2011, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.ebooks.metadata.sources.test`: the harness
 metadata-source authors run their plugin with (`test_identify_plugin`)."""
 

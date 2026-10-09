@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/utils/filenames.py (calibre 9.15).
+# Copyright: Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.utils.filenames` (calibre 9.15): making file
 names safe, shortening paths, atomic renames and the like."""
 

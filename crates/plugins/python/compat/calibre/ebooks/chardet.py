@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/ebooks/chardet.py (calibre 9.15).
+# Copyright: 2009, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.ebooks.chardet`: detecting a file's text
 encoding (declared or guessed) and decoding it."""
 

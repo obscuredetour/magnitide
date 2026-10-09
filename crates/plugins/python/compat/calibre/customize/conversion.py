@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/customize/conversion.py (calibre 9.15).
+# Copyright: Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors the class shells of calibre's `calibre.customize.conversion`:
 `InputFormatPlugin`, `OutputFormatPlugin` and `OptionRecommendation`, so
 conversion plugins load and are recognized. Magnitide doesn't run calibre's

@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/customize/builtins.py (calibre 9.15).
+# Copyright: 2008, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors the part of calibre's `calibre.customize.builtins` that Magnitide
 provides: metadata readers and writers for common formats, the input and
 output profiles, and the stand-ins for calibre's own actions (Edit Metadata,

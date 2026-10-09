@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/ebooks/__init__.py (calibre 9.15).
+# Copyright: 2008, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.ebooks` package root: the book file types and
 a few helpers plugins reach for."""
 

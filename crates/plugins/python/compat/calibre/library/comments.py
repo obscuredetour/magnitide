@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/library/comments.py (calibre 9.15).
+# Copyright: 2010, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.library.comments`: turning plain-text
 comments into HTML, cleaning HTML comments, and merging two."""
 

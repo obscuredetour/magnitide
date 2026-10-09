@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/utils/serialize.py (calibre 9.15).
+# Copyright: 2017, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.utils.serialize`: JSON and msgpack with
 calibre's encoders for dates, bytes and sets."""
 

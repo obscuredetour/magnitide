@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/ebooks/oeb/base.py (calibre 9.15).
+# Copyright: 2008, Marshall T. Vandegrift <llasram@gmail.com>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors the constants and helpers of calibre's `calibre.ebooks.oeb.base`
 that plugins use: namespaces, `XPath`, `xml2str`, `barename`, `namespace`,
 `urlnormalize`, mime types. calibre's `OEBBook` object model (the conversion

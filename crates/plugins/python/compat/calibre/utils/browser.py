@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/utils/browser.py (calibre 9.15).
+# Copyright: 2010, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.utils.browser`: a mechanize browser with the
 conveniences calibre adds (`open_novisit`, `clone_browser`, cookies,
 `set_user_agent`, a retry on `Connection reset`)."""

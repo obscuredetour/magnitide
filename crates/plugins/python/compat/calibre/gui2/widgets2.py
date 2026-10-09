@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/gui2/widgets2.py (calibre 9.15).
+# Copyright: 2013, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors the widgets plugins borrow from calibre's `calibre.gui2.widgets2`
 (calibre 9.15): `Dialog` (a dialog with saved geometry), history line
 edits, colour and tool buttons, a flow layout, an HTML display."""

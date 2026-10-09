@@ -1,0 +1,52 @@
+Magnitide
+Copyright (C) 2026 Jamie Summers
+
+Magnitide is free software, licensed under the GNU General Public License,
+version 3 or (at your option) any later version. The full text is in LICENSE.
+
+
+calibre
+-------
+
+Magnitide works with calibre (https://calibre-ebook.com), by Kovid Goyal and
+the calibre contributors, and some of its code is derived from calibre's
+(Copyright (C) 2008-2026 Kovid Goyal and others, GPLv3). calibre's code is
+licensed under version 3 of the GPL only, so the files derived from it are
+too, and Magnitide as a whole can be distributed under GPLv3.
+
+Every file derived from calibre names the calibre file it comes from, its
+copyright holder and license, and that it was modified, in its first lines:
+
+    git grep -l -E '^(#|//|--) Derived from calibre'
+
+They are:
+
+- crates/plugins/python/compat/: the compatibility package calibre plugins
+  run against. It mirrors calibre 9.15's plugin API, and the modules that
+  reuse calibre's code (most of calibre/db, calibre/ebooks/metadata,
+  calibre/gui2, calibre/utils, calibre/customize) carry the notice, as does
+  resources/default_tweaks.py.
+- crates/calibre-compat/: schema/metadata_sqlite.sql (calibre's library
+  schema), src/sqlfuncs.rs (title sort) and src/write.rs (custom column
+  tables).
+- crates/core/src/convert/azw3/: the EPUB to AZW3 converter, ported from
+  calibre's KF8 writer (src/calibre/ebooks/mobi/writer8/).
+
+calibre/utils/titlecase.py in the compat package derives from calibre's,
+which is by Stuart Colville (after John Gruber's original) with changes by
+Kovid Goyal, under the MIT license
+(http://www.opensource.org/licenses/mit-license.php).
+
+scripts/vendor-calibre.py can copy calibre's own modules into the repository.
+It isn't used; if it ever is, what it copies keeps calibre's license and
+notices (it writes LICENSE.calibre and THIRD_PARTY_NOTICES.md beside them).
+
+
+Other bundled material
+----------------------
+
+- crates/plugins/python/compat/resources/images/lucide/: Lucide icons,
+  ISC license (LICENSE in that folder).
+- crates/plugins/python/compat/resources/localization/iso639.json: language
+  names from the iso-codes project
+  (https://salsa.debian.org/iso-codes-team/iso-codes), LGPL 2.1 or later.

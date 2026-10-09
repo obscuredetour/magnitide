@@ -1,3 +1,7 @@
+# Derived from calibre's src/calibre/utils/titlecase.py (calibre 9.15).
+# Python version by Stuart Colville, with changes by Kovid Goyal.
+# License: MIT (http://www.opensource.org/licenses/mit-license.php).
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.utils.titlecase`: title case with the small
 words left lower, the way editors do it."""
 

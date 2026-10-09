@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/db/write.py (calibre 9.15).
+# Copyright: 2013, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors the value adapters of calibre's `calibre.db.write`: turning what
 a plugin passes into what a field's datatype holds."""
 

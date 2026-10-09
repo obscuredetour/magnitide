@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/db/__init__.py (calibre 9.15).
+# Copyright: 2011, Kovid Goyal <kovid@kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.db` package (calibre 9.15): the library
 database as plugins see it. In Magnitide it opens the shadow library (a
 calibre-format copy of the open library) with a stand-alone SQLite

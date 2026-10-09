@@ -1,3 +1,6 @@
+# Derived from calibre's src/calibre/customize/__init__.py (calibre 9.15).
+# Copyright: 2008, Kovid Goyal <kovid at kovidgoyal.net>. License: GPLv3.
+# Modified for Magnitide, 2026.
 """Mirrors calibre's `calibre.customize` (calibre 9.15): the plugin base
 classes every calibre plugin subclasses, with the attributes and methods
 calibre's plugin API documents (https://manual.calibre-ebook.com/plugins.html).
