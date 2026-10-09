@@ -7,6 +7,7 @@ import { Autocomplete } from './Autocomplete';
 import { changeCover, closeEditor, type Editing, saveEdit } from '../editor';
 import { items } from '../library';
 import { customFields } from '../fields';
+import { identifierOrder } from '../identifiers';
 import { CustomFieldInput, customFieldHint } from './CustomFieldInput';
 import { Cover } from './Cover';
 import { type Applied, MatchDialog } from './MatchDialog';
@@ -26,6 +27,7 @@ const joinList = (v: string[]) => v.join(', ');
 const splitList = (s: string) => s.split(',').map((t) => t.trim());
 const joinIds = (ids: Record<string, string | undefined>) =>
   Object.entries(ids)
+    .sort(identifierOrder)
     .map(([k, v]) => `${k}:${v ?? ''}`)
     .join(', ');
 const splitIds = (s: string): Record<string, string> =>

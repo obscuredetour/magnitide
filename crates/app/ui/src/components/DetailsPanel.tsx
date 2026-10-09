@@ -7,6 +7,7 @@ import { openEditor } from '../editor';
 import { DETAILS_WIDTH, detailsWidth, setDetailsWidth } from '../view';
 import { editRevision, library, openBook, search, setSelectedId } from '../library';
 import { formatCustom } from '../fields';
+import { identifierOrder } from '../identifiers';
 import { toast } from '../toast';
 import { devices, onDevice } from '../devices';
 import { addFromDevice, removeFormat, removeFromDevice, sendToDevice } from '../transfer';
@@ -197,7 +198,10 @@ function Details(props: { book: BookDetails }) {
     ['Publisher', b().publisher],
     ['Added', b().added],
     ['Language', b().languages.map(languageName).join(', ') || null],
-    ...b().identifiers.map(([k, v]): [string, string] => [k.toUpperCase(), v]),
+    ...b()
+      .identifiers.slice()
+      .sort(identifierOrder)
+      .map(([k, v]): [string, string] => [k.toUpperCase(), v]),
   ];
 
   /** The description, unless it's missing or only empty markup. */
