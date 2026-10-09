@@ -167,11 +167,7 @@ const columns: ColumnDef<typeof features, BookRow, any>[] = [
     cell: (info) => (
       <span class="flex gap-1">
         <For each={info.getValue()}>
-          {(f) => (
-            <span class="rounded-inset bg-element px-1.5 text-[11px] font-medium text-muted in-data-selected:bg-on-selection/20">
-              {f}
-            </span>
-          )}
+          {(f) => <span class="rounded-inset bg-element px-1.5 text-[11px] font-medium text-muted">{f}</span>}
         </For>
       </span>
     ),
@@ -443,7 +439,7 @@ export function BookTable(props: Props) {
                   <div
                     role="row"
                     aria-rowindex={v.index + 2}
-                    class="absolute top-0 left-0 flex w-full cursor-default items-center not-data-selected:hover:bg-hover data-selected:bg-selection data-selected:text-on-selection data-selected:**:text-on-selection"
+                    class="absolute top-0 left-0 flex w-full cursor-default items-center not-data-selected:hover:bg-hover data-selected:bg-highlight"
                     // With stripes, a hairline between rows too; without, nothing.
                     classList={{
                       'bg-stripe': zebraRows() && v.index % 2 === 1,
@@ -456,6 +452,11 @@ export function BookTable(props: Props) {
                     onContextMenu={(e) => props.onContextMenu(r().original.id, e)}
                     onDblClick={() => props.onOpen(r().original.id)}
                   >
+                    {/* Selected: a bookmark tucked in at the top of the row (sticky, so it stays while the table scrolls sideways). */}
+                    <span
+                      aria-hidden="true"
+                      class="pointer-events-none sticky left-1.5 z-1 -mr-2 hidden h-6 w-2 flex-none self-start bg-accent [clip-path:polygon(0_0,100%_0,100%_100%,50%_72%,0_100%)] in-data-selected:block"
+                    />
                     <For each={r().getVisibleCells()}>
                       {(cell) => (
                         <div

@@ -22,7 +22,8 @@
 
   --hover: color-mix(in srgb, var(--text) 15%, transparent);
   --row-stripe: color-mix(in srgb, var(--text) 8%, transparent);
-  /* Selected rows: the accent, like every other selection in the app. */
+  /* Selection fills (the list marks selected rows with --highlight and an
+     accent bookmark instead, but add-on themes may set these). */
   --selection: var(--accent);
   --on-selection: var(--on-accent);
   /* Selected text: Catppuccin "Selection Background", Overlay 2 at 20-30%. */

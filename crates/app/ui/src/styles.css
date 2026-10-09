@@ -27,6 +27,9 @@
   --color-*: initial;
   --color-white: #fff;
   --color-black: #000;
+  /* A paper label on cover art (not a themed surface): the series sticker. */
+  --color-paper: #f6f1e6;
+  --color-paper-ink: #2a2520;
 
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
   --font-serif: 'Literata', 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;

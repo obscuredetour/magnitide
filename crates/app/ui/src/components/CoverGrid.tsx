@@ -166,7 +166,12 @@ export function CoverGrid(props: Props) {
               class="group absolute top-0 left-0 flex cursor-default flex-col gap-2 [contain:layout_style]"
               data-selected={props.selectedIds.has(item.id) || undefined}
               data-book-id={item.id}
-              style={{ width: `${metrics().tileW}px`, transform: position() }}
+              style={{
+                width: `${metrics().tileW}px`,
+                '--cover-w': `${metrics().tileW}px`,
+                '--cover-h': `${metrics().tileW * 1.5}px`,
+                transform: position(),
+              }}
               title={[item.title, item.authors, item.series && `${item.series} #${item.seriesIndex}`]
                 .filter(Boolean)
                 .join('\n')}
@@ -174,28 +179,46 @@ export function CoverGrid(props: Props) {
               onContextMenu={(e) => props.onContextMenu(item.id, e)}
               onDblClick={() => props.onOpen(item.id)}
             >
-              <div class="relative aspect-[2/3] w-full overflow-hidden rounded-md bg-element shadow-card transition duration-[180ms] ease-out group-hover:-translate-y-[3px] group-hover:shadow-lift group-data-selected:outline-3 group-data-selected:outline-offset-3 group-data-selected:outline-accent">
-                <Cover id={item.id} title={item.title} authors={item.authors} hasCover={item.hasCover} size="thumb" />
-                <Show when={onDevice().get(item.id)}>
-                  {(where) => (
-                    <span
-                      class="absolute top-1.5 left-1.5 grid size-5 place-items-center rounded-full bg-success text-on-status shadow-card ring-2 ring-black/20"
-                      title={where()
-                        .map((o) => `On ${o.device.name}`)
-                        .join('\n')}
-                      aria-label="On device"
-                    >
-                      <Icon of={Check} size={12} />
-                    </span>
-                  )}
-                </Show>
-                <Show when={item.seriesIndex}>
-                  {(n) => (
-                    <span class="absolute right-1.5 bottom-1.5 rounded-chip bg-black/60 px-[7px] py-px text-[11px] font-semibold text-white tabular-nums backdrop-blur-sm">
-                      #{n()}
-                    </span>
-                  )}
-                </Show>
+              {/* A fixed cell, so rows keep their height; the cover stands on its
+                  floor at its own proportions, like a book on a shelf. The inner
+                  box hugs the image, so corners, shadow, lift, outline and badges
+                  follow the cover, not the cell. */}
+              <div class="flex h-(--cover-h) items-end justify-center">
+                <div class="relative flex overflow-hidden rounded-md bg-element shadow-card transition duration-[180ms] ease-out group-hover:-translate-y-[3px] group-hover:shadow-lift group-data-selected:outline-3 group-data-selected:outline-offset-3 group-data-selected:outline-accent">
+                  <Cover
+                    id={item.id}
+                    title={item.title}
+                    authors={item.authors}
+                    hasCover={item.hasCover}
+                    size="thumb"
+                    fit="contain"
+                  />
+                  <Show when={onDevice().get(item.id)}>
+                    {(where) => (
+                      <span
+                        class="absolute top-1.5 left-1.5 grid size-5 place-items-center rounded-full bg-success text-on-status shadow-card ring-2 ring-black/20"
+                        title={where()
+                          .map((o) => `On ${o.device.name}`)
+                          .join('\n')}
+                        aria-label="On device"
+                      >
+                        <Icon of={Check} size={12} />
+                      </span>
+                    )}
+                  </Show>
+                  {/* The series as a library sticker on the bottom edge: the number, and the name when there's room. */}
+                  <Show when={item.seriesIndex}>
+                    {(n) => (
+                      <span class="absolute bottom-0 left-2 flex max-w-[72%] rounded-t-[3px] bg-paper px-1.5 pt-px text-[10px]/[15px] font-semibold text-paper-ink tabular-nums shadow-[0_-1px_0_rgb(0_0_0/0.12)]">
+                        <Show when={metrics().tileW >= 150}>
+                          <span class="truncate">{item.series}</span>
+                          <span class="flex-none">&nbsp;·&nbsp;</span>
+                        </Show>
+                        <span class="flex-none">#{n()}</span>
+                      </span>
+                    )}
+                  </Show>
+                </div>
               </div>
               <p class="truncate text-[12.5px] font-semibold">{item.title}</p>
               <p class="-mt-1.5 truncate text-xs text-muted">{item.authors}</p>

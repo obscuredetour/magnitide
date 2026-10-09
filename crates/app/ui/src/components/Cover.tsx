@@ -10,11 +10,18 @@ type Props = {
   size: CoverSize;
   /** Tiny rendering (e.g. table rows): the generated cover shows colour only. */
   compact?: boolean;
+  /**
+   * `cover` (the default) fills the positioned parent, cropping to it.
+   * `contain` keeps the cover's own proportions, at most --cover-h tall and
+   * --cover-w wide (set by the parent), in a box that hugs it; the generated
+   * cover, and the ghost before the image loads, are 2:3 of --cover-h.
+   */
+  fit?: 'cover' | 'contain';
 };
 
 /**
- * A book cover filling its (positioned) parent, or a generated one when the
- * book has none or it fails to load.
+ * A book cover filling its (positioned) parent, or at its own proportions
+ * (`fit`), or a generated one when the book has none or it fails to load.
  */
 export function Cover(props: Props) {
   const [failed, setFailed] = createSignal(false);
@@ -38,7 +45,11 @@ export function Cover(props: Props) {
       when={props.hasCover && !failed()}
       fallback={
         <div
-          class="absolute inset-0 flex flex-col justify-between px-[12%] py-[14%] text-white/95 cover-placeholder"
+          class="flex flex-col justify-between px-[12%] py-[14%] text-white/95 cover-placeholder"
+          classList={{
+            'absolute inset-0': props.fit !== 'contain',
+            'aspect-[2/3] h-(--cover-h)': props.fit === 'contain',
+          }}
           style={{ '--hue': String((props.id * 47) % 360) }}
         >
           <Show when={!props.compact}>
@@ -57,8 +68,14 @@ export function Cover(props: Props) {
       <Show when={props.size === 'full'}>
         <img class="absolute inset-0 size-full object-cover blur-[2px]" src={coverUrl('thumb', props.id)} alt="" />
       </Show>
+      {/* Contained: a 2:3 ghost until the image has a size of its own (aspect-ratio: auto 2/3), then its own. */}
       <img
-        class="absolute inset-0 size-full object-cover opacity-0 transition-opacity duration-200 data-loaded:opacity-100"
+        class="opacity-0 transition-opacity duration-200 data-loaded:opacity-100"
+        classList={{
+          'absolute inset-0 size-full object-cover': props.fit !== 'contain',
+          'block aspect-[auto_2/3] h-(--cover-h) max-h-(--cover-h) w-auto max-w-(--cover-w) object-contain data-loaded:h-auto':
+            props.fit === 'contain',
+        }}
         src={coverUrl(props.size, props.id)}
         alt=""
         decoding="async"
