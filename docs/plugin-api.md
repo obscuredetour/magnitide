@@ -261,7 +261,7 @@ keep the component small (the example is 64 KB zipped).
 ## Porting a calibre plugin
 
 [`plugins/goodreads-source`](../plugins/goodreads-source) is the calibre
-Goodreads metadata source (kiwidude's) ported: the same search on
+Goodreads metadata source ([kiwidude's](https://github.com/kiwidude68/calibre_plugins/tree/main/goodreads), GPL-3.0) ported: the same search on
 goodreads.com, the same book data read from the page's embedded JSON, in
 a few hundred lines of Rust instead of a plugin that needs calibre's
 `Source`, `browser()`, lxml and a worker thread per result. What carried
