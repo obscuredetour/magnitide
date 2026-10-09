@@ -113,7 +113,7 @@ yours to edit. Cover thumbnails are cached in the app's cache folder
 
 Keys: `/` or ⌘F search · ⌘, settings · ⌘1 covers, ⌘2 list · arrows move · ⌘-click / Shift-click / ⌘A select several · Enter opens details · ⌘E edits · double-click or ⌘O opens the book in its default app · Esc closes.
 In the details panel, click a format to open that specific file, or its × to remove that format (the file goes to the Trash). Right-click a book (or a selection) for everything you can do with it.
-Search accepts `author:`, `tag:`, `series:`, `title:`, `#custom:`, quotes and `-` to exclude.
+Search accepts `author:`, `tag:`, `series:`, `title:`, `rating:`, `#custom:`, quotes, `-` to exclude, `=` for a whole value (`tag:=Fantasy`) and an empty value for "any" (`tags:`, `-tags:`).
 
 ## Development
 

@@ -26,6 +26,7 @@ pub mod names;
 pub mod paths;
 pub mod shelves;
 pub mod tidy;
+pub mod values;
 pub mod writeback;
 
 pub use custom::{CustomField, FieldKind, FieldValue, NewField};
