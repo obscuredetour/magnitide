@@ -147,6 +147,27 @@
   font-variant-caps: small-caps;
 }
 
+/* The details panel takes a little of the book's cover colour: DetailsPanel.tsx
+   sets --cover (from coverColors.ts) and data-cover-vivid when it's a real
+   hue. Without them these are the plain roles. */
+@utility cover-tint {
+  background-color: color-mix(in oklch, var(--panel), var(--cover, var(--panel)) 6%);
+}
+@utility text-cover-ink {
+  color: var(--cover-ink, var(--link));
+}
+@utility text-cover-star {
+  color: var(--cover-ink, var(--star));
+}
+/* The cover's hue at a fixed lightness for the appearance (--cover-ink-l,
+   roles.css) and a capped chroma, so it reads on --panel whatever the cover's
+   own lightness. Webviews without relative colours keep the roles. */
+@supports (color: oklch(from red l c h)) {
+  [data-cover-vivid] {
+    --cover-ink: oklch(from var(--cover) var(--cover-ink-l) clamp(0.06, c, 0.14) h);
+  }
+}
+
 /* Generated cover for books without one; --hue is set per book. */
 @utility cover-placeholder {
   background: linear-gradient(160deg, hsl(var(--hue) 42% 42%), hsl(calc(var(--hue) + 28) 48% 26%));

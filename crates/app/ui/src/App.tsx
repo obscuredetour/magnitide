@@ -249,6 +249,7 @@ export function App() {
                     selectedId={selectedId()}
                     selectedIds={selectedIds()}
                     emptyMessage={emptyMessage()}
+                    emptyMark={!query().trim()}
                     onSelect={click}
                     onContextMenu={contextMenu}
                     onOpen={(id) => void openBook(id)}
@@ -261,6 +262,7 @@ export function App() {
                   selectedId={selectedId()}
                   selectedIds={selectedIds()}
                   emptyMessage={emptyMessage()}
+                  emptyMark={!query().trim()}
                   onSelect={click}
                   onContextMenu={contextMenu}
                   onOpen={(id) => void openBook(id)}

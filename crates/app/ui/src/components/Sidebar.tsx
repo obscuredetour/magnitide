@@ -1,11 +1,13 @@
-import { createSignal, For, Show } from 'solid-js';
+import { createResource, createSignal, For, Show } from 'solid-js';
 import LibraryBig from 'lucide-solid/icons/library-big';
 import Plus from 'lucide-solid/icons/plus';
 import SquareLibrary from 'lucide-solid/icons/square-library';
 
-import type { Shelf } from '../api';
+import { api, type Shelf } from '../api';
 import { drag } from '../bookDrag';
-import { library, query } from '../library';
+import { editRevision, library, query } from '../library';
+import { formatSize } from '../sizes';
+import { plural } from '../writeback';
 import { activeShelf, createShelf, deleteShelf, renameShelf, shelves, showShelf } from '../shelves';
 import { Icon } from './Icon';
 import { ContextMenu, MenuItem } from './Menu';
@@ -40,6 +42,16 @@ export function Sidebar() {
   const [menu, setMenu] = createSignal<{ x: number; y: number; shelf: Shelf } | null>(null);
   const editable = () => library()?.kind === 'magnitide';
   const over = (target: number | 'new') => drag()?.over === target;
+  // Totals along the bottom. They follow the catalog: opening, adding and
+  // deleting (library) and edits (editRevision), as devices.ts does.
+  const [stats] = createResource(
+    () => [library(), editRevision()] as const,
+    ([lib]) => (lib ? api.libraryStats().catch(() => null) : null),
+  );
+  const formatLine = () =>
+    stats()
+      ?.formats.map((f) => `${f.format} ${f.count.toLocaleString()}`)
+      .join(' · ') ?? '';
 
   return (
     <nav class="flex w-52 flex-none flex-col overflow-y-auto border-r border-line bg-panel p-2" aria-label="Library">
@@ -124,6 +136,23 @@ export function Sidebar() {
         <Show when={!shelves().length && !creating() && !drag()}>
           <p class="px-2 pt-1 text-xs text-faint">Make a shelf with +, then drag books onto it.</p>
         </Show>
+      </Show>
+
+      <Show when={stats()}>
+        {(s) => (
+          <div
+            class="mt-auto space-y-0.5 px-2 pt-6 pb-1 text-[11px]/4 text-faint tabular-nums"
+            aria-label="Library totals"
+          >
+            <p>
+              {plural(s().authors, 'author', 'authors')} · {plural(s().series, 'series', 'series')}
+            </p>
+            <p class="truncate" title={formatLine().replaceAll(' · ', '\n')}>
+              {formatLine()}
+            </p>
+            <p>{formatSize(s().totalBytes)}</p>
+          </div>
+        )}
       </Show>
 
       <Show when={menu()}>

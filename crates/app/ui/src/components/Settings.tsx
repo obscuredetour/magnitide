@@ -69,6 +69,7 @@ import { Select } from './Select';
 import { smallButton } from '../buttons';
 import { backdropDismiss } from '../backdrop';
 import { keys, SHORTCUTS } from '../keys';
+import { formatSize } from '../sizes';
 
 export type SettingsSection = Section;
 type Section = 'appearance' | 'library' | 'list' | 'devices' | 'server' | 'sources' | 'plugins' | 'shortcuts' | 'about';
@@ -373,13 +374,6 @@ function Appearance() {
   );
 }
 
-function formatBytes(n: number): string {
-  if (n >= 1e9) return `${(n / 1e9).toFixed(1)} GB`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)} MB`;
-  if (n >= 1e3) return `${Math.round(n / 1e3)} KB`;
-  return `${n} B`;
-}
-
 /** "Date Read" → "date_read", as Rust makes lookup names (a preview only). */
 function keyFrom(name: string): string {
   const key = name
@@ -679,7 +673,7 @@ function LibrarySettings() {
             {/* JSX (not a template string) so it updates when the cache is cleared. */}
             {(c) => (
               <>
-                {c().files.toLocaleString()} cached · {formatBytes(c().bytes)}. Rebuilt automatically as covers are
+                {c().files.toLocaleString()} cached · {formatSize(c().bytes)}. Rebuilt automatically as covers are
                 shown.
               </>
             )}

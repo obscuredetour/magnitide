@@ -1,6 +1,7 @@
 import { createEffect, createSignal, Show } from 'solid-js';
 
 import { coverUrl, type CoverSize } from '../api';
+import { placeholderHue } from '../coverColors';
 
 type Props = {
   id: number;
@@ -50,7 +51,7 @@ export function Cover(props: Props) {
             'absolute inset-0': props.fit !== 'contain',
             'aspect-[2/3] h-(--cover-h)': props.fit === 'contain',
           }}
-          style={{ '--hue': String((props.id * 47) % 360) }}
+          style={{ '--hue': String(placeholderHue(props.id)) }}
         >
           <Show when={!props.compact}>
             <div

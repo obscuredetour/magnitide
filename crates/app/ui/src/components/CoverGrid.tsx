@@ -4,6 +4,7 @@ import Check from 'lucide-solid/icons/check';
 import type { BookRow } from '../api';
 import { onDevice } from '../devices';
 import { Cover } from './Cover';
+import { EmptyNote } from './Mark';
 import { Icon } from './Icon';
 
 // Layout constants (CSS px).
@@ -32,6 +33,8 @@ type Props = {
   /** Every selected book (highlighted). */
   selectedIds: ReadonlySet<number>;
   emptyMessage: string;
+  /** Show the mark with the message (the library is empty, rather than a search with no matches). */
+  emptyMark: boolean;
   /** A click; modifier keys (⌘, Shift) extend the selection. */
   onSelect(id: number, e: MouseEvent): void;
   /** Right-click (or the keyboard's menu key) on a book. */
@@ -150,7 +153,7 @@ export function CoverGrid(props: Props) {
     >
       <div class="w-px" style={{ height: `${contentHeight()}px` }} />
       <Show when={props.items.length === 0}>
-        <p class="absolute inset-x-0 top-[30%] text-center text-sm text-muted">{props.emptyMessage}</p>
+        <EmptyNote message={props.emptyMessage} mark={props.emptyMark} />
       </Show>
       <For each={visible()}>
         {(item, i) => {

@@ -125,6 +125,8 @@ fn main() {
             commands::show_library_folder,
             commands::thumbnail_cache_info,
             commands::clear_thumbnail_cache,
+            covers::cover_colors,
+            commands::library_stats,
             commands::import_calibre_library,
             commands::rename_library,
             commands::add_books,

@@ -1,5 +1,5 @@
-use std::collections::BTreeMap;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::{BTreeMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -245,6 +245,56 @@ pub async fn name_lists(state: State<'_, AppState>) -> CmdResult<NameLists> {
         series: sorted(series),
         publishers: sorted(publishers),
     })
+}
+
+/// Totals over the open library, for the sidebar.
+#[derive(Serialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryStats {
+    /// Distinct authors, compared case-insensitively (as `name_lists` keys them).
+    authors: usize,
+    /// Distinct series, main and further ones alike.
+    series: usize,
+    /// Each format and how many books have it, most common first.
+    formats: Vec<FormatCount>,
+    /// Bytes of every book file as the library records them (not measured on disk).
+    total_bytes: u64,
+}
+
+#[derive(Serialize, TS)]
+#[ts(export)]
+pub struct FormatCount {
+    format: String,
+    count: usize,
+}
+
+#[tauri::command]
+pub async fn library_stats(state: State<'_, AppState>) -> CmdResult<LibraryStats> {
+    let lib = state.current().ok_or("No library is open")?;
+    Ok(stats_of(&lib.catalog))
+}
+
+fn stats_of(catalog: &magnitide_catalog::Catalog) -> LibraryStats {
+    let (mut authors, mut series) = (HashSet::<String>::new(), HashSet::<String>::new());
+    let mut formats: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut total_bytes = 0u64;
+    for b in &catalog.books {
+        authors.extend(b.authors.iter().map(|a| a.to_lowercase()));
+        series.extend(b.series.iter().chain(b.more_series.iter().map(|s| &s.name)).map(|s| s.to_lowercase()));
+        let mut seen: Vec<&str> = Vec::new(); // a book counts once per format
+        for f in &b.formats {
+            total_bytes += f.size;
+            if !seen.contains(&f.format.as_str()) {
+                seen.push(&f.format);
+                *formats.entry(&f.format).or_default() += 1;
+            }
+        }
+    }
+    let mut formats: Vec<FormatCount> =
+        formats.into_iter().map(|(format, count)| FormatCount { format: format.to_owned(), count }).collect();
+    formats.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.format.cmp(&b.format)));
+    LibraryStats { authors: authors.len(), series: series.len(), formats, total_bytes }
 }
 
 /// How these authors sort (saved sort names, or the automatic ones for new authors).
@@ -911,6 +961,33 @@ mod tests {
                 && !clean.contains("javascript")
         );
         assert!(clean.contains("Hi"));
+    }
+
+    #[test]
+    fn totals_the_catalog() {
+        use magnitide_catalog::{Format, SeriesEntry};
+        let fmt = |format: &str, size: u64| Format { format: format.into(), size, name: String::new() };
+        let books = vec![
+            Book {
+                id: 1,
+                authors: vec!["Ann".into(), "Bo".into()],
+                series: Some("Dune".into()),
+                formats: vec![fmt("EPUB", 100), fmt("PDF", 1000)],
+                ..Default::default()
+            },
+            Book {
+                id: 2,
+                authors: vec!["ann".into()],
+                more_series: vec![SeriesEntry { name: "Other".into(), index: 1.0, end: None }],
+                formats: vec![fmt("EPUB", 10)],
+                ..Default::default()
+            },
+            Book { id: 3, authors: vec!["Cy".into()], formats: vec![fmt("EPUB", 1)], ..Default::default() },
+        ];
+        let s = stats_of(&magnitide_catalog::Catalog::new(None, vec![], books, vec![]));
+        assert_eq!((s.authors, s.series, s.total_bytes), (3, 2, 1111));
+        let formats: Vec<(&str, usize)> = s.formats.iter().map(|f| (f.format.as_str(), f.count)).collect();
+        assert_eq!(formats, [("EPUB", 3), ("PDF", 1)]);
     }
 
     #[test]

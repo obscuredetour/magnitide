@@ -1,4 +1,4 @@
-import { createResource, createSignal, For, Match, Show, Switch } from 'solid-js';
+import { createEffect, createResource, createSignal, For, Match, Show, Switch } from 'solid-js';
 import SquareLibrary from 'lucide-solid/icons/square-library';
 import X from 'lucide-solid/icons/x';
 
@@ -14,6 +14,8 @@ import { addFromDevice, removeFormat, removeFromDevice, sendToDevice } from '../
 import { writeBookFiles } from '../writeback';
 import { ConvertMenu } from './ConvertMenu';
 import { Cover } from './Cover';
+import { coverTint, coverVivid, requestCoverColors } from '../coverColors';
+import { formatSize } from '../sizes';
 import { Icon } from './Icon';
 import { primaryButton, secondaryButton } from '../buttons';
 import { widthFlags } from '../widths';
@@ -38,12 +40,6 @@ function languageName(code: string): string {
   } catch {
     return code;
   }
-}
-
-function formatSize(bytes: number): string {
-  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`;
-  if (bytes >= 1e3) return `${Math.round(bytes / 1e3)} KB`;
-  return `${bytes} B`;
 }
 
 const searchFor = (field: string, value: string) => search(`${field}:"${value}"`);
@@ -85,13 +81,27 @@ export function DetailsPanel(props: Props) {
       return b;
     },
   );
+  // The panel takes a little of the cover's colour (see coverColors.ts and `cover-tint` in styles.css).
+  createEffect(() => {
+    const b = book();
+    if (b?.hasCover) requestCoverColors([b.id]);
+  });
+  const tint = () => {
+    const b = book();
+    return b ? coverTint(b.id, b.hasCover) : undefined;
+  };
+  const vivid = () => {
+    const b = book();
+    return !!b && coverVivid(b.id, b.hasCover);
+  };
 
   return (
     <aside
       ref={(el) => widthFlags(el, { wide: 416 })}
-      class="group/details relative flex-none animate-slide-in border-l border-line bg-panel select-text max-[760px]:absolute max-[760px]:inset-y-0 max-[760px]:right-0 max-[760px]:w-[min(28rem,100%_-_2rem)]! max-[760px]:max-w-full! max-[760px]:shadow-lift"
+      class="group/details relative flex-none animate-slide-in border-l border-line cover-tint transition-colors duration-300 select-text max-[760px]:absolute max-[760px]:inset-y-0 max-[760px]:right-0 max-[760px]:w-[min(28rem,100%_-_2rem)]! max-[760px]:max-w-full! max-[760px]:shadow-lift"
       // The list keeps at least 320px beside it.
-      style={{ width: `${detailsWidth()}px`, 'max-width': 'calc(100% - 320px)' }}
+      style={{ width: `${detailsWidth()}px`, 'max-width': 'calc(100% - 320px)', '--cover': tint() }}
+      data-cover-vivid={vivid() || undefined}
       aria-label="Book details"
     >
       <ResizeHandle />
@@ -242,7 +252,7 @@ function Details(props: { book: BookDetails }) {
                     <p>
                       {s.omnibus ? 'Books' : 'Book'} {s.number} of{' '}
                       <button
-                        class="cursor-pointer text-link hover:underline"
+                        class="cursor-pointer text-cover-ink hover:underline"
                         onClick={() => searchFor('series', s.name)}
                       >
                         {s.name}
@@ -269,7 +279,7 @@ function Details(props: { book: BookDetails }) {
             </Show>
             <Show when={stars()}>
               {(s) => (
-                <div class="text-sm tracking-[1px] text-star" title={`${b().stars} of 5`}>
+                <div class="text-sm tracking-[1px] text-cover-star" title={`${b().stars} of 5`}>
                   {s()}
                 </div>
               )}
@@ -459,7 +469,7 @@ function Details(props: { book: BookDetails }) {
                     <dt class="text-muted">{c.name}</dt>
                     <Switch fallback={<dd class="[overflow-wrap:anywhere]">{formatCustom(c.kind, c.value)}</dd>}>
                       <Match when={c.kind === 'rating'}>
-                        <dd class="tracking-[1px] text-star" title={`${Number(c.value) / 2} of 5`}>
+                        <dd class="tracking-[1px] text-cover-star" title={`${Number(c.value) / 2} of 5`}>
                           {'★'.repeat(Math.floor(Number(c.value) / 2))}
                           {Number(c.value) % 2 ? '½' : ''}
                         </dd>
