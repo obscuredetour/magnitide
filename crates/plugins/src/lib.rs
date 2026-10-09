@@ -777,10 +777,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let plugins = Plugins::new(dir.path().into(), dir.path().join("runtime"));
         // The development runtime may exist on this machine; a runtime that
-        // isn't there is what's being tested.
+        // isn't there is what's being tested. The runtime alone, so an
+        // installed calibre (or none: the "whichever is there" message)
+        // doesn't change the answer.
         let status = plugins.runtime_status();
         assert_eq!(status.compat, CALIBRE_API_VERSION);
         if !status.installed {
+            plugins.set_host_choice(HostChoice::Runtime).unwrap();
             let err = plugins.host().err().unwrap();
             assert_eq!(err, RUNTIME_MISSING);
             assert!(plugins.install(Path::new("nope.zip")).is_err());

@@ -1,6 +1,7 @@
 # Magnitide
 
 A fast, modern ebook library manager that starts from the calibre library you already have.
+[magnitide.com](https://magnitide.com) · GPL-3.0-or-later ([LICENSE](LICENSE))
 
 Magnitide opens your calibre library as it is, read-only, so calibre keeps working alongside it. When you're ready
 to edit, import it into a Magnitide library of its own: books are copied as copy-on-write clones where the disk
@@ -108,7 +109,7 @@ It opens the library you used last, or else the one calibre last used, falling
 back to `~/Calibre Library`. Click the library name in the top-left to open a
 different one. calibre libraries are only ever read; Magnitide libraries are
 yours to edit. Cover thumbnails are cached in the app's cache folder
-(`~/Library/Caches/dev.magnitide.app` on macOS).
+(`~/Library/Caches/com.magnitide.app` on macOS).
 
 Keys: `/` or ⌘F search · ⌘, settings · ⌘1 covers, ⌘2 list · arrows move · ⌘-click / Shift-click / ⌘A select several · Enter opens details · ⌘E edits · double-click or ⌘O opens the book in its default app · Esc closes.
 In the details panel, click a format to open that specific file, or its × to remove that format (the file goes to the Trash). Right-click a book (or a selection) for everything you can do with it.

@@ -7,9 +7,9 @@ Settings → Appearance → Theme add-ons → **Add Theme File…** copies one i
 
 | OS      | Folder                                                   |
 | ------- | -------------------------------------------------------- |
-| macOS   | `~/Library/Application Support/dev.magnitide.app/themes` |
-| Windows | `%APPDATA%\dev.magnitide.app\themes`                     |
-| Linux   | `~/.config/dev.magnitide.app/themes`                     |
+| macOS   | `~/Library/Application Support/com.magnitide.app/themes` |
+| Windows | `%APPDATA%\com.magnitide.app\themes`                     |
+| Linux   | `~/.config/com.magnitide.app/themes`                     |
 
 (The folder is the app's config folder plus `themes`; **Open Themes Folder** is the
 reliable way to find it.) After editing a file, press **Reload**. Files that can't be used are
