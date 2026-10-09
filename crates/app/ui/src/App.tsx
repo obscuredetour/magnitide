@@ -2,6 +2,8 @@ import { createEffect, createSignal, Match, on, onCleanup, onMount, Show, Switch
 
 import { BookMenuHost, openBookMenu } from './components/BookMenu';
 import { BookTable } from './components/BookTable';
+import { BrowsePanel } from './components/BrowsePanel';
+import { browsePanel, category, closeBrowsePanel } from './browse';
 import { CoverGrid, type ViewHandle } from './components/CoverGrid';
 import { DetailsPanel } from './components/DetailsPanel';
 import { DropOverlay } from './components/DropOverlay';
@@ -63,6 +65,11 @@ export function App() {
     return s.kind === 'no-library' ? s : null;
   };
 
+  // Opening the details closes the browse panel, which took its place.
+  createEffect(() => {
+    if (detailsOpen()) closeBrowsePanel();
+  });
+
   const select = (id: number, { open = true, reveal = false } = {}) => {
     setSelectedId(id);
     if (open) setDetailsOpen(true);
@@ -74,7 +81,8 @@ export function App() {
     if (dragJustEnded()) return;
     if (e.metaKey || e.ctrlKey) toggleSelected(id);
     else if (e.shiftKey) selectRange(id, shownItems());
-    else select(id);
+    // While the browse panel is open, a click only selects (Enter or a double-click still open the book).
+    else select(id, { open: browsePanel() === null });
   };
 
   /** Right-click on a book: its menu, for the selection if it's in it, else for it alone (as in Finder). */
@@ -238,6 +246,9 @@ export function App() {
             <div class="relative flex min-h-0 flex-1">
               <Show when={sidebarOpen()}>
                 <Sidebar />
+              </Show>
+              <Show when={sidebarOpen() && browsePanel()}>
+                {(key) => <BrowsePanel category={category(key())} onClose={closeBrowsePanel} />}
               </Show>
               <Show
                 when={viewMode() === 'table'}
