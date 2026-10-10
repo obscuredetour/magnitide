@@ -1,9 +1,9 @@
 """Magnitide's host for calibre plugins: `python -I -m magnitide_host`.
 
-Runs in Magnitide's plugin runtime with the compat package on sys.path (the
+Runs in Estuary (Magnitide's compatibility layer) with the compat package on sys.path (the
 directory holding this package), so plugins import `calibre` and `qt` from
 it. Talks JSON lines with Magnitide (see rpc.py). `python -m magnitide_host
-doctor` instead checks that the runtime (Qt included) works here.
+doctor` instead checks that Estuary (Qt included) works here.
 """
 
 import os

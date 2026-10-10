@@ -1,16 +1,16 @@
 #!/bin/sh
-# Download the published plugin runtime for this machine (or $1, a target
-# triple) into target/plugin-runtime/<target> and point
-# target/plugin-runtime/current at it, as scripts/plugin-runtime/dev.sh does
+# Download the published Estuary for this machine (or $1, a target
+# triple) into target/estuary/<target> and point
+# target/estuary/current at it, as scripts/estuary/dev.sh does
 # for a local build. Used by CI; handy when uv and Python 3.14 aren't around.
 #
-# The archive comes from the GitHub release plugin-runtime-v<VERSION> and
-# must match scripts/plugin-runtime/sha256sums.txt, written when the release
+# The archive comes from the GitHub release estuary-v<VERSION> and
+# must match scripts/estuary/sha256sums.txt, written when the release
 # was made. Exits 2 when no release is published yet (sha256sums.txt
 # missing or without this target), so callers can skip the host tests.
 set -eu
 cd "$(dirname "$0")/../.."
-version="$(tr -d '[:space:]' < scripts/plugin-runtime/VERSION)"
+version="$(tr -d '[:space:]' < scripts/estuary/VERSION)"
 target="${1:-}"
 if [ -z "$target" ]; then
   case "$(uname -s)-$(uname -m)" in
@@ -18,13 +18,13 @@ if [ -z "$target" ]; then
     Darwin-x86_64) target=x86_64-apple-darwin ;;
     Linux-x86_64) target=x86_64-unknown-linux-gnu ;;
     Linux-aarch64) target=aarch64-unknown-linux-gnu ;;
-    *) echo "fetch.sh: no runtime for $(uname -s)-$(uname -m)"; exit 2 ;;
+    *) echo "fetch.sh: no Estuary for $(uname -s)-$(uname -m)"; exit 2 ;;
   esac
 fi
-file="magnitide-plugin-runtime-$version-$target.tar.zst"
-sums=scripts/plugin-runtime/sha256sums.txt
+file="magnitide-estuary-$version-$target.tar.zst"
+sums=scripts/estuary/sha256sums.txt
 if [ ! -f "$sums" ]; then
-  echo "fetch.sh: $sums doesn't exist: no plugin runtime has been released yet"
+  echo "fetch.sh: $sums doesn't exist: no Estuary has been released yet"
   exit 2
 fi
 expected="$(grep " $file\$" "$sums" | cut -d' ' -f1 || true)"
@@ -32,20 +32,20 @@ if [ -z "$expected" ]; then
   echo "fetch.sh: $file isn't in $sums"
   exit 2
 fi
-base="${MAGNITIDE_PLUGIN_RUNTIME_URL:-https://github.com/obscuredetour/magnitide/releases/download/plugin-runtime-v$version}"
-dest="target/plugin-runtime/$target"
-cache="${MAGNITIDE_PLUGIN_RUNTIME_CACHE:-target/plugin-runtime/downloads}"
-mkdir -p "$cache" target/plugin-runtime
-if [ -f "$dest/python/magnitide-runtime.json" ] && [ "$(cat "$dest/.sha256" 2>/dev/null)" = "$expected" ]; then
-  echo "fetch.sh: $target runtime $version already in $dest"
+base="${MAGNITIDE_ESTUARY_URL:-https://github.com/obscuredetour/magnitide/releases/download/estuary-v$version}"
+dest="target/estuary/$target"
+cache="${MAGNITIDE_ESTUARY_CACHE:-target/estuary/downloads}"
+mkdir -p "$cache" target/estuary
+if [ -f "$dest/python/magnitide-estuary.json" ] && [ "$(cat "$dest/.sha256" 2>/dev/null)" = "$expected" ]; then
+  echo "fetch.sh: $target Estuary $version already in $dest"
 else
   if [ ! -f "$cache/$file" ] || [ "$(shasum -a 256 "$cache/$file" | cut -d' ' -f1)" != "$expected" ]; then
     rm -f "$cache/$file"
     # While the repository is private the assets need a GitHub token: the
     # gh CLI (GH_TOKEN on CI, a login elsewhere) gets them; curl otherwise.
     if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-      echo "fetch.sh: downloading $file from the plugin-runtime-v$version release (gh)"
-      gh release download "plugin-runtime-v$version" --repo "${MAGNITIDE_REPO:-obscuredetour/magnitide}" \
+      echo "fetch.sh: downloading $file from the estuary-v$version release (gh)"
+      gh release download "estuary-v$version" --repo "${MAGNITIDE_REPO:-obscuredetour/magnitide}" \
         --pattern "$file" --dir "$cache" --clobber
     else
       echo "fetch.sh: downloading $base/$file"
@@ -66,6 +66,6 @@ else
   mv "$dest.tmp" "$dest"
   echo "$expected" > "$dest/.sha256"
 fi
-rm -f target/plugin-runtime/current
-ln -s "$target" target/plugin-runtime/current
-echo "fetch.sh: target/plugin-runtime/current -> $target"
+rm -f target/estuary/current
+ln -s "$target" target/estuary/current
+echo "fetch.sh: target/estuary/current -> $target"

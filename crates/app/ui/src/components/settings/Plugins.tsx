@@ -14,14 +14,14 @@ import {
   type PluginHostChoice,
   type PluginKind,
   type PluginsStatus,
-  type RuntimeStatus,
+  type PluginHostStatus,
 } from '../../api';
 import { confirm } from '../../confirm';
 import { refreshGuiPlugins } from '../../plugins';
 import { toast } from '../../toast';
 import { Icon } from '../Icon';
 import { Select } from '../Select';
-import { PluginCalibreDownload, PluginRuntime } from './PluginHosts';
+import { PluginCalibreDownload, PluginEstuary } from './PluginHosts';
 import { button, Heading, help, Label, linkButton, Log, Row, sentence, Toggle } from './parts';
 
 const NATIVE_KINDS: Record<NativeKind, string> = {
@@ -391,7 +391,7 @@ function CalibrePlugins(props: { status: PluginsStatus; onChange(s: PluginsStatu
   const s = () => props.status;
   const [busy, setBusy] = createSignal(false);
   const [log, setLog] = createSignal<string[] | null>(null);
-  const setRuntime = (runtime: RuntimeStatus) => props.onChange({ ...s(), runtime });
+  const setHosts = (hosts: PluginHostStatus) => props.onChange({ ...s(), hosts });
 
   const add = async () => {
     const path = await api.choosePluginZip();
@@ -458,8 +458,8 @@ function CalibrePlugins(props: { status: PluginsStatus; onChange(s: PluginsStatu
       add={
         <button
           class={button}
-          disabled={!s().runtime.host || busy()}
-          title={s().runtime.host ? undefined : 'Set up where they run first'}
+          disabled={!s().hosts.host || busy()}
+          title={s().hosts.host ? undefined : 'Set up where they run first'}
           onClick={() => void add()}
         >
           {busy() ? 'Adding…' : 'Add Plugin…'}
@@ -508,7 +508,7 @@ function CalibrePlugins(props: { status: PluginsStatus; onChange(s: PluginsStatu
                     <Show when={p.customizable && SUPPORTED_PLUGIN_KINDS.includes(p.kind)}>
                       <button
                         class={button}
-                        disabled={!s().runtime.host || configuring() !== null}
+                        disabled={!s().hosts.host || configuring() !== null}
                         onClick={() => void configure(p)}
                       >
                         {configuring() === p.name ? 'Configuring…' : 'Configure…'}
@@ -549,26 +549,26 @@ function CalibrePlugins(props: { status: PluginsStatus; onChange(s: PluginsStatu
           description={
             <>
               <Switch>
-                <Match when={s().runtime.host === 'calibre' && s().runtime.hostChoice === 'downloaded'}>
-                  The calibre {s().runtime.calibreDownload.version} Magnitide downloaded: plugins run on calibre’s own
+                <Match when={s().hosts.host === 'calibre' && s().hosts.hostChoice === 'downloaded'}>
+                  The calibre {s().hosts.calibreDownload.version} Magnitide downloaded: plugins run on calibre’s own
                   code.
                 </Match>
-                <Match when={s().runtime.host === 'calibre' && !s().runtime.calibre}>
-                  The calibre {s().runtime.calibreDownload.version} Magnitide downloaded: plugins run on calibre’s own
+                <Match when={s().hosts.host === 'calibre' && !s().hosts.calibre}>
+                  The calibre {s().hosts.calibreDownload.version} Magnitide downloaded: plugins run on calibre’s own
                   code.
                 </Match>
-                <Match when={s().runtime.host === 'calibre'}>
-                  Your installed calibre {s().runtime.calibre?.version}: plugins run on calibre’s own code.
+                <Match when={s().hosts.host === 'calibre'}>
+                  Your installed calibre {s().hosts.calibre?.version}: plugins run on calibre’s own code.
                 </Match>
-                <Match when={s().runtime.host === 'runtime'}>
-                  Magnitide’s plugin runtime: a copy of Python, Qt and the parts of calibre that plugins use, downloaded
-                  once.
+                <Match when={s().hosts.host === 'estuary'}>
+                  Estuary, Magnitide’s compatibility layer for calibre plugins: a copy of Python, Qt and the parts of
+                  calibre that plugins use, downloaded once, with no calibre needed.
                 </Match>
                 <Match when={true}>
-                  <span class="text-warning">{s().runtime.hostProblem ?? 'Nothing to run plugins in.'}</span>
+                  <span class="text-warning">{s().hosts.hostProblem ?? 'Nothing to run plugins in.'}</span>
                 </Match>
               </Switch>
-              <Show when={s().runtime.calibre?.problem}>
+              <Show when={s().hosts.calibre?.problem}>
                 {(problem) => <span class="mt-0.5 block text-warning">{problem()}</span>}
               </Show>
             </>
@@ -577,12 +577,12 @@ function CalibrePlugins(props: { status: PluginsStatus; onChange(s: PluginsStatu
           <Select
             class="h-7 pl-2 text-xs"
             aria-label="Where plugins run"
-            value={s().runtime.hostChoice}
+            value={s().hosts.hostChoice}
             onChange={(e) => {
               const choice = e.currentTarget.value as PluginHostChoice;
               api.setPluginHost(choice).then(
-                (runtime) => {
-                  setRuntime(runtime);
+                (hosts) => {
+                  setHosts(hosts);
                   void refreshGuiPlugins();
                 },
                 (err) => toast(errorMessage(err), { error: true }),
@@ -592,22 +592,18 @@ function CalibrePlugins(props: { status: PluginsStatus; onChange(s: PluginsStatu
             <option value="auto">Whichever is there</option>
             <option value="calibre">Your installed calibre</option>
             <option value="downloaded">calibre downloaded by Magnitide</option>
-            <option value="runtime">Magnitide’s runtime</option>
+            <option value="estuary">Estuary (no calibre needed)</option>
           </Select>
         </Row>
-        <Show when={s().runtime.hostChoice === 'auto' || s().runtime.hostChoice === 'downloaded'}>
+        <Show when={s().hosts.hostChoice === 'auto' || s().hosts.hostChoice === 'downloaded'}>
           <Row
             stacked
             label="Downloaded calibre"
-            description={<PluginCalibreDownload status={s().runtime} onChange={setRuntime} />}
+            description={<PluginCalibreDownload status={s().hosts} onChange={setHosts} />}
           />
         </Show>
-        <Show when={s().runtime.hostChoice === 'auto' || s().runtime.hostChoice === 'runtime'}>
-          <Row
-            stacked
-            label="Plugin runtime"
-            description={<PluginRuntime status={s().runtime} onChange={setRuntime} />}
-          />
+        <Show when={s().hosts.hostChoice === 'auto' || s().hosts.hostChoice === 'estuary'}>
+          <Row stacked label="Estuary" description={<PluginEstuary status={s().hosts} onChange={setHosts} />} />
         </Show>
         <Row
           stacked
@@ -631,7 +627,7 @@ function CalibrePlugins(props: { status: PluginsStatus; onChange(s: PluginsStatu
         </Row>
       </div>
 
-      <Show when={s().runtime.host && s().plugins.length}>
+      <Show when={s().hosts.host && s().plugins.length}>
         <div class="mt-3 px-1">
           <button
             class={`${linkButton} text-xs`}

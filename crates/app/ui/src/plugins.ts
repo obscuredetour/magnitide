@@ -1,8 +1,8 @@
 // Plugins with menus: Magnitide's own library actions, and GUI calibre
 // plugins (the book menu's Plugins submenu and the toolbar's Plugins
 // button). A library action runs in the app on the open library and
-// reports when it's done; a calibre plugin runs in Magnitide's plugin
-// runtime on a copy of the library, and when it's done what it changed is
+// reports when it's done; a calibre plugin runs in its host (a calibre or
+// Estuary) on a copy of the library, and when it's done what it changed is
 // applied here. Either is a job (see crates/app/src/plugins.rs).
 
 import { createSignal } from 'solid-js';
@@ -12,7 +12,7 @@ import {
   type ApplyReport,
   coverChanged,
   errorMessage,
-  isRuntimeMissing,
+  isHostMissing,
   onPluginAsk,
   onPluginDone,
   onPluginJob,
@@ -36,9 +36,9 @@ import { convertBooks, deleteBooks } from './transfer';
 import { confirm } from './confirm';
 import { askUser } from './question';
 
-/** The GUI plugins that are on, by name; known without starting the runtime. */
+/** The GUI plugins that are on, by name; known without starting a host. */
 const [guiPlugins, setGuiPlugins] = createSignal<string[]>([]);
-/** Their menus, once loaded; null until then (loading starts the plugin runtime). */
+/** Their menus, once loaded; null until then (loading starts the host). */
 const [pluginMenus, setPluginMenus] = createSignal<PluginMenus | null>(null);
 /** Magnitide's own library actions that are on, with their menus. */
 const [nativeActions, setNativeActions] = createSignal<NativePlugin[]>([]);
@@ -87,7 +87,7 @@ export async function runNativeAction(plugin: NativePlugin, item: NativeMenuItem
   }
 }
 
-/** Load the plugins' menus, starting the plugin runtime the first time. */
+/** Load the plugins' menus, starting the host the first time. */
 export function loadPluginMenus(): Promise<void> {
   if (!loading) {
     loading = api
@@ -131,7 +131,7 @@ export async function runPlugin(
     await api.runPlugin(menu.plugin, item ? item.path : [], texts, ids, query);
   } catch (err) {
     running.delete(menu.plugin);
-    job.finish(isRuntimeMissing(err) ? `${errorMessage(err)}` : errorMessage(err), {
+    job.finish(isHostMissing(err) ? `${errorMessage(err)}` : errorMessage(err), {
       error: true,
     });
   }
@@ -221,7 +221,7 @@ export function initPlugins(): void {
   });
   void onPluginSearch((text) => search(text));
   void onPluginOpenBook((b) => void openBook(b.id, b.format));
-  // Jobs a plugin runs in the plugin runtime (calibre's job manager) show in the job bar.
+  // Jobs a plugin runs in the host (calibre's job manager) show in the job bar.
   const hostJobs = new Map<number, JobHandle>();
   void onPluginJob((j) => {
     const title = j.plugin ?? 'Plugin';

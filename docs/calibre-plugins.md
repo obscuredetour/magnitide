@@ -80,30 +80,30 @@ same protocol, shadow library, window stand-in and hooks:
   350 MB. Verified on macOS and Linux (2026-10-07); the Windows unpack
   hasn't been tried yet. `scripts/calibre-release/pin.py <version>` moves to a newer
   calibre; `--rust-table` prints the table for `calibre.rs`.
-- **Magnitide's own plugin runtime** (for people who want nothing of
-  calibre): the same host package on a downloaded CPython + PyQt6, with a
+- **Estuary, Magnitide's compatibility layer** (for people who want nothing
+  of calibre): the same host package on a downloaded CPython + PyQt6, with a
   `calibre` package written for Magnitide (`crates/plugins/python/compat`)
   that mirrors calibre's API closely enough that plugins written for
   calibre 5 to 9 load and run.
 
 "Whichever is there" (the default) takes them in that order. The host
-tests and the plugin corpus run under the calibre hosts and the runtime
-(`MAGNITIDE_PLUGIN_HOST=calibre|runtime`), which makes calibre the oracle
+tests and the plugin corpus run under the calibre hosts and Estuary
+(`MAGNITIDE_PLUGIN_HOST=calibre`), which makes calibre the oracle
 for the compat package: a plugin that works there and fails on ours points
 at a gap. `MAGNITIDE_TEST_CALIBRE_DOWNLOAD=1` runs a test that downloads
 calibre and hosts a plugin in it.
 
-1. **Runtime: Magnitide's own.** A CPython 3.14 from python-build-standalone
+1. **Estuary's Python: Magnitide's own.** A CPython 3.14 from python-build-standalone
    with PyQt6 (Core, Gui, Widgets, Network, PrintSupport, Svg, OpenGL, DBus),
    lxml, Pillow, regex, html5lib, css-parser, BeautifulSoup, mechanize,
    dateutil, charset-normalizer, pypdf, html2text, markdown, msgpack, apsw and
    xxhash, stripped to ~170 MB on disk (~60 MB downloaded). Built per
-   platform by `.github/workflows/plugin-runtime.yml`
-   (`scripts/plugin-runtime/`), attached to the GitHub release
-   `plugin-runtime-v<N>`, and downloaded by Magnitide on request (Settings ›
+   platform by `.github/workflows/estuary.yml`
+   (`scripts/estuary/`), attached to the GitHub release
+   `estuary-v<N>`, and downloaded by Magnitide on request (Settings ›
    Plugins); the archive's sha256 is compiled into the app (`RELEASES` in
-   `crates/plugins/src/runtime.rs`), the download resumes, and the install
-   is atomic (`<app local data>/plugin-runtime/<N>/`).
+   `crates/plugins/src/estuary.rs`), the download resumes, and the install
+   is atomic (`<app local data>/plugin-hosts/estuary/<N>/`).
 2. **The `calibre` package: Magnitide's.** `crates/plugins/python/` is
    embedded in the binary (`include_dir!`) and extracted beside the app's
    settings. It mirrors calibre 9.15's public API (`numeric_version` is
@@ -191,27 +191,27 @@ plugins do).
 
 ### Developing
 
-- `scripts/plugin-runtime/dev.sh` builds the runtime for this machine into
-  `target/plugin-runtime/current` (needs Python 3.14 and uv);
-  `scripts/plugin-runtime/fetch.sh` downloads a released one instead.
-  `MAGNITIDE_PLUGIN_RUNTIME=<dir>` overrides where the app and tests look.
+- `scripts/estuary/dev.sh` builds Estuary for this machine into
+  `target/estuary/current` (needs Python 3.14 and uv);
+  `scripts/estuary/fetch.sh` downloads a released one instead.
+  `MAGNITIDE_ESTUARY=<dir>` overrides where the app and tests look.
 - `MAGNITIDE_COMPAT_DIR=crates/plugins/python` makes the app use the compat
   package from the source tree (no Rust rebuild for Python edits).
 - `cargo test -p magnitide-plugins --test host` runs the host end to end
-  with the fixture plugins (skipped without a runtime;
-  `MAGNITIDE_REQUIRE_PLUGIN_RUNTIME=1` makes that a failure, as on CI).
+  with the fixture plugins (skipped without Estuary;
+  `MAGNITIDE_REQUIRE_ESTUARY=1` makes that a failure, as on CI).
   `MAGNITIDE_PLUGIN_HOST=calibre` runs the same tests inside an installed
   calibre (CI installs calibre's Linux build for it); the corpus honours it
   too and then writes `docs/calibre-plugins-coverage-calibre.md`.
 - `crates/plugins/python-tests/` is the compat package's own pytest suite
   (`QT_QPA_PLATFORM=offscreen pytest crates/plugins/python-tests`, with the
-  runtime's wheels on the path); `ruff` lints and formats the Python.
-- A plugin that needs a Python package the runtime doesn't ship can have it
+  Estuary's wheels on the path); `ruff` lints and formats the Python.
+- A plugin that needs a Python package Estuary doesn't ship can have it
   installed into `<app config>/calibre-plugins/site-packages` (for example
   `python3.14 -m pip install --target <that folder> <package>`); the host
-  adds that folder to its path. The runtime ships `pycryptodome` (plugins
+  adds that folder to its path. Estuary ships `pycryptodome` (plugins
   that sign or encrypt books import `Crypto`/`Cryptodome`) from version 2.
-- Linux needs Qt's xcb libraries (see `scripts/plugin-runtime/README.md`);
+- Linux needs Qt's xcb libraries (see `scripts/estuary/README.md`);
   `python -I -m magnitide_host doctor` reports what's missing, as Settings
   does.
 
@@ -237,7 +237,7 @@ reverting is a `git revert`.
    adds a book, reports status, opens a dialog, hands over to Edit Metadata,
    Remove Books, Find Metadata and conversion, searches, views, and runs a
    job.
-3. **Magnitide's own runtime and `calibre` package** (done 2026-10-07):
+3. **Estuary: Magnitide's own Python and `calibre` package** (done 2026-10-07):
    replaced the installed-calibre host entirely; the plugin corpus above
    loads.
 4. **The other plugin kinds** (done 2026-10-07): file-type, metadata
@@ -266,9 +266,11 @@ Still to do:
   writes through the link into the library. None of the surveyed plugins
   do, but it isn't prevented.
 - Windows: links need Developer Mode there; without it files are copied.
-- The runtime release (`plugin-runtime-v1`, published 2026-10-07, hashes in
-  `runtime.rs`) sits on a private repository, so the app's download gets a
-  404 until the repository or the release is public. Meanwhile Settings ›
+- Estuary's first release under its own name is `estuary-v3` (versions 1
+  and 2 were published as `plugin-runtime-v1` and `-v2`); until it's made,
+  `RELEASES` in `estuary.rs` is empty and the host tests are skipped. It
+  sits on a private repository, so the app's download gets a 404 until the
+  repository or the release is public. Meanwhile Settings ›
   Plugins › "Install from file…" installs the archive downloaded by hand
   from the release (only the one for this computer, by hash); `fetch.sh`
   and CI use `gh` with a token.

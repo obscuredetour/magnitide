@@ -1,4 +1,4 @@
-//! The plugin host process: the plugin runtime's Python running
+//! The plugin host process: a calibre's Python or Estuary's running
 //! `magnitide_host` (from the compat package), talking JSON lines.
 //!
 //! One process serves every request (plugins keep state between calls, such
@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use crate::runtime::Runtime;
+use crate::estuary::Estuary;
 
 /// Lines of the host's log kept (stderr: calibre's and plugins' output, tracebacks).
 const LOG_LINES: usize = 400;
@@ -27,7 +27,7 @@ const LOG_LINES: usize = 400;
 /// argument. The directory goes on `sys.path` this way, not through
 /// PYTHONPATH, because the interpreter runs with `-I` (isolated: the user's
 /// PYTHON* variables and site-packages are ignored).
-/// Run in the plugin runtime: `<python dir>/host` and `<python dir>/compat`
+/// Run in Estuary: `<python dir>/host` and `<python dir>/compat`
 /// on the path (the host package, then our `calibre`), then the host.
 const BOOTSTRAP: &str = "import sys, runpy, os; d = sys.argv.pop(1); \
 sys.path[0:0] = [os.path.join(d, 'host'), os.path.join(d, 'compat')]; \
@@ -61,22 +61,22 @@ sys.path.insert(0, os.path.join(d, 'host')); \
 runpy.run_module('magnitide_host', run_name='__main__', alter_sys=True)";
 
 impl Host {
-    /// Start the host in `runtime`, with the compat package at `compat_dir`
+    /// Start the host in `estuary`, with the compat package at `compat_dir`
     /// and plugin settings kept in `config_dir` (never calibre's own).
     pub fn start(
-        runtime: &Runtime,
+        estuary: &Estuary,
         compat_dir: &Path,
         config_dir: &Path,
         on_event: Option<EventHandler>,
     ) -> Result<Self, String> {
-        let mut cmd = Command::new(&runtime.python);
+        let mut cmd = Command::new(&estuary.python);
         cmd.args(["-I", "-X", "utf8", "-u", "-c", BOOTSTRAP])
             .arg(compat_dir)
-            .env("MAGNITIDE_HOST_MODE", "runtime")
-            // A system Qt must not leak into the runtime's.
+            .env("MAGNITIDE_HOST_MODE", "estuary")
+            // A system Qt must not leak into Estuary's.
             .env_remove("QT_PLUGIN_PATH")
             .env_remove("QT_QPA_PLATFORMTHEME");
-        Self::spawn(cmd, config_dir, on_event, &format!("the plugin runtime ({})", runtime.python.display()))
+        Self::spawn(cmd, config_dir, on_event, &format!("Estuary ({})", estuary.python.display()))
     }
 
     /// Start the host inside an installed calibre, through its

@@ -11,7 +11,7 @@ from calibre.utils.ipc import worker_command
 
 def exe_path(exe_name):
     """What calibre runs for `calibre-parallel`, `calibre-debug` and friends:
-    here always the runtime's interpreter with our worker."""
+    here always Estuary's interpreter with our worker."""
     return worker_command()
 
 

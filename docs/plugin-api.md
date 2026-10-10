@@ -7,7 +7,7 @@ language with a WIT toolchain, and does only what its manifest declares.
 
 This is the forward-looking track beside the calibre plugin host
 ([calibre-plugins.md](calibre-plugins.md)): calibre plugins run unchanged in
-a calibre or in Magnitide's runtime; Magnitide plugins are written against
+a calibre or in Estuary, Magnitide's compatibility layer; Magnitide plugins are written against
 Magnitide directly, are a small fraction of the size, start in
 milliseconds, and work the same on the desktop and on a server. Porting a
 calibre metadata source is mostly deleting code: the lookup, the record and

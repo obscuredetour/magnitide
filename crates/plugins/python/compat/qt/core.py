@@ -3,7 +3,7 @@ name of PyQt6's QtCore, QtGui, QtWidgets, QtNetwork, QtPrintSupport, QtSvg,
 QtSvgWidgets, QtOpenGL and QtOpenGLWidgets, plus `sip`.
 
 Names resolve on first use (`__getattr__`), so `from qt.core import QDialog`
-loads only QtWidgets, and a module the runtime doesn't ship fails only when a
+loads only QtWidgets, and a module Estuary doesn't ship fails only when a
 name from it is asked for.
 """
 
@@ -105,7 +105,7 @@ def __getattr__(name):
 
         g['sip'] = sip
         return sip
-    raise AttributeError(f"qt.core has no {name!r} (it isn't in the Qt modules Magnitide's plugin runtime ships)")
+    raise AttributeError(f"qt.core has no {name!r} (it isn't in the Qt modules Estuary ships)")
 
 
 def __dir__():

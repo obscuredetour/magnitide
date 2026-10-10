@@ -21,7 +21,7 @@ def gui_socket_address():
 
 
 def worker_script():
-    """The script the runtime's interpreter runs as a worker."""
+    """The script Estuary's interpreter runs as a worker."""
     here = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     return os.path.join(os.path.dirname(here), 'magnitide_host', 'run-calibre-worker.py')
 

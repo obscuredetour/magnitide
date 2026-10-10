@@ -92,7 +92,7 @@ impl Plugins {
             return ImportOutcome::Unchanged;
         }
         if self.hooks_blocked() {
-            return ImportOutcome::Failed("the plugin runtime couldn't start earlier; not tried again yet".into());
+            return ImportOutcome::Failed("calibre plugins couldn't start earlier; not tried again yet".into());
         }
         let host = match self.host() {
             Ok(h) => h,

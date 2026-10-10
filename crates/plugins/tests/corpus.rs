@@ -5,7 +5,7 @@
 //! host on a small shadow library with their menus. The outcome is written
 //! to docs/calibre-plugins-coverage.md.
 //!
-//! Runs only with MAGNITIDE_PLUGIN_CORPUS set (and a plugin runtime, as
+//! Runs only with MAGNITIDE_PLUGIN_CORPUS set (and Estuary, as
 //! tests/host.rs); plugins not downloaded are skipped. Plugins failing to
 //! load is reported, not a failure: the table is the point.
 
@@ -93,13 +93,13 @@ fn real_plugins_install_and_load() {
         return;
     }
     let dir = tempfile::tempdir().unwrap();
-    let plugins = Plugins::new(dir.path().join("calibre-plugins"), dir.path().join("runtime"));
+    let plugins = Plugins::new(dir.path().join("calibre-plugins"), dir.path().join("hosts"));
     // MAGNITIDE_PLUGIN_HOST=calibre runs the corpus inside an installed calibre instead.
     let in_calibre = std::env::var("MAGNITIDE_PLUGIN_HOST").as_deref() == Ok("calibre");
     if in_calibre {
         assert!(magnitide_plugins::calibre::find_installed().is_some(), "no installed calibre");
     } else {
-        assert!(plugins.runtime().is_some(), "no plugin runtime (run scripts/plugin-runtime/dev.sh)");
+        assert!(plugins.estuary().is_some(), "no Estuary (run scripts/estuary/dev.sh)");
     }
     if std::env::var_os("MAGNITIDE_COMPAT_DIR").is_none() {
         unsafe { std::env::set_var("MAGNITIDE_COMPAT_DIR", Path::new(env!("CARGO_MANIFEST_DIR")).join("python")) };
@@ -122,12 +122,12 @@ fn real_plugins_install_and_load() {
             continue;
         }
         // Each plugin alone in the host, so one failing to load doesn't hide another.
-        let plugins = Plugins::new(dir.path().join(format!("plugins-{}", outcomes.len())), dir.path().join("runtime"));
+        let plugins = Plugins::new(dir.path().join(format!("plugins-{}", outcomes.len())), dir.path().join("hosts"));
         plugins
             .set_host_choice(if in_calibre {
                 magnitide_plugins::HostChoice::Calibre
             } else {
-                magnitide_plugins::HostChoice::Runtime
+                magnitide_plugins::HostChoice::Estuary
             })
             .unwrap();
         let mut outcome = Outcome {

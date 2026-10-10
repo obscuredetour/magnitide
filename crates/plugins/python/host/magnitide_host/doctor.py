@@ -1,4 +1,4 @@
-"""`python -m magnitide_host doctor`: can the runtime start Qt here? Prints
+"""`python -m magnitide_host doctor`: can Estuary start Qt here? Prints
 JSON: {"ok": bool, "python": ..., "qt": ..., "missing": [...], "error": ...}.
 On Linux, a Qt that can't load its platform plugin usually lacks a system
 library; the missing ones are listed from `ldd` so Settings can name them."""

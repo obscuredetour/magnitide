@@ -1,8 +1,8 @@
-//! The plugin host in the plugin runtime, with the test metadata source and
-//! the test GUI plugin in tests/fixtures. Needs a runtime: the development
-//! build in target/plugin-runtime/current (scripts/plugin-runtime/dev.sh) or
-//! MAGNITIDE_PLUGIN_RUNTIME. Skipped with a note otherwise, unless
-//! MAGNITIDE_REQUIRE_PLUGIN_RUNTIME is set (CI), when that's a failure.
+//! The plugin host in Estuary, with the test metadata source and the test
+//! GUI plugin in tests/fixtures. Needs Estuary: the development build in
+//! target/estuary/current (scripts/estuary/dev.sh) or MAGNITIDE_ESTUARY.
+//! Skipped with a note otherwise, unless MAGNITIDE_REQUIRE_ESTUARY is set
+//! (CI), when that's a failure.
 
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -20,16 +20,16 @@ use magnitide_plugins::{Hook, HostChoice, PluginKind, Plugins};
 use magnitide_sources::Lookup;
 use serde_json::{Value, json};
 
-/// A `Plugins` in `dir` using the runtime found for development, or None
+/// A `Plugins` in `dir` using the Estuary found for development, or None
 /// (and a note) when there isn't one.
 fn plugins_in(dir: &Path) -> Option<Plugins> {
-    let plugins = Plugins::new(dir.to_path_buf(), dir.join("runtime"));
-    if plugins.runtime().is_none() {
+    let plugins = Plugins::new(dir.to_path_buf(), dir.join("hosts"));
+    if plugins.estuary().is_none() {
         assert!(
-            std::env::var_os("MAGNITIDE_REQUIRE_PLUGIN_RUNTIME").is_none(),
-            "no plugin runtime found, and MAGNITIDE_REQUIRE_PLUGIN_RUNTIME is set"
+            std::env::var_os("MAGNITIDE_REQUIRE_ESTUARY").is_none(),
+            "no Estuary found, and MAGNITIDE_REQUIRE_ESTUARY is set"
         );
-        eprintln!("skipped: no plugin runtime here (run scripts/plugin-runtime/dev.sh)");
+        eprintln!("skipped: no Estuary here (run scripts/estuary/dev.sh)");
         return None;
     }
     // The compat package from the source tree, so Python edits are tested directly.
@@ -40,7 +40,7 @@ fn plugins_in(dir: &Path) -> Option<Plugins> {
     // The host's `test.exec`, for driving dialogs as a user would.
     unsafe { std::env::set_var("MAGNITIDE_TEST_HOOKS", "1") };
     // MAGNITIDE_PLUGIN_HOST=calibre runs the same tests inside an installed
-    // calibre (the oracle for the compat package); =runtime forces ours.
+    // calibre (the oracle for the compat package); otherwise Estuary.
     match std::env::var("MAGNITIDE_PLUGIN_HOST").as_deref() {
         Ok("calibre") => {
             let install = magnitide_plugins::calibre::find_installed();
@@ -49,7 +49,7 @@ fn plugins_in(dir: &Path) -> Option<Plugins> {
         }
         // Explicit, so a machine with calibre installed doesn't change what
         // `cargo test` covers (Auto would pick calibre there).
-        _ => plugins.set_host_choice(HostChoice::Runtime).unwrap(),
+        _ => plugins.set_host_choice(HostChoice::Estuary).unwrap(),
     }
     Some(plugins)
 }
@@ -84,7 +84,7 @@ fn test_plugin_zip(dir: &Path) -> PathBuf {
 fn metadata_source_end_to_end() {
     let dir = tempfile::tempdir().unwrap();
     let Some(plugins) = plugins_in(&dir.path().join("calibre-plugins")) else { return };
-    let status = plugins.runtime_status();
+    let status = plugins.host_status();
     assert!(status.installed, "{status:?}");
     assert_eq!(status.compat, "9.15.0");
 
@@ -638,7 +638,7 @@ fn library_closed_plugins_run_when_a_host_is_up() {
     let note = shadow.library().join("closed-by-plugin.txt");
 
     // No host running (a fresh start, with the plugin installed): nothing is started for it.
-    let fresh = Plugins::new(dir.path().join("calibre-plugins"), dir.path().join("calibre-plugins/runtime"));
+    let fresh = Plugins::new(dir.path().join("calibre-plugins"), dir.path().join("calibre-plugins/hosts"));
     assert_eq!(fresh.list().len(), 1);
     assert!(fresh.library_closed(&shadow.library()).unwrap().is_empty());
     assert!(!note.exists());
@@ -787,5 +787,5 @@ fn downloaded_calibre_hosts_plugins() {
     let answers = plugins.identify(&Lookup { title: "Project Hail Mary".into(), ..Default::default() });
     assert_eq!(answers[0].1.as_ref().unwrap()[0].title, "Project Hail Mary");
     let hello = plugins.host().unwrap().call("hello", json!({}), Duration::from_secs(30)).unwrap();
-    assert_eq!(hello["runtime"], "calibre");
+    assert_eq!(hello["host"], "calibre");
 }
