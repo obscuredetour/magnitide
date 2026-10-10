@@ -27,6 +27,7 @@
   },
   "bundle": {
     "active": true,
+    "category": "Productivity",
     "macOS": {
       "minimumSystemVersion": "13.0",
       "entitlements": "Entitlements.plist"

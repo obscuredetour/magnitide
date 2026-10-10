@@ -1,0 +1,51 @@
+# Maintainer: Jamie Summers <25191266+obscuredetour@users.noreply.github.com>
+#
+# Magnitide's release .deb, repackaged for Arch. The AUR's copy lives at
+# aur.archlinux.org/magnitide-bin.git; this one is its source (see
+# packaging/aur/README.md). scripts/aur-update.sh sets pkgver and the checksum
+# for a release.
+
+pkgname=magnitide-bin
+pkgver=0.7.0
+pkgrel=1
+pkgdesc='A fast, modern ebook library manager that starts from the calibre library you already have'
+arch=('x86_64')
+url='https://magnitide.com'
+license=('GPL-3.0-or-later')
+# What the binary links (namcap's list), and the icon theme its icons go in.
+depends=(
+  'cairo'
+  'dbus'
+  'gdk-pixbuf2'
+  'glib2'
+  'glibc'
+  'gtk3'
+  'hicolor-icon-theme'
+  'libgcc'
+  'libsoup3'
+  'webkit2gtk-4.1'
+)
+optdepends=(
+  'calibre: convert to MOBI, PDF and other formats, and run calibre plugins in it'
+  'xdg-utils: open books in their default app'
+)
+provides=('magnitide')
+conflicts=('magnitide')
+# A repackaged binary: stripped as usual, with no separate -debug package.
+options=('!debug')
+source=("https://github.com/obscuredetour/magnitide/releases/download/v${pkgver}/Magnitide_${pkgver}_amd64.deb")
+sha256sums=('c965f3833aa2f09d2fc9ab7e072ea000d954b51955afade7d9a4ffaa12eadf0b')
+
+package() {
+  bsdtar -xf data.tar.gz -C "${pkgdir}"
+
+  # Tauri puts the 256 px icon in "256x256@2", which isn't a hicolor size.
+  local icons="${pkgdir}/usr/share/icons/hicolor"
+  if [[ -d "${icons}/256x256@2" ]]; then
+    install -Dm644 "${icons}/256x256@2/apps/magnitide.png" "${icons}/256x256/apps/magnitide.png"
+    rm -r "${icons}/256x256@2"
+  fi
+
+  # 0.7.0's desktop entry has no category, so menus file it under Other.
+  sed -i 's/^Categories=$/Categories=Office;/' "${pkgdir}/usr/share/applications/Magnitide.desktop"
+}

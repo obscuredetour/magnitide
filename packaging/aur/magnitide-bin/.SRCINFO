@@ -1,0 +1,26 @@
+pkgbase = magnitide-bin
+	pkgdesc = A fast, modern ebook library manager that starts from the calibre library you already have
+	pkgver = 0.7.0
+	pkgrel = 1
+	url = https://magnitide.com
+	arch = x86_64
+	license = GPL-3.0-or-later
+	depends = cairo
+	depends = dbus
+	depends = gdk-pixbuf2
+	depends = glib2
+	depends = glibc
+	depends = gtk3
+	depends = hicolor-icon-theme
+	depends = libgcc
+	depends = libsoup3
+	depends = webkit2gtk-4.1
+	optdepends = calibre: convert to MOBI, PDF and other formats, and run calibre plugins in it
+	optdepends = xdg-utils: open books in their default app
+	provides = magnitide
+	conflicts = magnitide
+	options = !debug
+	source = https://github.com/obscuredetour/magnitide/releases/download/v0.7.0/Magnitide_0.7.0_amd64.deb
+	sha256sums = c965f3833aa2f09d2fc9ab7e072ea000d954b51955afade7d9a4ffaa12eadf0b
+
+pkgname = magnitide-bin
