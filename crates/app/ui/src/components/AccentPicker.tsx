@@ -1,6 +1,6 @@
 import { For, Show } from 'solid-js';
 
-import { accentChoice, currentAccents, currentTheme, setAccent, themeAttrs } from '../theme';
+import { accentChoice, currentAccents, currentTheme, ownAccent, setAccent, themeAttrs } from '../theme';
 
 // A ring, not an outline: `outline-none` would keep any outline from showing.
 const SWATCH =
@@ -17,9 +17,9 @@ function Dot(props: { on: string }) {
 }
 
 /**
- * The accents the theme in use offers, as a row of swatches, plus the
- * theme's own. `menu` makes them menu items (inside a Menu) rather than
- * radio buttons.
+ * The theme in use's own accent, then the others it offers, as a row of
+ * swatches (its own isn't repeated among them). `menu` makes them menu items
+ * (inside a Menu) rather than radio buttons.
  */
 export function AccentPicker(props: { menu?: boolean }) {
   const role = props.menu ? 'menuitemradio' : 'radio';
@@ -35,8 +35,8 @@ export function AccentPicker(props: { menu?: boolean }) {
         aria-checked={accentChoice() === null}
         tabIndex={props.menu ? -1 : 0}
         class={SWATCH}
-        title="The theme's own"
-        aria-label="The theme's own accent"
+        title={ownAccent() ? `${ownAccent()!.label} (the theme's own)` : "The theme's own"}
+        aria-label={ownAccent() ? `${ownAccent()!.label}, the theme's own accent` : "The theme's own accent"}
         onClick={() => setAccent(null)}
       >
         {/* Scoped to the theme alone, so it shows the theme's accent, not the chosen one. */}

@@ -49,21 +49,35 @@ export type Theme = {
   appearance: 'light' | 'dark';
   /** What the accent picker offers. */
   accents: readonly Accent[];
+  /** The theme's own accent (what `--accent` is set to), if it's one of `accents`. */
+  own?: string;
   /** Add-ons: who made it and the file it came from. */
   author?: string | null;
   file?: string;
 };
 
 export const BUILTIN_THEMES: readonly Theme[] = [
-  { id: 'light', label: 'Light', appearance: 'light', accents: MAGNITIDE_ACCENTS },
-  { id: 'dark', label: 'Dark', appearance: 'dark', accents: MAGNITIDE_ACCENTS },
-  { id: 'sepia', label: 'Sepia', appearance: 'light', accents: MAGNITIDE_ACCENTS },
-  { id: 'catppuccin-latte', label: 'Catppuccin Latte', appearance: 'light', accents: CATPPUCCIN_ACCENTS },
-  { id: 'catppuccin-frappe', label: 'Catppuccin Frappé', appearance: 'dark', accents: CATPPUCCIN_ACCENTS },
-  { id: 'catppuccin-macchiato', label: 'Catppuccin Macchiato', appearance: 'dark', accents: CATPPUCCIN_ACCENTS },
-  { id: 'catppuccin-mocha', label: 'Catppuccin Mocha', appearance: 'dark', accents: CATPPUCCIN_ACCENTS },
-  { id: 'dracula', label: 'Dracula', appearance: 'dark', accents: DRACULA_ACCENTS },
-  { id: 'alucard', label: 'Alucard', appearance: 'light', accents: DRACULA_ACCENTS },
+  { id: 'light', label: 'Light', appearance: 'light', accents: MAGNITIDE_ACCENTS, own: 'coral' },
+  { id: 'dark', label: 'Dark', appearance: 'dark', accents: MAGNITIDE_ACCENTS, own: 'coral' },
+  { id: 'sepia', label: 'Sepia', appearance: 'light', accents: MAGNITIDE_ACCENTS, own: 'peach' },
+  { id: 'catppuccin-latte', label: 'Catppuccin Latte', appearance: 'light', accents: CATPPUCCIN_ACCENTS, own: 'mauve' },
+  {
+    id: 'catppuccin-frappe',
+    label: 'Catppuccin Frappé',
+    appearance: 'dark',
+    accents: CATPPUCCIN_ACCENTS,
+    own: 'mauve',
+  },
+  {
+    id: 'catppuccin-macchiato',
+    label: 'Catppuccin Macchiato',
+    appearance: 'dark',
+    accents: CATPPUCCIN_ACCENTS,
+    own: 'mauve',
+  },
+  { id: 'catppuccin-mocha', label: 'Catppuccin Mocha', appearance: 'dark', accents: CATPPUCCIN_ACCENTS, own: 'mauve' },
+  { id: 'dracula', label: 'Dracula', appearance: 'dark', accents: DRACULA_ACCENTS, own: 'mauve' },
+  { id: 'alucard', label: 'Alucard', appearance: 'light', accents: DRACULA_ACCENTS, own: 'mauve' },
 ];
 
 // ---------- Add-ons (theme files; see docs/themes.md) ----------
@@ -78,6 +92,8 @@ function addonTheme(a: ThemeAddon): Theme {
     label: a.name,
     appearance: a.appearance === 'light' ? 'light' : 'dark',
     accents: a.accents,
+    // An accent role naming a palette colour is `var(--pine)`; without one it's blue (roles.css).
+    own: /^var\(--([a-z][a-z0-9-]*)\)$/.exec(a.variables.find(([k]) => k === 'accent')?.[1] ?? 'var(--blue)')?.[1],
     author: a.author,
     file: a.file,
   };
@@ -162,8 +178,19 @@ export const currentTheme = (): string => {
   return systemIsDark() ? 'dark' : 'light';
 };
 
-/** The accents the theme in use offers. */
-export const currentAccents = (): readonly Accent[] => themes().find((t) => t.id === currentTheme())?.accents ?? [];
+const current = (): Theme | undefined => themes().find((t) => t.id === currentTheme());
+
+/** The theme in use's own accent, when it's one the picker would offer. */
+export const ownAccent = (): Accent | undefined => {
+  const t = current();
+  return t?.accents.find((a) => a.name === t.own);
+};
+
+/** The accents the theme in use offers besides its own (which the picker shows first, as the theme's). */
+export const currentAccents = (): readonly Accent[] => {
+  const t = current();
+  return t?.accents.filter((a) => a.name !== t.own) ?? [];
+};
 
 /** The accent chosen for the theme in use, or null for the theme's own. */
 export const accentChoice = (): string | null => {
