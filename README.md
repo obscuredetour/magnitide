@@ -42,7 +42,7 @@ The calibre plugins you rely on run unchanged, in whichever host you choose in S
 
 - **Your already installed calibre**
 - **A calibre (latest) Magnitide downloads for you, unpacked and used only by Magnitide**
-- **(Experimental) Magnitide's own plugin runtime, which needs no calibre at all. This is still under development and may not support all plugins.**
+- **(Experimental) Estuary, Magnitide's compatibility layer for calibre plugins, which needs no calibre at all. This is still under development and may not support all plugins.**
 
 Metadata sources join Find Metadata. Toolbar plugins work on the selected books from the Plugins button or the book menu (right click); their windows open as in calibre, and what they change comes back into the library through Magnitide's own editing.
 File-type plugins run when books are added, metadata readers and writers handle their formats, and plugins' own settings open from Settings. Conversion, catalog, device, store, viewer and editor plugins aren't supported ([docs/calibre-plugins.md](docs/calibre-plugins.md)).
@@ -54,7 +54,7 @@ Magnitide is in active development: the [roadmap](docs/roadmap.md) tracks what's
 - [docs/architecture.md](docs/architecture.md): how the pieces fit, and the decisions behind them
 - [docs/plugin-api.md](docs/plugin-api.md): Magnitide's plugin API, the sandbox, the `.mgp` format, writing a plugin
 - [docs/calibre-plugins.md](docs/calibre-plugins.md): calibre plugins: the three hosts, what each kind of plugin gets,
-  the compatibility package, the plugin runtime; [coverage](docs/calibre-plugins-coverage.md) of real plugins
+  the compatibility package, Estuary; [coverage](docs/calibre-plugins-coverage.md) of real plugins
 - [docs/themes.md](docs/themes.md): themes and add-on theme files
 - [docs/roadmap.md](docs/roadmap.md): what's done and what's next
 
@@ -66,7 +66,7 @@ Magnitide is in active development: the [roadmap](docs/roadmap.md) tracks what's
 | [`core`](crates/core)                     | `magnitide-core`: the native Magnitide library (schema, migrations, edits), calibre import, adding book files with EPUB metadata. No Tauri code, so the planned server can share it                                                                               |
 | [`catalog`](crates/catalog)               | `magnitide-catalog`: the in-memory book model, search and sort that every kind of library loads into                                                                                                                                                              |
 | [`sources`](crates/sources)               | `magnitide-sources`: metadata lookup from Open Library and Google Books, on request only                                                                                                                                                                          |
-| [`plugins`](crates/plugins)               | `magnitide-plugins`: runs calibre plugins through one of three hosts: the user's installed calibre, a calibre Magnitide downloads, or Magnitide's own plugin runtime (CPython + PyQt6, downloaded once) with its own `calibre` compatibility package in `python/` |
+| [`plugins`](crates/plugins)               | `magnitide-plugins`: runs calibre plugins through one of three hosts: the user's installed calibre, a calibre Magnitide downloads, or Estuary, Magnitide's compatibility layer (CPython + PyQt6, downloaded once, with its own `calibre` compatibility package in `python/`) |
 | [`plugins-wasm`](crates/plugins-wasm)     | `magnitide-plugins-wasm`: runs Magnitide's own plugins, WebAssembly components on the `magnitide:plugin` API, sandboxed in wasmtime ([docs/plugin-api.md](docs/plugin-api.md))                                                                                    |
 | [`plugin-sdk`](crates/plugin-sdk)         | `magnitide-plugin-sdk`: the API's WIT definitions and the Rust bindings for writing a plugin; [`plugins/`](plugins) holds the template, the Open Library example and the Goodreads port                                                                           |
 | [`server`](crates/server)                 | `magnitide-server`: serves a library read-only on the local network, as a plain web page for e-reader browsers and an OPDS catalogue for reading apps                                                                                                             |
@@ -74,8 +74,8 @@ Magnitide is in active development: the [roadmap](docs/roadmap.md) tracks what's
 
 Beside the crates: [`plugins/`](plugins) holds Magnitide plugins written in Rust (the template, the Open Library
 example and the Goodreads port, each its own crate); [`scripts/`](scripts) holds `new-plugin.sh` and `build-plugin.sh`
-for them, [`scripts/plugin-runtime/`](scripts/plugin-runtime) builds and fetches the plugin runtime that CI publishes
-as `plugin-runtime-v<N>` releases, and [`scripts/calibre-release/`](scripts/calibre-release) pins the calibre release
+for them, [`scripts/estuary/`](scripts/estuary) builds and fetches Estuary, which CI publishes
+as `estuary-v<N>` releases, and [`scripts/calibre-release/`](scripts/calibre-release) pins the calibre release
 Magnitide can download.
 
 ## Setup
@@ -89,8 +89,8 @@ cargo install tauri-cli --version "^2" --locked
 pnpm --dir crates/app/ui install
 ```
 
-The calibre plugin host tests need a host: `scripts/plugin-runtime/fetch.sh` downloads the published plugin runtime
-into `target/plugin-runtime/current` (they're skipped without one), and `MAGNITIDE_PLUGIN_HOST=calibre` runs them in
+The calibre plugin host tests need a host: `scripts/estuary/fetch.sh` downloads the published Estuary
+into `target/estuary/current` (they're skipped without one), and `MAGNITIDE_PLUGIN_HOST=calibre` runs them in
 an installed calibre instead. Details in [docs/calibre-plugins.md](docs/calibre-plugins.md#developing).
 
 ### Supported systems

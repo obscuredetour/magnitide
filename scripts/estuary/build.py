@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Assemble Magnitide's plugin runtime for one target.
+"""Assemble Estuary, Magnitide's compatibility layer for calibre plugins, for one target.
 
 A standalone CPython (python-build-standalone) with the wheels in
 requirements.txt, stripped to what calibre plugins use, then either left in
-target/plugin-runtime/ for development (--local) or packed into the archive
+target/estuary/ for development (--local) or packed into the archive
 Magnitide downloads. See README.md.
 
 Steps: fetch the CPython tarball (verified) → extract → install the wheels
 with uv (hashes required) → strip → on macOS thin to one architecture and
 re-sign → smoke test (native builds only) → link check → write
-python/magnitide-runtime.json → pack.
+python/magnitide-estuary.json → pack.
 
 Needs Python 3.14 (for compression.zstd; a `zstd` command is used otherwise)
 and uv on PATH or in $UV.
@@ -75,11 +75,11 @@ MAX_ARCHIVE_MB = 90
 
 
 def log(msg: str) -> None:
-    print(f'[plugin-runtime] {msg}', flush=True)
+    print(f'[estuary] {msg}', flush=True)
 
 
 def fail(msg: str) -> None:
-    print(f'[plugin-runtime] error: {msg}', file=sys.stderr, flush=True)
+    print(f'[estuary] error: {msg}', file=sys.stderr, flush=True)
     sys.exit(1)
 
 
@@ -423,7 +423,7 @@ def dir_size(p: Path) -> int:
 
 def write_manifest(py: Path, target: str, smoke: dict | None) -> dict:
     info = {
-        'runtime': VERSION,
+        'estuary': VERSION,
         'python': PYTHON['version'],
         'pythonBuild': PYTHON['tag'],
         'target': target,
@@ -432,13 +432,13 @@ def write_manifest(py: Path, target: str, smoke: dict | None) -> dict:
         'wheels': wheels_from_lock(),
         'builtAt': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
     }
-    (py / 'magnitide-runtime.json').write_text(json.dumps(info, indent=2) + '\n')
+    (py / 'magnitide-estuary.json').write_text(json.dumps(info, indent=2) + '\n')
     return info
 
 
 def pack(py: Path, target: str, out: Path) -> Path:
     out.mkdir(parents=True, exist_ok=True)
-    name = f'magnitide-plugin-runtime-{VERSION}-{target}.tar.zst'
+    name = f'magnitide-estuary-{VERSION}-{target}.tar.zst'
     archive = out / name
     log(f'packing {name}')
     buf = io.BytesIO()
@@ -496,10 +496,10 @@ def build(args) -> None:
     if not native and args.local:
         fail('--local builds for this machine only')
     spec = PYTHON['targets'].get(target) or fail(f'python.json has no entry for {target}')
-    cache = Path(args.cache or (Path.home() / '.cache' / 'magnitide-plugin-runtime'))
+    cache = Path(args.cache or (Path.home() / '.cache' / 'magnitide-estuary'))
     tarball = cache / spec['file']
     fetch(PYTHON['base'] + PYTHON['tag'] + '/' + spec['file'], tarball, spec['sha256'])
-    work = Path(args.work or (ROOT / 'target' / 'plugin-runtime' / 'work')) / target
+    work = Path(args.work or (ROOT / 'target' / 'estuary' / 'work')) / target
     py = extract_python(tarball, work)
     install_wheels(py, target, native)
     strip_python(py, target)
@@ -518,7 +518,7 @@ def build(args) -> None:
     if size > MAX_INSTALLED_MB * 1e6:
         fail(f'installed size {size / 1e6:.0f} MB is over the {MAX_INSTALLED_MB} MB limit')
     if args.local:
-        dest = ROOT / 'target' / 'plugin-runtime' / target
+        dest = ROOT / 'target' / 'estuary' / target
         rmtree(dest)
         dest.mkdir(parents=True)
         shutil.move(str(py), str(dest / 'python'))
@@ -535,13 +535,13 @@ def build(args) -> None:
             )
             + '\n'
         )
-        current = ROOT / 'target' / 'plugin-runtime' / 'current'
+        current = ROOT / 'target' / 'estuary' / 'current'
         rmtree(current)
         if sys.platform == 'win32':
             shutil.copytree(dest, current)
         else:
             current.symlink_to(dest.name)
-        log(f'ready: {dest} (target/plugin-runtime/current points at it)')
+        log(f'ready: {dest} (target/estuary/current points at it)')
     else:
         pack(py, target, Path(args.out or (ROOT / 'dist')))
     rmtree(work)
@@ -549,7 +549,7 @@ def build(args) -> None:
 
 def manifest(dist: Path, out: Path | None) -> None:
     """Merge the per-archive .json files into manifest.json and sha256sums.txt."""
-    entries = [json.loads(p.read_text()) for p in sorted(dist.glob('magnitide-plugin-runtime-*.tar.zst.json'))]
+    entries = [json.loads(p.read_text()) for p in sorted(dist.glob('magnitide-estuary-*.tar.zst.json'))]
     if not entries:
         fail(f'no archives in {dist}')
     m = {'version': VERSION, 'python': PYTHON['version'], 'targets': {e['target']: e for e in entries}}
@@ -576,15 +576,15 @@ def main() -> None:
     ap.add_argument('--target', help='target triple (default: this machine)')
     ap.add_argument('--out', help='where the archive goes (default: dist/)')
     ap.add_argument(
-        '--local', action='store_true', help='leave the runtime in target/plugin-runtime/ instead of packing'
+        '--local', action='store_true', help='leave Estuary in target/estuary/ instead of packing'
     )
     ap.add_argument('--work', help='scratch directory')
-    ap.add_argument('--cache', help='download cache (default: ~/.cache/magnitide-plugin-runtime)')
+    ap.add_argument('--cache', help='download cache (default: ~/.cache/magnitide-estuary)')
     ap.add_argument(
         '--manifest', metavar='DIST', help='merge DIST/*.tar.zst.json into manifest.json and sha256sums.txt'
     )
     ap.add_argument('--sha256sums', metavar='FILE', help='with --manifest: where to write the sums')
-    ap.add_argument('--rust-table', metavar='MANIFEST', help='print the RELEASES table for runtime.rs')
+    ap.add_argument('--rust-table', metavar='MANIFEST', help='print the RELEASES table for estuary.rs')
     args = ap.parse_args()
     if args.manifest:
         manifest(Path(args.manifest), Path(args.sha256sums) if args.sha256sums else None)

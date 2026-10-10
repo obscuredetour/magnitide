@@ -97,7 +97,7 @@ def initialize_calibre():
 
 
 def get_debug_executable(headless=False, exe_name='calibre-debug'):
-    """Where calibre's own tools would be: here, the runtime's interpreter
+    """Where calibre's own tools would be: here, Estuary's interpreter
     running Magnitide's worker, which answers `calibre-debug -c` and `-e`."""
     import os
 

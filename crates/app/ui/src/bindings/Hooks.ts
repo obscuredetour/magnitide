@@ -2,7 +2,7 @@
 
 /**
  * What a file-type, reader or writer plugin handles, known without
- * starting the runtime.
+ * starting a host.
  */
 export type Hooks = { 
 /**

@@ -7,8 +7,8 @@
 //! (Settings › Plugins), running GUI plugins on the open library, and the
 //! other kinds as Magnitide's hooks: file-type plugins when books are added
 //! (and after, on the shadow), metadata readers and writers, a plugin's
-//! own settings, and library-closed plugins. The plugins run in Magnitide's
-//! plugin runtime; see the magnitide-plugins crate.
+//! own settings, and library-closed plugins. The plugins run in a calibre or
+//! in Estuary, Magnitide's compatibility layer; see the magnitide-plugins crate.
 //!
 //! GUI plugins work on a calibre-format shadow of the open Magnitide library
 //! (`magnitide_plugins::shadow`), rebuilt whenever the library has changed
@@ -31,7 +31,7 @@ use magnitide_core::external::ApplyReport;
 use magnitide_core::hooks::{ImportHooks, ImportOutcome, MetadataPlugins, Precedence};
 use magnitide_core::metadata::BookMetadata;
 use magnitide_plugins::shadow::{Shadow, baseline};
-use magnitide_plugins::{Configured, Hook, HostChoice, Installed, PluginMenus, Plugins, Progress, RuntimeStatus};
+use magnitide_plugins::{Configured, Hook, HostChoice, Installed, PluginHostStatus, PluginMenus, Plugins, Progress};
 use magnitide_plugins_wasm::{ActionReport, Installed as NativePlugin, LibraryAccess, WasmPlugins};
 use serde::Serialize;
 use serde_json::Value;
@@ -193,8 +193,8 @@ impl Built {
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginsStatus {
-    /// The plugin runtime (plugins can't run until it's installed).
-    runtime: RuntimeStatus,
+    /// Where plugins run, and each host (plugins can't run until one is there).
+    hosts: PluginHostStatus,
     plugins: Vec<Installed>,
     /// What books are converted to when a plugin asks (calibre's output format).
     output_format: String,
@@ -206,7 +206,7 @@ pub struct PluginsStatus {
     native_errors: BTreeMap<String, String>,
 }
 
-/// Both plugin runtimes as core's extension points: hooks on books being
+/// Both plugin systems as core's extension points: hooks on books being
 /// added, and metadata readers and writers. Magnitide's own plugins go
 /// first (they're in-process and quick); calibre plugins see what they
 /// made of a file.
@@ -371,16 +371,17 @@ pub fn library_closing(app: &AppHandle) {
     let _ = plugins.gui_close();
 }
 
-/// Plugins live in `<app config>/calibre-plugins`; the runtime in
-/// `<app local data>/plugin-runtime` (it's large, and not configuration).
+/// Plugins live in `<app config>/calibre-plugins`; the hosts Magnitide downloads
+/// (Estuary, calibre) in `<app local data>/plugin-hosts` (they're large, and not
+/// configuration).
 pub fn create(app: &AppHandle) -> Plugins {
     let dir = app.path().app_config_dir().unwrap_or_else(|_| PathBuf::from(".")).join("calibre-plugins");
-    let runtime = app.path().app_local_data_dir().unwrap_or_else(|_| PathBuf::from(".")).join("plugin-runtime");
-    let plugins = Plugins::new(dir, runtime);
+    let hosts = app.path().app_local_data_dir().unwrap_or_else(|_| PathBuf::from(".")).join("plugin-hosts");
+    let plugins = Plugins::new(dir, hosts);
     let handle = app.clone();
     plugins.set_event_handler(Arc::new(move |e| on_event(&handle, e)));
     app.manage(PluginLibrary::default());
-    app.manage(RuntimeInstall::default());
+    app.manage(HostInstall::default());
     app.manage(NativeQuestions::default());
     plugins
 }
@@ -764,7 +765,7 @@ pub async fn plugins_status(app: AppHandle) -> CmdResult<PluginsStatus> {
     blocking(app, move |p| {
         let native = app2.state::<WasmPlugins>();
         Ok(PluginsStatus {
-            runtime: p.runtime_status(),
+            hosts: p.host_status(),
             plugins: p.list(),
             output_format: p.output_format(),
             errors: p.errors(),
@@ -1040,42 +1041,42 @@ pub async fn configure_plugin(app: AppHandle, name: String) -> CmdResult<Configu
     .map_err(|e| e.to_string())?
 }
 
-/// Progress of the runtime's install. Matches `onPluginRuntimeProgress` in ui/src/api.ts.
-pub const PLUGIN_RUNTIME_PROGRESS_EVENT: &str = "plugin-runtime-progress";
+/// Progress of a host's install (Estuary's or calibre's). Matches `onPluginHostProgress` in ui/src/api.ts.
+pub const PLUGIN_HOST_PROGRESS_EVENT: &str = "plugin-host-progress";
 
 /// Whether an install is running, and how to stop it.
 #[derive(Default)]
-pub struct RuntimeInstall(Arc<std::sync::atomic::AtomicBool>);
+pub struct HostInstall(Arc<std::sync::atomic::AtomicBool>);
 
-/// The runtime's state, checked by running it (so a missing system library shows).
+/// Where plugins run, with Estuary checked by running it (so a missing system library shows).
 #[tauri::command]
-pub async fn plugin_runtime_status(app: AppHandle) -> CmdResult<RuntimeStatus> {
-    blocking(app, |p| Ok(p.check_runtime())).await
+pub async fn estuary_status(app: AppHandle) -> CmdResult<PluginHostStatus> {
+    blocking(app, |p| Ok(p.check_estuary())).await
 }
 
-/// Download and install the plugin runtime, with `plugin-runtime-progress`
-/// events meanwhile. Returns its state once installed.
+/// Download and install Estuary, with `plugin-host-progress` events
+/// meanwhile. Returns its state once installed.
 #[tauri::command]
-pub async fn install_plugin_runtime(app: AppHandle) -> CmdResult<RuntimeStatus> {
-    install_runtime_with(app, |plugins, cancel, report| plugins.install_runtime(cancel, report)).await
+pub async fn install_estuary(app: AppHandle) -> CmdResult<PluginHostStatus> {
+    install_host_with(app, |plugins, cancel, report| plugins.install_estuary(cancel, report)).await
 }
 
-/// Install the plugin runtime from an archive on disk: the published one
-/// for this computer, downloaded by hand (checked by its hash).
+/// Install Estuary from an archive on disk: the published one for this
+/// computer, downloaded by hand (checked by its hash).
 #[tauri::command]
-pub async fn install_plugin_runtime_from_file(app: AppHandle, path: String) -> CmdResult<RuntimeStatus> {
+pub async fn install_estuary_from_file(app: AppHandle, path: String) -> CmdResult<PluginHostStatus> {
     let archive = PathBuf::from(path);
-    install_runtime_with(app, move |plugins, cancel, report| {
-        plugins.install_runtime_from_file(&archive, cancel, report)
-    })
-    .await
+    install_host_with(app, move |plugins, cancel, report| plugins.install_estuary_from_file(&archive, cancel, report))
+        .await
 }
 
-async fn install_runtime_with(
+async fn install_host_with(
     app: AppHandle,
-    install: impl FnOnce(&Plugins, &AtomicBool, &mut dyn FnMut(Progress)) -> Result<RuntimeStatus, String> + Send + 'static,
-) -> CmdResult<RuntimeStatus> {
-    let cancel = app.state::<RuntimeInstall>().0.clone();
+    install: impl FnOnce(&Plugins, &AtomicBool, &mut dyn FnMut(Progress)) -> Result<PluginHostStatus, String>
+    + Send
+    + 'static,
+) -> CmdResult<PluginHostStatus> {
+    let cancel = app.state::<HostInstall>().0.clone();
     cancel.store(false, std::sync::atomic::Ordering::SeqCst);
     let handle = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -1086,52 +1087,52 @@ async fn install_runtime_with(
             let boundary = !matches!(p, Progress::Downloading { .. } | Progress::Extracting { .. });
             if boundary || now.duration_since(last).as_millis() >= 100 {
                 last = now;
-                let _ = handle.emit(PLUGIN_RUNTIME_PROGRESS_EVENT, p);
+                let _ = handle.emit(PLUGIN_HOST_PROGRESS_EVENT, p);
             }
         };
         let status = install(&plugins, &cancel, &mut report)?;
-        if status.host.as_deref() != Some("runtime") {
+        if status.host.as_deref() != Some("estuary") {
             return Ok(status);
         }
         Ok(plugins
-            .check_runtime()
+            .check_estuary()
             .problem
-            .map_or(status, |problem| RuntimeStatus { problem: Some(problem), ..plugins.runtime_status() }))
+            .map_or(status, |problem| PluginHostStatus { problem: Some(problem), ..plugins.host_status() }))
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub async fn cancel_plugin_runtime_install(state: State<'_, RuntimeInstall>) -> CmdResult<()> {
+pub async fn cancel_plugin_host_install(state: State<'_, HostInstall>) -> CmdResult<()> {
     state.0.store(true, std::sync::atomic::Ordering::SeqCst);
     Ok(())
 }
 
-/// Remove the runtime (plugins and their settings are kept).
+/// Remove Estuary (plugins and their settings are kept).
 #[tauri::command]
-pub async fn remove_plugin_runtime(app: AppHandle) -> CmdResult<RuntimeStatus> {
-    blocking(app, |p| p.remove_runtime().map(|()| p.runtime_status())).await
+pub async fn remove_estuary(app: AppHandle) -> CmdResult<PluginHostStatus> {
+    blocking(app, |p| p.remove_estuary().map(|()| p.host_status())).await
 }
 
-/// Download calibre's own build as a plugin host, with `plugin-runtime-progress`
-/// events meanwhile (the same install flag and Cancel as the runtime).
+/// Download calibre's own build as a plugin host, with `plugin-host-progress`
+/// events meanwhile (the same install flag and Cancel as Estuary).
 #[tauri::command]
-pub async fn install_plugin_calibre(app: AppHandle) -> CmdResult<RuntimeStatus> {
-    install_runtime_with(app, |plugins, cancel, report| plugins.install_calibre(cancel, report)).await
+pub async fn install_plugin_calibre(app: AppHandle) -> CmdResult<PluginHostStatus> {
+    install_host_with(app, |plugins, cancel, report| plugins.install_calibre(cancel, report)).await
 }
 
 /// Remove the calibre Magnitide downloaded (plugins and settings are kept).
 #[tauri::command]
-pub async fn remove_plugin_calibre(app: AppHandle) -> CmdResult<RuntimeStatus> {
-    blocking(app, |p| p.remove_calibre().map(|()| p.runtime_status())).await
+pub async fn remove_plugin_calibre(app: AppHandle) -> CmdResult<PluginHostStatus> {
+    blocking(app, |p| p.remove_calibre().map(|()| p.host_status())).await
 }
 
-/// Choose where plugins run: an installed calibre, Magnitide's runtime, or
-/// whichever is there (`auto`).
+/// Choose where plugins run: an installed calibre, the downloaded one,
+/// Estuary, or whichever is there (`auto`).
 #[tauri::command]
-pub async fn set_plugin_host(app: AppHandle, choice: HostChoice) -> CmdResult<RuntimeStatus> {
-    blocking(app, move |p| p.set_host_choice(choice).map(|()| p.runtime_status())).await
+pub async fn set_plugin_host(app: AppHandle, choice: HostChoice) -> CmdResult<PluginHostStatus> {
+    blocking(app, move |p| p.set_host_choice(choice).map(|()| p.host_status())).await
 }
 
 /// Set what books are converted to when a plugin asks.

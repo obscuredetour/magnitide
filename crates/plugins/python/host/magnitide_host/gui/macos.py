@@ -8,7 +8,7 @@ import traceback
 
 def objc(receiver, selector, arg=None):
     """Send an Objective-C message (receiver: a class name or an object; one
-    integer argument at most) through the runtime."""
+    integer argument at most) through Estuary."""
     import ctypes
     import ctypes.util
 

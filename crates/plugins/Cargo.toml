@@ -2,7 +2,7 @@
 name = "magnitide-plugins"
 version.workspace = true
 edition = "2024"
-description = "Runs calibre plugins in Magnitide's own plugin runtime"
+description = "Runs calibre plugins in a calibre or in Estuary, Magnitide's compatibility layer"
 license = "GPL-3.0-or-later"
 publish = false
 

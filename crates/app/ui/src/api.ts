@@ -59,10 +59,10 @@ import type { PluginOpenBook } from './bindings/PluginOpenBook';
 import type { PluginJob } from './bindings/PluginJob';
 import type { Configured as PluginConfigured } from './bindings/Configured';
 import type { Hooks as PluginHooks } from './bindings/Hooks';
-import type { RuntimeStatus } from './bindings/RuntimeStatus';
+import type { PluginHostStatus } from './bindings/PluginHostStatus';
 import type { HostChoice as PluginHostChoice } from './bindings/HostChoice';
 import type { CalibreInstall } from './bindings/CalibreInstall';
-import type { RuntimeProgress } from './bindings/RuntimeProgress';
+import type { InstallProgress } from './bindings/InstallProgress';
 import type { ApplyReport } from './bindings/ApplyReport';
 import type { ServerStatus } from './bindings/ServerStatus';
 import type { TransferProgress } from './bindings/TransferProgress';
@@ -131,10 +131,10 @@ export type {
   PluginMenus,
   PluginMessage,
   PluginsStatus,
-  RuntimeStatus,
+  PluginHostStatus,
   PluginHostChoice,
   CalibreInstall,
-  RuntimeProgress,
+  InstallProgress,
   ServerStatus,
   AuthorSort,
   BookDetails,
@@ -412,31 +412,31 @@ export const api = {
 
   openThemesFolder: () => invoke<void>('open_themes_folder'),
 
-  /** calibre plugins: the plugin runtime's state, and the plugins installed. */
+  /** calibre plugins: where they run, each host's state, and the plugins installed. */
   pluginsStatus: () => invoke<PluginsStatus>('plugins_status'),
 
-  /** The plugin runtime's state, checked by running it (a missing system library shows here). */
-  pluginRuntimeStatus: () => invoke<RuntimeStatus>('plugin_runtime_status'),
+  /** Where plugins run, with Estuary checked by running it (a missing system library shows here). */
+  estuaryStatus: () => invoke<PluginHostStatus>('estuary_status'),
 
-  /** Download and install the plugin runtime; `onPluginRuntimeProgress` reports meanwhile. */
-  installPluginRuntime: () => invoke<RuntimeStatus>('install_plugin_runtime'),
+  /** Download and install Estuary; `onPluginHostProgress` reports meanwhile. */
+  installEstuary: () => invoke<PluginHostStatus>('install_estuary'),
 
-  /** Install the plugin runtime from its published archive, downloaded by hand (checked by its hash). */
-  installPluginRuntimeFromFile: (path: string) => invoke<RuntimeStatus>('install_plugin_runtime_from_file', { path }),
+  /** Install Estuary from its published archive, downloaded by hand (checked by its hash). */
+  installEstuaryFromFile: (path: string) => invoke<PluginHostStatus>('install_estuary_from_file', { path }),
 
-  async chooseRuntimeArchive(): Promise<string | null> {
+  async chooseEstuaryArchive(): Promise<string | null> {
     const picked = await open({
-      title: 'Choose the plugin runtime archive',
+      title: 'Choose the Estuary archive',
       multiple: false,
-      filters: [{ name: 'Plugin runtime archive', extensions: ['zst'] }],
+      filters: [{ name: 'Estuary archive', extensions: ['zst'] }],
     });
     return typeof picked === 'string' ? picked : null;
   },
 
-  cancelPluginRuntimeInstall: () => invoke<void>('cancel_plugin_runtime_install'),
+  cancelPluginHostInstall: () => invoke<void>('cancel_plugin_host_install'),
 
-  /** Remove the plugin runtime (plugins and their settings are kept). */
-  removePluginRuntime: () => invoke<RuntimeStatus>('remove_plugin_runtime'),
+  /** Remove Estuary (plugins and their settings are kept). */
+  removeEstuary: () => invoke<PluginHostStatus>('remove_estuary'),
 
   /** Install a Magnitide plugin (a .mgp package), or update one already installed. */
   installNativePlugin: (path: string) => invoke<NativePlugin>('install_native_plugin', { path }),
@@ -480,10 +480,10 @@ export const api = {
   setPluginEnabled: (name: string, enabled: boolean) =>
     invoke<InstalledPlugin[]>('set_plugin_enabled', { name, enabled }),
 
-  /** The names of the GUI plugins that are on (doesn't start the plugin runtime). */
+  /** The names of the GUI plugins that are on (doesn't start a host). */
   guiPluginNames: () => invoke<string[]>('gui_plugin_names'),
 
-  /** The GUI plugins' menus for the open library (starts the plugin runtime if needed). */
+  /** The GUI plugins' menus for the open library (starts the host if needed). */
   pluginMenus: () => invoke<PluginMenus>('plugin_menus'),
 
   /**
@@ -499,17 +499,17 @@ export const api = {
    */
   pluginAnswer: (token: number, kind: string, ids: number[]) => invoke<void>('plugin_answer', { token, kind, ids }),
 
-  /** Open a plugin's own settings (its dialog, in the plugin runtime) and wait for it to close. */
+  /** Open a plugin's own settings (its dialog, in the host) and wait for it to close. */
   configurePlugin: (name: string) => invoke<PluginConfigured>('configure_plugin', { name }),
 
-  /** Where plugins run: an installed calibre, Magnitide's runtime, or whichever is there. */
-  setPluginHost: (choice: PluginHostChoice) => invoke<RuntimeStatus>('set_plugin_host', { choice }),
+  /** Where plugins run: an installed calibre, a downloaded one, Estuary, or whichever is there. */
+  setPluginHost: (choice: PluginHostChoice) => invoke<PluginHostStatus>('set_plugin_host', { choice }),
 
-  /** Download calibre's own build as a plugin host; `onPluginRuntimeProgress` reports meanwhile. */
-  installPluginCalibre: () => invoke<RuntimeStatus>('install_plugin_calibre'),
+  /** Download calibre's own build as a plugin host; `onPluginHostProgress` reports meanwhile. */
+  installPluginCalibre: () => invoke<PluginHostStatus>('install_plugin_calibre'),
 
   /** Remove the calibre Magnitide downloaded. */
-  removePluginCalibre: () => invoke<RuntimeStatus>('remove_plugin_calibre'),
+  removePluginCalibre: () => invoke<PluginHostStatus>('remove_plugin_calibre'),
 
   /** What books are converted to when a plugin asks (calibre's output format). */
   setPluginOutputFormat: (format: string) => invoke<void>('set_plugin_output_format', { format }),
@@ -649,27 +649,27 @@ export function onPluginQuestion(handler: (q: NativeQuestion) => void): Promise<
   return listen<NativeQuestion>('plugin-question', (e) => handler(e.payload));
 }
 
-/** A job a GUI plugin started in the plugin runtime: started, progressed or done. */
+/** A job a GUI plugin started in the host: started, progressed or done. */
 export function onPluginJob(handler: (j: PluginJob) => void): Promise<UnlistenFn> {
   return listen<PluginJob>('plugin-job', (e) => handler(e.payload));
 }
 
-/** The plugin runtime's install, as it goes. Matches `PLUGIN_RUNTIME_PROGRESS_EVENT` in plugins.rs. */
-export function onPluginRuntimeProgress(handler: (p: RuntimeProgress) => void): Promise<UnlistenFn> {
-  return listen<RuntimeProgress>('plugin-runtime-progress', (e) => handler(e.payload));
+/** A host's install (Estuary's or calibre's), as it goes. Matches `PLUGIN_HOST_PROGRESS_EVENT` in plugins.rs. */
+export function onPluginHostProgress(handler: (p: InstallProgress) => void): Promise<UnlistenFn> {
+  return listen<InstallProgress>('plugin-host-progress', (e) => handler(e.payload));
 }
 
 /** The errors the backend gives when plugins are used with no host to run them (the plugins crate's constants). */
-export const RUNTIME_MISSING = "The plugin runtime isn't installed. Install it in Settings › Plugins.";
+export const ESTUARY_MISSING = "Estuary isn't installed. Install it in Settings › Plugins.";
 export const CALIBRE_MISSING =
-  "No installed calibre was found. Install calibre, or choose Magnitide's plugin runtime in Settings › Plugins.";
-export const RUNTIME_OR_CALIBRE_MISSING =
-  "calibre plugins need an installed calibre or Magnitide's plugin runtime. Install either in Settings › Plugins.";
+  'No installed calibre was found. Install calibre, or choose Estuary in Settings › Plugins.';
+export const ESTUARY_OR_CALIBRE_MISSING =
+  'calibre plugins need a calibre, or Estuary, which runs them without one. Install either in Settings › Plugins.';
 
 /** Whether an error means there's nothing to run plugins in (Settings › Plugins sorts it out). */
-export function isRuntimeMissing(err: unknown): boolean {
+export function isHostMissing(err: unknown): boolean {
   const m = errorMessage(err);
-  return m === RUNTIME_MISSING || m === CALIBRE_MISSING || m === RUNTIME_OR_CALIBRE_MISSING;
+  return m === ESTUARY_MISSING || m === CALIBRE_MISSING || m === ESTUARY_OR_CALIBRE_MISSING;
 }
 
 export function onZoomMenu(handler: (action: 'in' | 'out' | 'reset') => void): Promise<UnlistenFn> {

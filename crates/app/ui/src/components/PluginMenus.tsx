@@ -78,7 +78,7 @@ function CalibrePluginItems(props: { ids(): number[] }) {
       when={pluginMenus()}
       fallback={
         <MenuItem disabled onSelect={() => {}}>
-          Starting the plugin runtime…
+          Starting calibre plugins…
         </MenuItem>
       }
     >

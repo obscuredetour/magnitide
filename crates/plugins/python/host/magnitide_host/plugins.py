@@ -93,7 +93,7 @@ def m_hello(params):
         'calibre': calibre_version,
         'compat': COMPAT_VERSION if not IN_CALIBRE else calibre_version,
         'python': sys.version.split()[0],
-        'runtime': 'calibre' if IN_CALIBRE else 'magnitide',
+        'host': 'calibre' if IN_CALIBRE else 'estuary',
     }
 
 

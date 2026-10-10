@@ -578,7 +578,7 @@ def get_download_filename(url, cookie_file=None):
 
 
 def extract(path, dir):
-    """Unpack a zip (or rar, if the runtime can) into `dir`."""
+    """Unpack a zip (or rar, if Estuary can) into `dir`."""
     extractor = None
     with open(path, 'rb') as f:
         head = f.read(4)

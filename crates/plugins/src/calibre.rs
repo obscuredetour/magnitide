@@ -1,7 +1,8 @@
 //! An installed calibre as the plugin host: plugins run on calibre's own
 //! code under `calibre-debug`, with only the host package (the protocol,
 //! the window stand-in, the hooks) from Magnitide. The alternative is
-//! Magnitide's own runtime ([`crate::runtime`]) with the compat package.
+//! Estuary, Magnitide's compatibility layer ([`crate::estuary`]), with the
+//! compat package.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -9,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::{Deserialize, Serialize};
 
-use crate::runtime::Progress;
+use crate::estuary::Progress;
 
 /// The oldest calibre the host package is written against (PyQt6, the
 /// `calibre.db` API with `new_api`, `InterfaceAction` as plugins use it).
@@ -20,15 +21,15 @@ pub const MIN_CALIBRE: (u32, u32) = (6, 0);
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub enum HostChoice {
-    /// An installed calibre when there is one, else Magnitide's runtime.
+    /// An installed calibre when there is one, else the downloaded one, else Estuary.
     #[default]
     Auto,
     /// Only an installed calibre.
     Calibre,
     /// Only the calibre Magnitide downloaded.
     Downloaded,
-    /// Only Magnitide's runtime.
-    Runtime,
+    /// Only Estuary.
+    Estuary,
 }
 
 /// An installed calibre, found or given.
@@ -147,7 +148,7 @@ pub const CALIBRE_RELEASES: &[CalibreRelease] = &[
 
 /// The release file for this computer, if calibre publishes one.
 pub fn calibre_release() -> Option<&'static CalibreRelease> {
-    CALIBRE_RELEASES.iter().find(|r| r.target == crate::runtime::this_target())
+    CALIBRE_RELEASES.iter().find(|r| r.target == crate::estuary::this_target())
 }
 
 impl CalibreRelease {
@@ -205,7 +206,7 @@ pub fn locate_downloaded(base: &Path) -> Option<CalibreInstall> {
 }
 
 pub fn downloaded_size(base: &Path) -> u64 {
-    crate::runtime::dir_size(&downloaded_dir(base))
+    crate::estuary::dir_size(&downloaded_dir(base))
 }
 
 /// Download calibre's official build for this computer and unpack it
@@ -216,7 +217,7 @@ pub fn install_downloaded(
     progress: &mut dyn FnMut(Progress),
 ) -> Result<CalibreInstall, String> {
     let release = calibre_release()
-        .ok_or_else(|| format!("calibre publishes no build for this computer ({}).", crate::runtime::this_target()))?;
+        .ok_or_else(|| format!("calibre publishes no build for this computer ({}).", crate::estuary::this_target()))?;
     let root = base.join("calibre");
     std::fs::create_dir_all(&root).map_err(|e| format!("couldn't make {}: {e}", root.display()))?;
     let download = root.join(format!("{CALIBRE_VERSION}.download"));
@@ -225,7 +226,7 @@ pub fn install_downloaded(
     let mut last_error = String::new();
     let mut fetched = false;
     for url in release.urls() {
-        match crate::runtime::fetch(&url, &download, release.size, cancel, progress, "calibre") {
+        match crate::estuary::fetch(&url, &download, release.size, cancel, progress, "calibre") {
             Ok(()) => {
                 fetched = true;
                 break;
@@ -238,7 +239,7 @@ pub fn install_downloaded(
         return Err(last_error);
     }
     progress(Progress::Verifying);
-    let got = crate::runtime::sha512_file(&download)?;
+    let got = crate::estuary::sha512_file(&download)?;
     if got != release.sha512 {
         let _ = std::fs::remove_file(&download);
         return Err(

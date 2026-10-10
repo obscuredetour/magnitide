@@ -4,15 +4,15 @@ import type { CalibreInstall } from "./CalibreInstall";
 import type { HostChoice } from "./HostChoice";
 
 /**
- * The runtime (and the host choice), for Settings.
+ * Where calibre plugins run: the host choice, what it comes to, and each host, for Settings.
  */
-export type RuntimeStatus = { 
+export type PluginHostStatus = { 
 /**
  * Settings' choice of host.
  */
 hostChoice: HostChoice, 
 /**
- * What that choice comes to now: "calibre", "runtime", or None when
+ * What that choice comes to now: "calibre", "estuary", or None when
  * neither is available (then `host_problem` says why).
  */
 host: string | null, hostProblem: string | null, 
@@ -25,7 +25,7 @@ calibre: CalibreInstall | null,
  */
 calibreDownload: CalibreDownloadStatus, installed: boolean, installing: boolean, 
 /**
- * Whether a runtime is published for this computer.
+ * Whether Estuary is published for this computer.
  */
 available: boolean, version: string | null, python: string | null, qt: string | null, 
 /**

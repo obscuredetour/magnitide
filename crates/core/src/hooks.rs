@@ -2,7 +2,7 @@
 //! metadata readers and writers for formats Magnitide doesn't handle itself
 //! (or handles, when a plugin says it knows better).
 //!
-//! These are traits so `core` stays free of any plugin runtime: the app
+//! These are traits so `core` stays free of any plugin system: the app
 //! passes an implementation (calibre plugins today, WebAssembly plugins
 //! later), and the tests use fakes. [`NoHooks`] is what everything else
 //! uses.

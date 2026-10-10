@@ -1,5 +1,4 @@
-"""Mirrors calibre's `calibre.constants` (calibre 9.15), for Magnitide's
-plugin runtime.
+"""Mirrors calibre's `calibre.constants` (calibre 9.15), for Estuary.
 
 The version is the calibre API level this compatibility package provides:
 plugins compare their `minimum_calibre_version` against it. `MAGNITIDE`
@@ -173,11 +172,11 @@ plugins_loc = None
 
 
 class _NoPlugins(dict):
-    """calibre's `plugins`: name → (module, load error). Magnitide's runtime
+    """calibre's `plugins`: name → (module, load error). Estuary
     has no C extensions; every lookup reports that."""
 
     def __missing__(self, name):
-        return (None, f"calibre's {name} extension isn't available in Magnitide's plugin runtime")
+        return (None, f"calibre's {name} extension isn't available in Estuary, Magnitide's compatibility layer")
 
     def __contains__(self, name):
         return False

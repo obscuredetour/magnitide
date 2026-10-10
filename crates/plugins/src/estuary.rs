@@ -1,6 +1,7 @@
-//! The plugin runtime: a Python (with Qt and the libraries calibre plugins
-//! use) that Magnitide downloads once, so plugins don't need calibre
-//! installed. Built per platform by `scripts/plugin-runtime/build.py` and
+//! Estuary, Magnitide's compatibility layer for calibre plugins: a Python
+//! (with Qt and the libraries calibre plugins use) that Magnitide downloads
+//! once, so plugins don't need calibre installed. Built per platform by
+//! `scripts/estuary/build.py` and
 //! published as a release asset; only an archive whose sha256 is in
 //! [`RELEASES`] (compiled in) is ever installed.
 //!
@@ -16,12 +17,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-/// The runtime's version: bumped when the archive changes (another Python,
-/// Qt or set of wheels). Matches `scripts/plugin-runtime/VERSION`.
-pub const VERSION: &str = "2";
+/// Estuary's version: bumped when the archive changes (another Python,
+/// Qt or set of wheels). Matches `scripts/estuary/VERSION`.
+pub const VERSION: &str = "3";
 
 /// Where the archives are published: `<RELEASE_BASE><VERSION>/<file>`.
-pub const RELEASE_BASE: &str = "https://github.com/obscuredetour/magnitide/releases/download/plugin-runtime-v";
+pub const RELEASE_BASE: &str = "https://github.com/obscuredetour/magnitide/releases/download/estuary-v";
 
 /// A published archive for one target.
 #[derive(Debug, Clone, Copy)]
@@ -31,47 +32,47 @@ pub struct Release {
     pub sha256: &'static str,
     /// The archive's size in bytes.
     pub size: u64,
-    /// The unpacked runtime's size in bytes.
+    /// The unpacked Estuary's size in bytes.
     pub installed_size: u64,
 }
 
 /// Printed by `build.py --rust-table manifest.json` after a release; must
-/// match `scripts/plugin-runtime/sha256sums.txt` (a test checks).
+/// match `scripts/estuary/sha256sums.txt` (a test checks).
 pub const RELEASES: &[Release] = &[
     Release {
         target: "aarch64-apple-darwin",
-        file: "magnitide-plugin-runtime-2-aarch64-apple-darwin.tar.zst",
-        sha256: "b5963354de4998f8bcbcad5ba8dfdd8843b382caa275aec7bcfe098124fb4a66",
-        size: 40463033,
-        installed_size: 155897713,
+        file: "magnitide-estuary-3-aarch64-apple-darwin.tar.zst",
+        sha256: "10047ef734a657c782851d4eee9a2e7674768ab14c91d190213db54751758817",
+        size: 40462993,
+        installed_size: 155897671,
     },
     Release {
         target: "aarch64-unknown-linux-gnu",
-        file: "magnitide-plugin-runtime-2-aarch64-unknown-linux-gnu.tar.zst",
-        sha256: "3673534473220770e5d38782f71d67a9aea3f063620c7b2ffc213a8e52b2f602",
-        size: 61513755,
-        installed_size: 246102062,
+        file: "magnitide-estuary-3-aarch64-unknown-linux-gnu.tar.zst",
+        sha256: "852edc24faa9a1b03a1c40820a1753c0fcf4204ded10fdd8629c867d087e0323",
+        size: 61513908,
+        installed_size: 246102020,
     },
     Release {
         target: "x86_64-apple-darwin",
-        file: "magnitide-plugin-runtime-2-x86_64-apple-darwin.tar.zst",
-        sha256: "189a8d2664afd913b4ffeee67527e48001fbab98cf8ca9ff7463bbe5863440c0",
-        size: 43108178,
-        installed_size: 155932394,
+        file: "magnitide-estuary-3-x86_64-apple-darwin.tar.zst",
+        sha256: "8e6e505f9ef78b34b8321f2aea7ce533aa04e5fd0880be7540469cf0e78b0351",
+        size: 43107969,
+        installed_size: 155932352,
     },
     Release {
         target: "x86_64-pc-windows-msvc",
-        file: "magnitide-plugin-runtime-2-x86_64-pc-windows-msvc.tar.zst",
-        sha256: "41cdc69faf6c200d291776e051b665d160d286b6acaad1af1afa398fa65ad4c1",
-        size: 34489796,
+        file: "magnitide-estuary-3-x86_64-pc-windows-msvc.tar.zst",
+        sha256: "9cd9ac2ddc99e963d7b7066b477f58af852bf2b2650bbf7654d4e0df3e54b0d4",
+        size: 34489570,
         installed_size: 130779676,
     },
     Release {
         target: "x86_64-unknown-linux-gnu",
-        file: "magnitide-plugin-runtime-2-x86_64-unknown-linux-gnu.tar.zst",
-        sha256: "2c3f1d3264dbe3887ba156a98009da16d5a5f7905cb5d059d00eeec781717d34",
-        size: 67491562,
-        installed_size: 249207746,
+        file: "magnitide-estuary-3-x86_64-unknown-linux-gnu.tar.zst",
+        sha256: "fb9370d622693fa6b76299c6ed8655ff8b67c5d63db702ece05e9922a3403ad6",
+        size: 67491575,
+        installed_size: 249207704,
     },
 ];
 
@@ -103,7 +104,7 @@ impl Release {
     }
 }
 
-/// What `installed.json` records about an installed runtime.
+/// What `installed.json` records about an installed Estuary.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstalledInfo {
@@ -118,9 +119,9 @@ pub struct InstalledInfo {
     pub installed_at: Option<String>,
 }
 
-/// An installed runtime.
+/// An installed Estuary.
 #[derive(Debug, Clone)]
-pub struct Runtime {
+pub struct Estuary {
     /// The folder holding `python/` and `installed.json`.
     pub dir: PathBuf,
     /// The interpreter.
@@ -130,7 +131,7 @@ pub struct Runtime {
 
 /// Where an install is up to.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export, rename = "RuntimeProgress"))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export, rename = "InstallProgress"))]
 #[serde(tag = "phase", rename_all = "camelCase")]
 pub enum Progress {
     Downloading { done: u64, total: u64 },
@@ -145,17 +146,17 @@ pub enum Source {
     File(PathBuf),
 }
 
-/// Name of the environment variable that points at a runtime folder (one
+/// Name of the environment variable that points at an Estuary folder (one
 /// holding `python/`), for development and tests.
-pub const ENV_OVERRIDE: &str = "MAGNITIDE_PLUGIN_RUNTIME";
+pub const ENV_OVERRIDE: &str = "MAGNITIDE_ESTUARY";
 
 fn interpreter(dir: &Path) -> PathBuf {
     if cfg!(windows) { dir.join("python").join("python.exe") } else { dir.join("python").join("bin").join("python3") }
 }
 
-impl Runtime {
-    /// The runtime at `dir`, if it holds one.
-    pub fn from_dir(dir: &Path) -> Option<Runtime> {
+impl Estuary {
+    /// Estuary at `dir`, if it holds one.
+    pub fn from_dir(dir: &Path) -> Option<Estuary> {
         let python = interpreter(dir);
         if !python.is_file() {
             return None;
@@ -164,11 +165,11 @@ impl Runtime {
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
             .or_else(|| {
-                // A development build: only python/magnitide-runtime.json.
-                let b = std::fs::read(dir.join("python").join("magnitide-runtime.json")).ok()?;
+                // A development build: only python/magnitide-estuary.json.
+                let b = std::fs::read(dir.join("python").join("magnitide-estuary.json")).ok()?;
                 let v: serde_json::Value = serde_json::from_slice(&b).ok()?;
                 Some(InstalledInfo {
-                    version: v.get("runtime").and_then(|x| x.as_str()).unwrap_or(VERSION).to_owned(),
+                    version: v.get("estuary").and_then(|x| x.as_str()).unwrap_or(VERSION).to_owned(),
                     python: v.get("python").and_then(|x| x.as_str()).map(str::to_owned),
                     qt: v.get("qt").and_then(|x| x.as_str()).map(str::to_owned),
                     sha256: None,
@@ -182,54 +183,54 @@ impl Runtime {
                 sha256: None,
                 installed_at: None,
             });
-        Some(Runtime { dir: dir.to_owned(), python, info })
+        Some(Estuary { dir: dir.to_owned(), python, info })
     }
 
-    /// The runtime to use: [`ENV_OVERRIDE`] if set, else the one installed in
+    /// The Estuary to use: [`ENV_OVERRIDE`] if set, else the one installed in
     /// `base` at this version, else (in debug builds) the development build in
-    /// `target/plugin-runtime/current`.
-    pub fn locate(base: &Path) -> Option<Runtime> {
+    /// `target/estuary/current`.
+    pub fn locate(base: &Path) -> Option<Estuary> {
         if let Some(dir) = std::env::var_os(ENV_OVERRIDE).filter(|v| !v.is_empty()) {
-            return Runtime::from_dir(Path::new(&dir));
+            return Estuary::from_dir(Path::new(&dir));
         }
-        if let Some(r) = Runtime::installed(base) {
+        if let Some(r) = Estuary::installed(base) {
             return Some(r);
         }
         #[cfg(debug_assertions)]
         {
-            let dev = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/plugin-runtime/current");
-            if let Some(r) = Runtime::from_dir(&dev) {
+            let dev = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/estuary/current");
+            if let Some(r) = Estuary::from_dir(&dev) {
                 return Some(r);
             }
         }
         None
     }
 
-    /// The runtime installed in `base` at this version.
-    pub fn installed(base: &Path) -> Option<Runtime> {
-        Runtime::from_dir(&base.join(VERSION)).filter(|r| r.info.version == VERSION)
+    /// The Estuary installed in `base` at this version.
+    pub fn installed(base: &Path) -> Option<Estuary> {
+        Estuary::from_dir(&base.join(VERSION)).filter(|r| r.info.version == VERSION)
     }
 
-    /// Download (or copy), verify, unpack and precompile this version's
-    /// runtime into `base`, reporting progress. `cancel` stops it between
+    /// Download (or copy), verify, unpack and precompile this version of
+    /// Estuary into `base`, reporting progress. `cancel` stops it between
     /// chunks, leaving the partial download for next time.
-    pub fn install(base: &Path, cancel: &AtomicBool, progress: &mut dyn FnMut(Progress)) -> Result<Runtime, String> {
+    pub fn install(base: &Path, cancel: &AtomicBool, progress: &mut dyn FnMut(Progress)) -> Result<Estuary, String> {
         let release =
-            release().ok_or_else(|| format!("There's no plugin runtime for this computer ({}) yet.", this_target()))?;
-        Runtime::install_from(base, &Source::Url(release.url()), release.sha256, release.size, cancel, progress)
+            release().ok_or_else(|| format!("Estuary isn't built for this computer ({}) yet.", this_target()))?;
+        Estuary::install_from(base, &Source::Url(release.url()), release.sha256, release.size, cancel, progress)
     }
 
-    /// [`Runtime::install`] from an archive already on disk (downloaded by
+    /// [`Estuary::install`] from an archive already on disk (downloaded by
     /// hand, say): it must be this computer's published archive, by hash.
     pub fn install_file(
         base: &Path,
         archive: &Path,
         cancel: &AtomicBool,
         progress: &mut dyn FnMut(Progress),
-    ) -> Result<Runtime, String> {
+    ) -> Result<Estuary, String> {
         let release =
-            release().ok_or_else(|| format!("There's no plugin runtime for this computer ({}) yet.", this_target()))?;
-        Runtime::install_from(
+            release().ok_or_else(|| format!("Estuary isn't built for this computer ({}) yet.", this_target()))?;
+        Estuary::install_from(
             base,
             &Source::File(archive.to_path_buf()),
             release.sha256,
@@ -239,7 +240,7 @@ impl Runtime {
         )
     }
 
-    /// [`Runtime::install`] from any source, checked against `sha256` (and
+    /// [`Estuary::install`] from any source, checked against `sha256` (and
     /// `size`, when known).
     pub fn install_from(
         base: &Path,
@@ -248,14 +249,14 @@ impl Runtime {
         size: u64,
         cancel: &AtomicBool,
         progress: &mut dyn FnMut(Progress),
-    ) -> Result<Runtime, String> {
+    ) -> Result<Estuary, String> {
         std::fs::create_dir_all(base).map_err(|e| format!("couldn't make {}: {e}", base.display()))?;
         let download = base.join(format!("{VERSION}.download"));
         let tmp = base.join(format!("{VERSION}.tmp"));
         let dest = base.join(VERSION);
         let archive = match source {
             Source::Url(url) => {
-                fetch(url, &download, size, cancel, progress, "the plugin runtime")?;
+                fetch(url, &download, size, cancel, progress, "Estuary")?;
                 download.clone()
             }
             Source::File(path) => path.clone(),
@@ -266,10 +267,10 @@ impl Runtime {
             let _ = std::fs::remove_file(&download);
             return Err(match source {
                 Source::Url(_) => format!(
-                    "The downloaded runtime doesn't match what Magnitide expects (sha256 {got}); it wasn't installed."
+                    "The downloaded Estuary doesn't match what Magnitide expects (sha256 {got}); it wasn't installed."
                 ),
                 Source::File(path) => format!(
-                    "{} isn't the plugin runtime this Magnitide expects for this computer (sha256 {got}); it wasn't installed.",
+                    "{} isn't the Estuary archive this Magnitide expects for this computer (sha256 {got}); it wasn't installed.",
                     path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
                 ),
             });
@@ -279,11 +280,11 @@ impl Runtime {
             extract(&archive, &tmp, size, progress)?;
             let python = interpreter(&tmp);
             if !python.is_file() {
-                return Err("the runtime archive has no interpreter".into());
+                return Err("the Estuary archive has no interpreter".into());
             }
             progress(Progress::Compiling);
             precompile(&python, &tmp.join("python"))?;
-            let manifest: serde_json::Value = std::fs::read(tmp.join("python").join("magnitide-runtime.json"))
+            let manifest: serde_json::Value = std::fs::read(tmp.join("python").join("magnitide-estuary.json"))
                 .ok()
                 .and_then(|b| serde_json::from_slice(&b).ok())
                 .unwrap_or_default();
@@ -303,7 +304,7 @@ impl Runtime {
             return Err(e);
         }
         let _ = std::fs::remove_dir_all(&dest);
-        std::fs::rename(&tmp, &dest).map_err(|e| format!("couldn't move the runtime into place: {e}"))?;
+        std::fs::rename(&tmp, &dest).map_err(|e| format!("couldn't move Estuary into place: {e}"))?;
         let _ = std::fs::remove_file(&download);
         // Other versions are no longer needed.
         if let Ok(entries) = std::fs::read_dir(base) {
@@ -317,7 +318,7 @@ impl Runtime {
                 }
             }
         }
-        Runtime::from_dir(&dest).ok_or_else(|| "the runtime was installed but can't be read back".into())
+        Estuary::from_dir(&dest).ok_or_else(|| "Estuary was installed but can't be read back".into())
     }
 
     /// Remove every installed version (and partial downloads) from `base`.
@@ -325,7 +326,7 @@ impl Runtime {
         match std::fs::remove_dir_all(base) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(format!("couldn't remove the runtime: {e}")),
+            Err(e) => Err(format!("couldn't remove Estuary: {e}")),
         }
     }
 
@@ -343,7 +344,7 @@ impl Runtime {
             .env("QT_QPA_PLATFORM", "offscreen")
             .env("PYTHONDONTWRITEBYTECODE", "1")
             .output()
-            .map_err(|e| format!("couldn't run the plugin runtime ({}): {e}", self.python.display()))?;
+            .map_err(|e| format!("couldn't run Estuary ({}): {e}", self.python.display()))?;
         if !out.status.success() {
             let err = String::from_utf8_lossy(&out.stderr);
             let last = err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("it didn't start");
@@ -422,7 +423,7 @@ pub(crate) fn sha256_file(path: &Path) -> Result<String, String> {
 
 /// Download `url` to `dest`, resuming a partial file there if the server
 /// allows (GitHub does), reporting progress against `expected` bytes;
-/// `what` names the thing in errors ("the plugin runtime", "calibre").
+/// `what` names the thing in errors ("Estuary", "calibre").
 pub(crate) fn fetch(
     url: &str,
     dest: &Path,
@@ -534,18 +535,18 @@ impl<R: Read> Read for Counting<R> {
 /// Compile every module once (`unchecked-hash` pycs: never re-checked, as the
 /// files never change), so the host starts quickly.
 fn precompile(python: &Path, dir: &Path) -> Result<(), String> {
-    if std::env::var_os("MAGNITIDE_RUNTIME_NO_COMPILE").is_some() {
+    if std::env::var_os("MAGNITIDE_ESTUARY_NO_COMPILE").is_some() {
         return Ok(());
     }
     let out = Command::new(python)
         .args(["-I", "-m", "compileall", "-q", "-j0", "-f", "--invalidation-mode", "unchecked-hash"])
         .arg(dir)
         .output()
-        .map_err(|e| format!("couldn't run the runtime's interpreter: {e}"))?;
-    // Failures here are individual modules that don't compile; the runtime
+        .map_err(|e| format!("couldn't run Estuary's interpreter: {e}"))?;
+    // Failures here are individual modules that don't compile; Estuary
     // still works, so they're only noted.
     if !out.status.success() {
-        eprintln!("[plugin runtime] compileall: {}", String::from_utf8_lossy(&out.stderr).trim());
+        eprintln!("[estuary] compileall: {}", String::from_utf8_lossy(&out.stderr).trim());
     }
     Ok(())
 }
@@ -566,11 +567,11 @@ mod tests {
             std::fs::set_permissions(bin.join("python3"), std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         std::fs::write(
-            root.join("python").join("magnitide-runtime.json"),
-            r#"{"runtime":"1","python":"3.14.8","qt":"6.11.2"}"#,
+            root.join("python").join("magnitide-estuary.json"),
+            r#"{"estuary":"1","python":"3.14.8","qt":"6.11.2"}"#,
         )
         .unwrap();
-        let archive = dir.join("runtime.tar.zst");
+        let archive = dir.join("estuary.tar.zst");
         let file = std::fs::File::create(&archive).unwrap();
         let mut enc = zstd::Encoder::new(file, 3).unwrap();
         {
@@ -590,9 +591,9 @@ mod tests {
         let base = dir.path().join("base");
         let mut phases = Vec::new();
         let cancel = AtomicBool::new(false);
-        unsafe { std::env::set_var("MAGNITIDE_RUNTIME_NO_COMPILE", "1") };
+        unsafe { std::env::set_var("MAGNITIDE_ESTUARY_NO_COMPILE", "1") };
         let rt =
-            Runtime::install_from(&base, &Source::File(archive.clone()), &sha, size, &cancel, &mut |p| phases.push(p))
+            Estuary::install_from(&base, &Source::File(archive.clone()), &sha, size, &cancel, &mut |p| phases.push(p))
                 .unwrap();
         assert_eq!(rt.dir, base.join(VERSION));
         assert!(rt.python.is_file());
@@ -600,29 +601,29 @@ mod tests {
         assert_eq!(rt.info.sha256.as_deref(), Some(sha.as_str()));
         assert!(phases.contains(&Progress::Verifying) && phases.contains(&Progress::Compiling));
         assert!(!base.join(format!("{VERSION}.tmp")).exists());
-        assert_eq!(Runtime::installed(&base).unwrap().dir, rt.dir);
+        assert_eq!(Estuary::installed(&base).unwrap().dir, rt.dir);
         assert!(rt.size_on_disk() > 0);
 
         // Installing again replaces it; a stale other version is pruned.
         std::fs::create_dir_all(base.join("0")).unwrap();
-        Runtime::install_from(&base, &Source::File(archive), &sha, size, &cancel, &mut |_| {}).unwrap();
+        Estuary::install_from(&base, &Source::File(archive), &sha, size, &cancel, &mut |_| {}).unwrap();
         assert!(!base.join("0").exists());
 
-        Runtime::remove(&base).unwrap();
-        assert!(Runtime::installed(&base).is_none());
-        Runtime::remove(&base).unwrap();
+        Estuary::remove(&base).unwrap();
+        assert!(Estuary::installed(&base).is_none());
+        Estuary::remove(&base).unwrap();
     }
 
     #[test]
-    fn a_file_that_isnt_this_computers_runtime_is_refused() {
+    fn a_file_that_isnt_this_computers_estuary_is_refused() {
         let dir = tempfile::tempdir().unwrap();
-        let junk = dir.path().join("magnitide-plugin-runtime-1-nope.tar.zst");
+        let junk = dir.path().join("magnitide-estuary-1-nope.tar.zst");
         std::fs::write(&junk, b"not an archive").unwrap();
         let base = dir.path().join("base");
-        let err = Runtime::install_file(&base, &junk, &AtomicBool::new(false), &mut |_| {}).unwrap_err();
+        let err = Estuary::install_file(&base, &junk, &AtomicBool::new(false), &mut |_| {}).unwrap_err();
         // No release for this target, or the wrong file for it: either way nothing is installed.
         assert!(
-            err.contains("isn't the plugin runtime") || err.contains("no plugin runtime for this computer"),
+            err.contains("isn't the Estuary archive") || err.contains("Estuary isn't built for this computer"),
             "{err}"
         );
         assert!(junk.exists(), "the user's file is kept");
@@ -634,7 +635,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (archive, _sha, size) = fixture_archive(dir.path());
         let base = dir.path().join("base");
-        let err = Runtime::install_from(
+        let err = Estuary::install_from(
             &base,
             &Source::File(archive),
             "0000000000000000000000000000000000000000000000000000000000000000",
@@ -643,7 +644,7 @@ mod tests {
             &mut |_| {},
         )
         .unwrap_err();
-        assert!(err.contains("isn't the plugin runtime this Magnitide expects"), "{err}");
+        assert!(err.contains("isn't the Estuary archive this Magnitide expects"), "{err}");
         assert!(!base.join(VERSION).exists() && !base.join(format!("{VERSION}.tmp")).exists());
     }
 
@@ -673,10 +674,9 @@ mod tests {
 
     #[test]
     fn releases_match_the_published_sums() {
-        let sums = std::fs::read_to_string(
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/plugin-runtime/sha256sums.txt"),
-        )
-        .unwrap_or_default();
+        let sums =
+            std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/estuary/sha256sums.txt"))
+                .unwrap_or_default();
         let published: Vec<(&str, &str)> = sums
             .lines()
             .filter_map(|l| {
@@ -690,9 +690,9 @@ mod tests {
             assert!(r.file.contains(&format!("-{VERSION}-")), "{} isn't version {VERSION}", r.file);
         }
         let version =
-            std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/plugin-runtime/VERSION"))
+            std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/estuary/VERSION"))
                 .unwrap_or_default();
-        assert_eq!(version.trim(), VERSION, "scripts/plugin-runtime/VERSION and runtime::VERSION disagree");
+        assert_eq!(version.trim(), VERSION, "scripts/estuary/VERSION and estuary::VERSION disagree");
     }
 
     #[test]

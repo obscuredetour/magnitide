@@ -1,6 +1,6 @@
 """Mirrors calibre's `calibre.ebooks.metadata.pdf`: reading a PDF's
 document information (through pypdf; calibre uses PoDoFo). No cover is
-rendered, as the runtime has no PDF renderer."""
+rendered, as Estuary has no PDF renderer."""
 
 from calibre.ebooks.metadata import MetaInformation, check_isbn, string_to_authors
 from calibre.utils.date import parse_date

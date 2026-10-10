@@ -1,10 +1,11 @@
-//! calibre plugins in Magnitide, run in Magnitide's own plugin runtime.
+//! calibre plugins in Magnitide, run in a calibre or in Estuary, Magnitide's
+//! compatibility layer.
 //!
-//! Plugins load in a helper process ([`host`]): the plugin runtime's Python
-//! ([`runtime`], downloaded once) running the `magnitide_host` package from
-//! the compat package embedded in the binary, which provides the `calibre`
-//! and `qt` modules plugins import. Plugin settings live in Magnitide's own
-//! folder, never calibre's; calibre needn't be installed.
+//! Plugins load in a helper process ([`host`]): a calibre's own Python, or
+//! Estuary's ([`estuary`], downloaded once) running the `magnitide_host`
+//! package from the compat package embedded in the binary, which provides
+//! the `calibre` and `qt` modules plugins import. Plugin settings live in
+//! Magnitide's own folder, never calibre's; calibre needn't be installed.
 //!
 //! Supported so far: metadata sources, in Find Metadata ([`sources`]), and
 //! GUI plugins ([`gui`]), which work on a calibre-format shadow of the open
@@ -12,12 +13,12 @@
 //! kept, marked as not supported yet. See docs/calibre-plugins.md for the plan.
 
 pub mod calibre;
+pub mod estuary;
 pub mod filetype;
 pub mod gui;
 pub mod host;
 pub mod metadata;
 pub mod prefs;
-pub mod runtime;
 pub mod shadow;
 pub mod sources;
 
@@ -32,11 +33,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 pub use calibre::{CalibreDownloadStatus, CalibreInstall, HostChoice};
+pub use estuary::{Estuary, Progress};
 pub use filetype::Hook;
 pub use gui::{DEFAULT_OUTPUT_FORMAT, MenuItem, PluginMenu, PluginMenus};
 pub use host::{EventHandler, Host, Transport};
 pub use prefs::Configured;
-pub use runtime::{Progress, Runtime};
 
 /// The compat package: `magnitide_host`, `calibre`, `qt` and friends, embedded
 /// so it versions with Magnitide; extracted beside the plugins at run time.
@@ -49,8 +50,8 @@ pub const COMPAT_HASH: &str = env!("MAGNITIDE_COMPAT_HASH");
 /// calibre's version. Matches `COMPAT_VERSION` in `magnitide_host/__init__.py`.
 pub const CALIBRE_API_VERSION: &str = "9.15.0";
 
-/// The error when the runtime isn't installed (the UI recognizes it).
-pub const RUNTIME_MISSING: &str = "The plugin runtime isn't installed. Install it in Settings › Plugins.";
+/// The error when Estuary isn't installed (the UI recognizes it).
+pub const ESTUARY_MISSING: &str = "Estuary isn't installed. Install it in Settings › Plugins.";
 
 /// Environment variable naming a compat package directory to use instead of
 /// the embedded one (development: Python edits without a Rust rebuild).
@@ -114,7 +115,7 @@ impl PluginKind {
 }
 
 /// What a file-type, reader or writer plugin handles, known without
-/// starting the runtime.
+/// starting a host.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
@@ -162,14 +163,15 @@ pub struct Installed {
     pub coverage: Vec<String>,
 }
 
-/// calibre plugins: the installed list, the runtime, and the host that runs them.
+/// calibre plugins: the installed list, the hosts, and the one that runs them.
 pub struct Plugins {
     /// `<app config>/calibre-plugins`: `plugins/*.zip`, `plugins.json`,
     /// `settings.json`, `compat/<hash>/` (the compat package) and `config/`
     /// (calibre's config folder for the plugins).
     dir: PathBuf,
-    /// Where the runtime is installed (`<base>/<runtime::VERSION>/`).
-    runtime_base: PathBuf,
+    /// `<app local data>/plugin-hosts`: Estuary in `estuary/<estuary::VERSION>/`,
+    /// the calibre Magnitide downloads in `calibre/<version>/`.
+    hosts_dir: PathBuf,
     installing: AtomicBool,
     installing_calibre: AtomicBool,
     host: Mutex<Option<Arc<dyn Transport>>>,
@@ -184,24 +186,24 @@ pub struct Plugins {
 #[derive(Debug, Clone)]
 pub enum Launcher {
     Calibre(CalibreInstall),
-    Runtime(Runtime),
+    Estuary(Estuary),
 }
 
 pub const CALIBRE_MISSING: &str =
-    "No installed calibre was found. Install calibre, or choose Magnitide's plugin runtime in Settings › Plugins.";
+    "No installed calibre was found. Install calibre, or choose Estuary in Settings › Plugins.";
 pub const CALIBRE_DOWNLOAD_MISSING: &str =
     "Magnitide hasn't downloaded calibre yet. Download it in Settings › Plugins, or choose another host there.";
-pub const RUNTIME_OR_CALIBRE_MISSING: &str =
-    "calibre plugins need an installed calibre or Magnitide's plugin runtime. Install either in Settings › Plugins.";
+pub const ESTUARY_OR_CALIBRE_MISSING: &str =
+    "calibre plugins need a calibre, or Estuary, which runs them without one. Install either in Settings › Plugins.";
 
-/// The runtime (and the host choice), for Settings.
+/// Where calibre plugins run: the host choice, what it comes to, and each host, for Settings.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
-pub struct RuntimeStatus {
+pub struct PluginHostStatus {
     /// Settings' choice of host.
     pub host_choice: HostChoice,
-    /// What that choice comes to now: "calibre", "runtime", or None when
+    /// What that choice comes to now: "calibre", "estuary", or None when
     /// neither is available (then `host_problem` says why).
     pub host: Option<String>,
     pub host_problem: Option<String>,
@@ -211,7 +213,7 @@ pub struct RuntimeStatus {
     pub calibre_download: CalibreDownloadStatus,
     pub installed: bool,
     pub installing: bool,
-    /// Whether a runtime is published for this computer.
+    /// Whether Estuary is published for this computer.
     pub available: bool,
     pub version: Option<String>,
     pub python: Option<String>,
@@ -232,10 +234,10 @@ pub struct RuntimeStatus {
 }
 
 impl Plugins {
-    pub fn new(dir: PathBuf, runtime_base: PathBuf) -> Self {
+    pub fn new(dir: PathBuf, hosts_dir: PathBuf) -> Self {
         Self {
             dir,
-            runtime_base,
+            hosts_dir,
             installing: AtomicBool::new(false),
             installing_calibre: AtomicBool::new(false),
             host: Mutex::new(None),
@@ -258,7 +260,7 @@ impl Plugins {
 
     /// A `Plugins` talking to `transport` instead of a real host (tests).
     pub fn with_transport(dir: PathBuf, transport: Arc<dyn Transport>) -> Self {
-        let p = Self::new(dir.clone(), dir.join("runtime"));
+        let p = Self::new(dir.clone(), dir.join("hosts"));
         *p.host.lock().unwrap_or_else(|e| e.into_inner()) = Some(transport);
         p
     }
@@ -277,9 +279,14 @@ impl Plugins {
         self.dir.join("plugins.json")
     }
 
-    /// The runtime to run plugins in, if there is one.
-    pub fn runtime(&self) -> Option<Runtime> {
-        Runtime::locate(&self.runtime_base)
+    /// Where Estuary is installed (each version in its own folder).
+    fn estuary_dir(&self) -> PathBuf {
+        self.hosts_dir.join("estuary")
+    }
+
+    /// Estuary, to run plugins in, if it's there.
+    pub fn estuary(&self) -> Option<Estuary> {
+        Estuary::locate(&self.estuary_dir())
     }
 
     /// The compat package on disk: the override, or the embedded one
@@ -333,7 +340,7 @@ impl Plugins {
             Launcher::Calibre(install) => {
                 Arc::new(Host::start_calibre(Path::new(&install.calibre_debug), &compat, &config, on_event)?)
             }
-            Launcher::Runtime(runtime) => Arc::new(Host::start(&runtime, &compat, &config, on_event)?),
+            Launcher::Estuary(estuary) => Arc::new(Host::start(&estuary, &compat, &config, on_event)?),
         };
         *slot = Some(h.clone());
         drop(slot);
@@ -343,12 +350,12 @@ impl Plugins {
     }
 
     /// The host to start, by Settings' choice: an installed calibre (found
-    /// now, so a calibre installed since is picked up), or the runtime.
+    /// now, so a calibre installed since is picked up), the downloaded one, or Estuary.
     pub fn launcher(&self) -> Result<Launcher, String> {
         let choice = self.host_choice();
         let usable = |c: Option<CalibreInstall>| c.filter(|c| c.problem.is_none());
         match choice {
-            HostChoice::Runtime => self.runtime().map(Launcher::Runtime).ok_or_else(|| RUNTIME_MISSING.to_owned()),
+            HostChoice::Estuary => self.estuary().map(Launcher::Estuary).ok_or_else(|| ESTUARY_MISSING.to_owned()),
             HostChoice::Calibre => match calibre::find_installed() {
                 Some(install) => match install.problem {
                     Some(problem) => Err(problem),
@@ -356,18 +363,18 @@ impl Plugins {
                 },
                 None => Err(CALIBRE_MISSING.to_owned()),
             },
-            HostChoice::Downloaded => calibre::locate_downloaded(&self.runtime_base)
+            HostChoice::Downloaded => calibre::locate_downloaded(&self.hosts_dir)
                 .map(Launcher::Calibre)
                 .ok_or_else(|| CALIBRE_DOWNLOAD_MISSING.to_owned()),
             HostChoice::Auto => {
-                // An installed calibre, else the one Magnitide downloaded, else the runtime.
+                // An installed calibre, else the one Magnitide downloaded, else Estuary.
                 if let Some(install) = usable(calibre::find_installed()) {
                     return Ok(Launcher::Calibre(install));
                 }
-                if let Some(install) = calibre::locate_downloaded(&self.runtime_base) {
+                if let Some(install) = calibre::locate_downloaded(&self.hosts_dir) {
                     return Ok(Launcher::Calibre(install));
                 }
-                self.runtime().map(Launcher::Runtime).ok_or_else(|| RUNTIME_OR_CALIBRE_MISSING.to_owned())
+                self.estuary().map(Launcher::Estuary).ok_or_else(|| ESTUARY_OR_CALIBRE_MISSING.to_owned())
             }
         }
     }
@@ -375,7 +382,7 @@ impl Plugins {
     /// The calibre Magnitide downloads, for Settings.
     pub fn calibre_download_status(&self) -> CalibreDownloadStatus {
         let release = calibre::calibre_release();
-        let installed = calibre::locate_downloaded(&self.runtime_base);
+        let installed = calibre::locate_downloaded(&self.hosts_dir);
         CalibreDownloadStatus {
             version: calibre::CALIBRE_VERSION.into(),
             available: release.is_some(),
@@ -387,7 +394,7 @@ impl Plugins {
                     .nth(if cfg!(target_os = "macos") { 3 } else { 1 })
                     .map_or_else(|| i.calibre_debug.clone(), |p| p.display().to_string())
             }),
-            size: installed.as_ref().map(|_| calibre::downloaded_size(&self.runtime_base)),
+            size: installed.as_ref().map(|_| calibre::downloaded_size(&self.hosts_dir)),
             download_size: if installed.is_none() { release.map(|r| r.size) } else { None },
         }
     }
@@ -397,14 +404,14 @@ impl Plugins {
         &self,
         cancel: &AtomicBool,
         progress: &mut dyn FnMut(Progress),
-    ) -> Result<RuntimeStatus, String> {
+    ) -> Result<PluginHostStatus, String> {
         if self.installing_calibre.swap(true, Ordering::SeqCst) {
             return Err("calibre is already being downloaded.".into());
         }
-        let result = calibre::install_downloaded(&self.runtime_base, cancel, progress);
+        let result = calibre::install_downloaded(&self.hosts_dir, cancel, progress);
         self.installing_calibre.store(false, Ordering::SeqCst);
         result?;
-        Ok(self.runtime_status())
+        Ok(self.host_status())
     }
 
     /// Remove the downloaded calibre. Refused while a plugin is working.
@@ -413,7 +420,7 @@ impl Plugins {
             return Err("A plugin is still working. Finish in its window first, then try again.".into());
         }
         *self.host.lock().unwrap_or_else(|e| e.into_inner()) = None;
-        calibre::remove_downloaded(&self.runtime_base)
+        calibre::remove_downloaded(&self.hosts_dir)
     }
 
     /// The installed plugins as the host's registry wants them.
@@ -459,19 +466,19 @@ impl Plugins {
         Ok(())
     }
 
-    /// The runtime's state, for Settings (never starts a host).
-    pub fn runtime_status(&self) -> RuntimeStatus {
-        let release = runtime::release();
+    /// Where plugins run and each host's state, for Settings (never starts a host).
+    pub fn host_status(&self) -> PluginHostStatus {
+        let release = estuary::release();
         let installing = self.installing.load(Ordering::SeqCst);
         let host_choice = self.host_choice();
         let calibre = calibre::find_installed();
         let (host, host_problem) = match self.launcher() {
             Ok(Launcher::Calibre(_)) => (Some("calibre".to_owned()), None),
-            Ok(Launcher::Runtime(_)) => (Some("runtime".to_owned()), None),
+            Ok(Launcher::Estuary(_)) => (Some("estuary".to_owned()), None),
             Err(e) => (None, Some(e)),
         };
-        match self.runtime() {
-            Some(rt) => RuntimeStatus {
+        match self.estuary() {
+            Some(e) => PluginHostStatus {
                 host_choice,
                 host,
                 host_problem,
@@ -480,18 +487,18 @@ impl Plugins {
                 installed: true,
                 installing,
                 available: release.is_some(),
-                version: Some(rt.info.version.clone()),
-                python: rt.info.python.clone(),
-                qt: rt.info.qt.clone(),
+                version: Some(e.info.version.clone()),
+                python: e.info.python.clone(),
+                qt: e.info.qt.clone(),
                 compat: CALIBRE_API_VERSION.into(),
-                path: Some(rt.dir.display().to_string()),
-                size: Some(rt.size_on_disk()),
+                path: Some(e.dir.display().to_string()),
+                size: Some(e.size_on_disk()),
                 download_size: None,
                 download_file: release.map(|r| r.file.to_owned()),
                 download_url: release.map(|r| r.url()),
                 problem: None,
             },
-            None => RuntimeStatus {
+            None => PluginHostStatus {
                 host_choice,
                 host,
                 host_problem,
@@ -514,53 +521,53 @@ impl Plugins {
         }
     }
 
-    /// Download and install the runtime, reporting progress. One at a time.
-    pub fn install_runtime(
+    /// Download and install Estuary, reporting progress. One at a time.
+    pub fn install_estuary(
         &self,
         cancel: &AtomicBool,
         progress: &mut dyn FnMut(Progress),
-    ) -> Result<RuntimeStatus, String> {
+    ) -> Result<PluginHostStatus, String> {
         if self.installing.swap(true, Ordering::SeqCst) {
-            return Err("The plugin runtime is already being installed.".into());
+            return Err("Estuary is already being installed.".into());
         }
-        let result = Runtime::install(&self.runtime_base, cancel, progress);
+        let result = Estuary::install(&self.estuary_dir(), cancel, progress);
         self.installing.store(false, Ordering::SeqCst);
         result?;
-        Ok(self.runtime_status())
+        Ok(self.host_status())
     }
 
-    /// Install the runtime from an archive on disk (the published one for
+    /// Install Estuary from an archive on disk (the published one for
     /// this computer, downloaded by hand).
-    pub fn install_runtime_from_file(
+    pub fn install_estuary_from_file(
         &self,
         archive: &Path,
         cancel: &AtomicBool,
         progress: &mut dyn FnMut(Progress),
-    ) -> Result<RuntimeStatus, String> {
+    ) -> Result<PluginHostStatus, String> {
         if self.installing.swap(true, Ordering::SeqCst) {
-            return Err("The plugin runtime is already being installed.".into());
+            return Err("Estuary is already being installed.".into());
         }
-        let result = Runtime::install_file(&self.runtime_base, archive, cancel, progress);
+        let result = Estuary::install_file(&self.estuary_dir(), archive, cancel, progress);
         self.installing.store(false, Ordering::SeqCst);
         result?;
-        Ok(self.runtime_status())
+        Ok(self.host_status())
     }
 
-    /// Remove the installed runtime. Refused while a plugin is working.
-    pub fn remove_runtime(&self) -> Result<(), String> {
+    /// Remove the installed Estuary. Refused while a plugin is working.
+    pub fn remove_estuary(&self) -> Result<(), String> {
         if self.gui_busy() {
             return Err("A plugin is still working. Finish in its window first, then try again.".into());
         }
         *self.host.lock().unwrap_or_else(|e| e.into_inner()) = None;
-        Runtime::remove(&self.runtime_base)
+        Estuary::remove(&self.estuary_dir())
     }
 
-    /// Check the installed runtime starts (Qt included), noting the problem
+    /// Check the installed Estuary starts (Qt included), noting the problem
     /// in the status if not.
-    pub fn check_runtime(&self) -> RuntimeStatus {
-        let mut status = self.runtime_status();
-        if let Some(rt) = self.runtime() {
-            match rt.check() {
+    pub fn check_estuary(&self) -> PluginHostStatus {
+        let mut status = self.host_status();
+        if let Some(e) = self.estuary() {
+            match e.check() {
                 Ok((python, qt)) => {
                     status.python = Some(python);
                     status.qt = Some(qt);
@@ -607,7 +614,7 @@ impl Plugins {
             Ok(v) => v,
             Err(e) => {
                 let _ = std::fs::remove_file(&incoming);
-                return Err(if e == RUNTIME_MISSING {
+                return Err(if e == ESTUARY_MISSING {
                     e
                 } else {
                     format!("That isn't a calibre plugin Magnitide can load: {e}")
@@ -763,7 +770,7 @@ mod tests {
         assert!(COMPAT.get_file("compat/calibre/__init__.py").is_some());
         assert_eq!(COMPAT_HASH.len(), 16);
         let dir = tempfile::tempdir().unwrap();
-        let plugins = Plugins::new(dir.path().into(), dir.path().join("runtime"));
+        let plugins = Plugins::new(dir.path().into(), dir.path().join("hosts"));
         // The embedded copy itself, whatever MAGNITIDE_COMPAT_DIR says (CI sets it).
         let compat = plugins.extract_compat().unwrap();
         assert!(compat.join("host/magnitide_host/__init__.py").is_file());
@@ -773,22 +780,22 @@ mod tests {
     }
 
     #[test]
-    fn without_a_runtime() {
+    fn without_estuary() {
         let dir = tempfile::tempdir().unwrap();
-        let plugins = Plugins::new(dir.path().into(), dir.path().join("runtime"));
-        // The development runtime may exist on this machine; a runtime that
-        // isn't there is what's being tested. The runtime alone, so an
+        let plugins = Plugins::new(dir.path().into(), dir.path().join("hosts"));
+        // The development Estuary may exist on this machine; an Estuary that
+        // isn't there is what's being tested. Estuary alone, so an
         // installed calibre (or none: the "whichever is there" message)
         // doesn't change the answer.
-        let status = plugins.runtime_status();
+        let status = plugins.host_status();
         assert_eq!(status.compat, CALIBRE_API_VERSION);
         if !status.installed {
-            plugins.set_host_choice(HostChoice::Runtime).unwrap();
+            plugins.set_host_choice(HostChoice::Estuary).unwrap();
             let err = plugins.host().err().unwrap();
-            assert_eq!(err, RUNTIME_MISSING);
+            assert_eq!(err, ESTUARY_MISSING);
             assert!(plugins.install(Path::new("nope.zip")).is_err());
         }
         assert!(plugins.list().is_empty());
-        Plugins::remove_runtime(&plugins).unwrap();
+        Plugins::remove_estuary(&plugins).unwrap();
     }
 }

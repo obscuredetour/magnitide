@@ -227,7 +227,7 @@ def vendor(cfg, source, commit, report_nested):
             print(f'warning: resource {name} not in the checkout', file=sys.stderr)
     for name in cfg['resources']['generate']:
         print(
-            f"note: {name} must be generated (calibre's setup/iso_codes.py); scripts/plugin-runtime/gen-iso-data.py has the data"
+            f"note: {name} must be generated (calibre's setup/iso_codes.py); scripts/estuary/gen-iso-data.py has the data"
         )
     # Licence and notices.
     for lic in ('LICENSE', 'COPYRIGHT'):

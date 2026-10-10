@@ -853,7 +853,7 @@ class DB:
         pass
 
     def enable_fts(self, *a, **k):
-        raise NotImplementedError("Full-text search isn't available in Magnitide's plugin runtime")
+        raise NotImplementedError("Full-text search isn't available in Estuary, Magnitide's compatibility layer")
 
     @property
     def fts_enabled(self):

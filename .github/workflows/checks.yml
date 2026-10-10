@@ -31,8 +31,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      # The workspace (wasmtime and its compiler included) plus the plugin
-      # runtime and a calibre would fill the runner's disk with cargo's
+      # The workspace (wasmtime and its compiler included) plus Estuary
+      # and a calibre would fill the runner's disk with cargo's
       # defaults: no incremental artifacts, and line tables rather than full
       # debug info, keep the target folder a few gigabytes smaller. (If it
       # ever runs out again, deleting /usr/local/lib/android first buys the
@@ -42,14 +42,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       # The Android SDK is the runner's biggest unused item; without it the
-      # workspace build, the plugin runtime and a calibre fit with room to
+      # workspace build, Estuary and a calibre fit with room to
       # spare (4.7 GB were left without this, before the plugin builds).
       - name: Make room on the runner
         run: |
           df -h / | tail -1
           sudo rm -rf /usr/local/lib/android
           df -h / | tail -1
-      # The plugin-only steps (the runtime, the calibre oracle, the plugin
+      # The plugin-only steps (Estuary, the calibre oracle, the plugin
       # builds) run on every push to main, and on a pull request only when it
       # touches the plugins; fmt, clippy and the workspace tests always run.
       - uses: dorny/paths-filter@v3
@@ -77,28 +77,28 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
-      # The plugin host tests need the published plugin runtime (CPython +
+      # The plugin host tests need the published Estuary (CPython +
       # PyQt6), which the first release of it makes available: until
       # sha256sums.txt exists they're skipped. With it, Qt runs under xvfb.
-      - name: Cache the plugin runtime download
-        if: (github.event_name == 'push' || steps.changes.outputs.plugins == 'true') && hashFiles('scripts/plugin-runtime/sha256sums.txt') != ''
+      - name: Cache the Estuary download
+        if: (github.event_name == 'push' || steps.changes.outputs.plugins == 'true') && hashFiles('scripts/estuary/sha256sums.txt') != ''
         uses: actions/cache@v4
         with:
-          path: target/plugin-runtime/downloads
-          key: plugin-runtime-${{ hashFiles('scripts/plugin-runtime/sha256sums.txt') }}
-      - name: Plugin runtime
-        id: runtime
-        if: (github.event_name == 'push' || steps.changes.outputs.plugins == 'true') && hashFiles('scripts/plugin-runtime/sha256sums.txt') != ''
+          path: target/estuary/downloads
+          key: estuary-${{ hashFiles('scripts/estuary/sha256sums.txt') }}
+      - name: Estuary
+        id: estuary
+        if: (github.event_name == 'push' || steps.changes.outputs.plugins == 'true') && hashFiles('scripts/estuary/sha256sums.txt') != ''
         env:
           GH_TOKEN: ${{ github.token }}  # fetch.sh downloads the release through gh while the repository is private
         run: |
           sudo apt-get install -y --no-install-recommends zstd libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
             libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-sync1 libxcb-xfixes0 \
             libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0 libegl1 libgl1 libfontconfig1 libdbus-1-3 libglib2.0-0
-          scripts/plugin-runtime/fetch.sh
-          echo "MAGNITIDE_PLUGIN_RUNTIME=$PWD/target/plugin-runtime/current" >> "$GITHUB_ENV"
+          scripts/estuary/fetch.sh
+          echo "MAGNITIDE_ESTUARY=$PWD/target/estuary/current" >> "$GITHUB_ENV"
           echo "MAGNITIDE_COMPAT_DIR=$PWD/crates/plugins/python" >> "$GITHUB_ENV"
-          echo "MAGNITIDE_REQUIRE_PLUGIN_RUNTIME=1" >> "$GITHUB_ENV"
+          echo "MAGNITIDE_REQUIRE_ESTUARY=1" >> "$GITHUB_ENV"
       - run: xvfb-run -a cargo test --workspace
       # The example plugin and the template build and pack (the SDK changes with them).
       - name: Plugins build
@@ -165,10 +165,10 @@ jobs:
         with:
           python-version: "3.14"
       - uses: astral-sh/setup-uv@v6
-      - name: Dependencies (the runtime's wheels, and the test tools)
+      - name: Dependencies (Estuary's wheels, and the test tools)
         run: |
           uv venv --python 3.14 .venv
-          uv pip install --python .venv --requirement scripts/plugin-runtime/requirements.txt --require-hashes
+          uv pip install --python .venv --requirement scripts/estuary/requirements.txt --require-hashes
           uv pip install --python .venv --requirement crates/plugins/python-tests/requirements-dev.txt
       - run: .venv/bin/ruff check crates/plugins/python crates/plugins/python-tests crates/plugins/tests/fixtures scripts
       - run: .venv/bin/ruff format --check crates/plugins/python crates/plugins/python-tests

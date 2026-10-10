@@ -1,6 +1,6 @@
 """Magnitide's stand-in for calibre's `qt` package: `qt.core` is every public
 name of the PyQt6 modules calibre uses, in one namespace, as calibre's is.
-`qt.webengine` isn't available (the runtime ships no WebEngine) and says so.
+`qt.webengine` isn't available (Estuary ships no WebEngine) and says so.
 
 Older plugins import `PyQt5`; those imports are redirected to PyQt6 (the
 names are the same for the most part; enums changed, which is on the plugin).

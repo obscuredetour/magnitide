@@ -1,6 +1,6 @@
-# The plugin runtime's wheels. Resolved into requirements.txt (with hashes,
+# Estuary's wheels. Resolved into requirements.txt (with hashes,
 # for every platform) by `uv pip compile`; see README.md. Keep this list
-# short: every wheel is downloaded by every user who installs the runtime.
+# short: every wheel is downloaded by every user who installs Estuary.
 
 # Qt, for GUI plugins (calibre's `qt.core` is PyQt6). build.py strips the Qt
 # modules calibre plugins don't use (WebEngine, Qml, Multimedia, …).
