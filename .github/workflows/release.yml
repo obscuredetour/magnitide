@@ -1,0 +1,125 @@
+# Builds Magnitide for every platform and attaches the installers to a draft
+# GitHub release, to look over and publish by hand (as the latest release:
+# the site's download buttons read GitHub's latest release).
+#
+# Run by pushing a tag `v<version>`, where version is [workspace.package]'s in
+# Cargo.toml (and crates/app/ui/package.json's), or by hand
+# (workflow_dispatch) on a tag. The macOS builds are signed with a
+# Developer ID and notarized when these repository secrets are all set
+# (README.md › Releasing says how to make them), and ad-hoc signed when they
+# aren't: Gatekeeper then asks once (Privacy & Security › Open Anyway), and
+# the release notes say so. Ad-hoc, not unsigned, which Apple Silicon calls
+# "damaged" with no way past it but the Terminal.
+#   APPLE_CERTIFICATE           the Developer ID Application certificate and key, a .p12, base64
+#   APPLE_CERTIFICATE_PASSWORD  the .p12's password
+#   APPLE_SIGNING_IDENTITY      "Developer ID Application: <name> (<team id>)"
+#   APPLE_ID                    the Apple Account that notarizes
+#   APPLE_PASSWORD              an app-specific password for it
+#   APPLE_TEAM_ID               the team id
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS Apple Silicon, os: macos-14 }
+          - { name: macOS Intel, os: macos-15-intel }
+          - { name: Windows, os: windows-2022 }
+          # The oldest supported Ubuntu, so the AppImage's glibc and WebKitGTK suit most distributions.
+          - { name: Linux, os: ubuntu-22.04 }
+    steps:
+      - uses: actions/checkout@v5
+      - name: The tag matches the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          v="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
+          ui="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' crates/app/ui/package.json)"
+          test "refs/tags/v$v" = "$GITHUB_REF" || { echo "Cargo.toml's version is $v but the tag is $GITHUB_REF"; exit 1; }
+          test "$ui" = "$v" || { echo "crates/app/ui/package.json's version is $ui, not $v"; exit 1; }
+      # Every runner works out whether this release is notarized, so they all
+      # write the same release notes.
+      - name: Signing
+        id: signing
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          names="APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID"
+          set=0
+          for n in $names; do [ -n "$(printenv "$n")" ] && set=$((set + 1)); done
+          if [ "$set" = 6 ]; then
+            echo "notarized=true" >> "$GITHUB_OUTPUT"
+            if [ "$RUNNER_OS" = macOS ]; then
+              for n in $names; do echo "$n=$(printenv "$n")" >> "$GITHUB_ENV"; done
+            fi
+          else
+            [ "$set" = 0 ] || { echo "Only $set of the 6 APPLE_* secrets are set: set them all, or none"; exit 1; }
+            echo "notarized=false" >> "$GITHUB_OUTPUT"
+            if [ "$RUNNER_OS" = macOS ]; then
+              echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+              echo "::warning::No Apple Developer ID secrets: the macOS build is ad-hoc signed, not notarized"
+            fi
+          fi
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev patchelf
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: tauri-cli@2
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: crates/app/ui/package.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: crates/app/ui/pnpm-lock.yaml
+      - name: UI dependencies
+        run: pnpm --dir crates/app/ui install --frozen-lockfile
+      # Signing comes from the job's environment, as the Signing step left it.
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: crates/app
+          tauriScript: cargo tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: Magnitide __VERSION__
+          releaseBody: |
+            Magnitide __VERSION__.
+
+            - **macOS** 13 or later: `aarch64.dmg` for Apple Silicon, `x64.dmg` for Intel. ${{ steps.signing.outputs.notarized == 'true' && 'Signed and notarized.' || 'Not notarized yet: the first time, macOS says it can''t verify Magnitide. Open System Settings › Privacy & Security, choose **Open Anyway** beside "Magnitide was blocked", and confirm.' }}
+            - **Windows** 10 or later: the `.msi`, or the `-setup.exe`.
+            - **Linux**: the `.AppImage`, or the `.deb` / `.rpm` for your distribution.
+          releaseDraft: true
+          prerelease: false
