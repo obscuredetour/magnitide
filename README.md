@@ -172,6 +172,8 @@ the regenerated files; `crates/app/ui/src/api.ts` wraps each command.
    and Linux (`.AppImage`, `.deb`, `.rpm`) into a draft release.
 3. Look the draft over and publish it as the latest release: the site's download buttons read
    GitHub's latest release (Estuary's releases are never marked latest).
+4. Update the Arch package: `scripts/aur-update.sh <version>`, then push it to the AUR
+   ([packaging/aur/README.md](packaging/aur/README.md)).
 
 The macOS builds are signed with a Developer ID and notarized when these repository secrets are
 set (Settings › Secrets and variables › Actions); they need a membership of the Apple Developer
