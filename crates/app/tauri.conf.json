@@ -28,6 +28,10 @@
   "bundle": {
     "active": true,
     "category": "Productivity",
+    "linux": {
+      "deb": { "desktopTemplate": "linux/magnitide.desktop" },
+      "rpm": { "desktopTemplate": "linux/magnitide.desktop" }
+    },
     "macOS": {
       "minimumSystemVersion": "13.0",
       "entitlements": "Entitlements.plist"

@@ -92,6 +92,12 @@ impl AppState {
 }
 
 fn main() {
+    // GTK names the window after the program (Wayland app_id, X11 WM_CLASS), and desktops find
+    // its icon through the desktop entry of that name. The bundles ship "Magnitide.desktop",
+    // after productName, so the window takes that name rather than the binary's "magnitide".
+    #[cfg(target_os = "linux")]
+    glib::set_prgname(Some("Magnitide"));
+
     let builder = tauri::Builder::default();
     #[cfg(target_os = "macos")]
     let builder = builder.menu(menu::build).on_menu_event(menu::handle);

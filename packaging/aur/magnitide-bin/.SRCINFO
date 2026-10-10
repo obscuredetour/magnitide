@@ -1,7 +1,7 @@
 pkgbase = magnitide-bin
 	pkgdesc = A fast, modern ebook library manager that starts from the calibre library you already have
 	pkgver = 0.7.0
-	pkgrel = 1
+	pkgrel = 2
 	url = https://magnitide.com
 	arch = x86_64
 	license = GPL-3.0-or-later
