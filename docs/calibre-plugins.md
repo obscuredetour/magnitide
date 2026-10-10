@@ -266,11 +266,10 @@ Still to do:
   writes through the link into the library. None of the surveyed plugins
   do, but it isn't prevented.
 - Windows: links need Developer Mode there; without it files are copied.
-- Estuary's first release under its own name is `estuary-v3` (versions 1
-  and 2 were published as `plugin-runtime-v1` and `-v2`); until it's made,
-  `RELEASES` in `estuary.rs` is empty and the host tests are skipped. It
-  sits on a private repository, so the app's download gets a 404 until the
-  repository or the release is public. Meanwhile Settings ›
+- Estuary's release (`estuary-v3`, published 2026-10-10, hashes in
+  `estuary.rs`; versions 1 and 2 were published as `plugin-runtime-v1` and
+  `-v2`) sits on a private repository, so the app's download gets a 404
+  until the repository or the release is public. Meanwhile Settings ›
   Plugins › "Install from file…" installs the archive downloaded by hand
   from the release (only the one for this computer, by hash); `fetch.sh`
   and CI use `gh` with a token.

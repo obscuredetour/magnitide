@@ -1,0 +1,5 @@
+10047ef734a657c782851d4eee9a2e7674768ab14c91d190213db54751758817  magnitide-estuary-3-aarch64-apple-darwin.tar.zst
+852edc24faa9a1b03a1c40820a1753c0fcf4204ded10fdd8629c867d087e0323  magnitide-estuary-3-aarch64-unknown-linux-gnu.tar.zst
+8e6e505f9ef78b34b8321f2aea7ce533aa04e5fd0880be7540469cf0e78b0351  magnitide-estuary-3-x86_64-apple-darwin.tar.zst
+9cd9ac2ddc99e963d7b7066b477f58af852bf2b2650bbf7654d4e0df3e54b0d4  magnitide-estuary-3-x86_64-pc-windows-msvc.tar.zst
+fb9370d622693fa6b76299c6ed8655ff8b67c5d63db702ece05e9922a3403ad6  magnitide-estuary-3-x86_64-unknown-linux-gnu.tar.zst

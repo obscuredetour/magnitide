@@ -37,9 +37,44 @@ pub struct Release {
 }
 
 /// Printed by `build.py --rust-table manifest.json` after a release; must
-/// match `scripts/estuary/sha256sums.txt` (a test checks). Empty until
-/// Estuary's first release (`estuary-v3`).
-pub const RELEASES: &[Release] = &[];
+/// match `scripts/estuary/sha256sums.txt` (a test checks).
+pub const RELEASES: &[Release] = &[
+    Release {
+        target: "aarch64-apple-darwin",
+        file: "magnitide-estuary-3-aarch64-apple-darwin.tar.zst",
+        sha256: "10047ef734a657c782851d4eee9a2e7674768ab14c91d190213db54751758817",
+        size: 40462993,
+        installed_size: 155897671,
+    },
+    Release {
+        target: "aarch64-unknown-linux-gnu",
+        file: "magnitide-estuary-3-aarch64-unknown-linux-gnu.tar.zst",
+        sha256: "852edc24faa9a1b03a1c40820a1753c0fcf4204ded10fdd8629c867d087e0323",
+        size: 61513908,
+        installed_size: 246102020,
+    },
+    Release {
+        target: "x86_64-apple-darwin",
+        file: "magnitide-estuary-3-x86_64-apple-darwin.tar.zst",
+        sha256: "8e6e505f9ef78b34b8321f2aea7ce533aa04e5fd0880be7540469cf0e78b0351",
+        size: 43107969,
+        installed_size: 155932352,
+    },
+    Release {
+        target: "x86_64-pc-windows-msvc",
+        file: "magnitide-estuary-3-x86_64-pc-windows-msvc.tar.zst",
+        sha256: "9cd9ac2ddc99e963d7b7066b477f58af852bf2b2650bbf7654d4e0df3e54b0d4",
+        size: 34489570,
+        installed_size: 130779676,
+    },
+    Release {
+        target: "x86_64-unknown-linux-gnu",
+        file: "magnitide-estuary-3-x86_64-unknown-linux-gnu.tar.zst",
+        sha256: "fb9370d622693fa6b76299c6ed8655ff8b67c5d63db702ece05e9922a3403ad6",
+        size: 67491575,
+        installed_size: 249207704,
+    },
+];
 
 /// This build's target triple, as the archives are named.
 pub const fn this_target() -> &'static str {
