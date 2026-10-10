@@ -49,8 +49,7 @@ fn read_inner(path: &Path) -> Res<BookMetadata> {
         match node.tag_name().name() {
             "title" if out.title.is_none() && !value.is_empty() => out.title = Some(value),
             "creator" if !value.is_empty() => {
-                let role = attr(node, "role").map(str::to_owned).or_else(|| refined(node, "role"));
-                if role.as_deref().is_none_or(|r| r.eq_ignore_ascii_case("aut")) {
+                if is_author(node, metadata) {
                     let sort = attr(node, "file-as").map(str::to_owned).or_else(|| refined(node, "file-as"));
                     out.authors.push(Author { name: value, sort: sort.filter(|s| !s.trim().is_empty()) });
                 }
@@ -256,6 +255,24 @@ pub(crate) fn child<'a, 'i>(node: Node<'a, 'i>, local: &str) -> Option<Node<'a, 
     node.children().find(|n| n.has_tag_name_local(local))
 }
 
+/// Whether a `<dc:creator>` is an author: it has no role at all, or any of
+/// its roles is "aut". Roles come from `opf:role` and from EPUB 3 role
+/// refinements, of which there can be several ("ann" then "aut", say).
+pub(crate) fn is_author(creator: Node<'_, '_>, metadata: Node<'_, '_>) -> bool {
+    let id = attr(creator, "id");
+    let refined = metadata
+        .children()
+        .filter(|m| {
+            m.has_tag_name_local("meta")
+                && id.is_some()
+                && attr(*m, "refines").map(|r| r.trim_start_matches('#')) == id
+                && attr(*m, "property") == Some("role")
+        })
+        .map(text);
+    let mut roles = attr(creator, "role").map(str::to_owned).into_iter().chain(refined).peekable();
+    roles.peek().is_none() || roles.any(|r| r.eq_ignore_ascii_case("aut"))
+}
+
 /// Attribute by local name, whatever its namespace (opf:role, role, …).
 pub(crate) fn attr<'a>(node: Node<'a, '_>, local: &str) -> Option<&'a str> {
     node.attributes().find(|a| a.name() == local).map(|a| a.value())
@@ -375,6 +392,46 @@ pub(crate) mod tests {
         assert_eq!(m.series, Some(("The Expanse".into(), 1.0)));
         assert_eq!(m.identifiers.get("isbn").map(String::as_str), Some("9780316129084"));
         assert_eq!(m.cover.as_deref(), Some(&b"\x89PNG"[..]));
+    }
+
+    /// Creators with several role refinements, as Standard Ebooks writes
+    /// them: an author whose first role isn't "aut", one whose is, an
+    /// illustrator, and a creator with no role.
+    pub(crate) const MIXED_ROLES_OPF: &str = r##"<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="uid">urn:uuid:22222222-3333-4444-8555-666666666666</dc:identifier>
+    <dc:title>A Study in Scarlet</dc:title>
+    <dc:language>en</dc:language>
+    <dc:creator id="c1">Arthur Conan Doyle</dc:creator>
+    <meta refines="#c1" property="role" scheme="marc:relators">ann</meta>
+    <meta refines="#c1" property="role" scheme="marc:relators">aut</meta>
+    <meta refines="#c1" property="file-as">Doyle, Arthur Conan</meta>
+    <dc:creator id="c2">Second Author</dc:creator>
+    <meta refines="#c2" property="role" scheme="marc:relators">aut</meta>
+    <meta refines="#c2" property="role" scheme="marc:relators">dto</meta>
+    <dc:creator id="c3">Only Illustrator</dc:creator>
+    <meta refines="#c3" property="role" scheme="marc:relators">ill</meta>
+    <dc:creator id="c4">No Role</dc:creator>
+  </metadata>
+  <manifest><item id="a" href="a.xhtml" media-type="application/xhtml+xml"/></manifest>
+</package>"##;
+
+    #[test]
+    fn a_creator_is_an_author_if_any_role_is_aut() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("book.epub");
+        make_epub(&path, MIXED_ROLES_OPF, None);
+
+        let m = read(&path).unwrap();
+        assert_eq!(
+            m.authors,
+            [
+                Author { name: "Arthur Conan Doyle".into(), sort: Some("Doyle, Arthur Conan".into()) },
+                Author { name: "Second Author".into(), sort: None },
+                Author { name: "No Role".into(), sort: None },
+            ]
+        );
     }
 
     #[test]
