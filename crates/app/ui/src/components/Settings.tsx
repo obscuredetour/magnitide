@@ -50,7 +50,9 @@ import {
   seriesBadges,
   setBlendAllThemes,
   setSeriesBadges,
+  setToolbarLayout,
   setZebraRows,
+  toolbarLayout,
   viewMode,
   zebraRows,
 } from '../view';
@@ -352,6 +354,28 @@ function Appearance() {
         />
       </Row>
 
+      <Row label="Toolbar" description="Two rows, or everything in one for more room below.">
+        <div class="flex rounded-control bg-element p-0.5" role="group" aria-label="Toolbar">
+          <For
+            each={
+              [
+                ['two-rows', 'Two Rows'],
+                ['one-row', 'One Row'],
+              ] as const
+            }
+          >
+            {([layout, label]) => (
+              <button
+                class="rounded-inset px-3 py-1 text-xs font-medium text-muted aria-pressed:bg-popover aria-pressed:text-fg aria-pressed:shadow-card"
+                aria-pressed={toolbarLayout() === layout}
+                onClick={() => setToolbarLayout(layout)}
+              >
+                {label}
+              </button>
+            )}
+          </For>
+        </div>
+      </Row>
       <Row label="View" description={`Also ${keys('mod+1')} and ${keys('mod+2')}.`}>
         <div class="flex rounded-control bg-element p-0.5" role="group" aria-label="View">
           <For

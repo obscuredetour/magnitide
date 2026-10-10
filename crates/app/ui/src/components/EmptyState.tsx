@@ -4,7 +4,7 @@ import { Mark } from './Mark';
 
 export function EmptyState(props: { message: string }) {
   return (
-    <div class="fixed inset-x-0 top-(--chrome-h) bottom-0 flex flex-col items-center justify-center bg-bg p-6 text-center">
+    <div class="fixed inset-x-0 top-(--topbar-h) bottom-0 flex flex-col items-center justify-center bg-bg p-6 text-center">
       <Mark size={88} class="text-muted" />
       <h1 class="mt-[18px] mb-2 font-serif text-2xl font-semibold">Open a library</h1>
       <p class="mb-2 max-w-[420px] text-sm text-muted">{props.message}</p>

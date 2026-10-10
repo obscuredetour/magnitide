@@ -18,8 +18,13 @@ function DeviceIcon() {
   return <Icon of={Tablet} />;
 }
 
-/** The connected e-readers: which books are on them, and a filter to show just those. */
-export function DeviceMenu() {
+/**
+ * The connected e-readers: which books are on them, and a filter to show just
+ * those. `narrow` drops the name and count in narrow windows, for the
+ * one-row toolbar.
+ */
+export function DeviceMenu(props: { narrow?: boolean }) {
+  const detail = () => (props.narrow ? 'max-[1080px]:hidden' : '');
   const label = () => {
     const list = devices();
     return list.length === 1 ? list[0]!.name : `${list.length} devices`;
@@ -39,12 +44,10 @@ export function DeviceMenu() {
             <span classList={{ 'text-success': deviceFilter() === 'all', 'text-accent': deviceFilter() !== 'all' }}>
               <DeviceIcon />
             </span>
-            <span class="truncate font-medium max-[1080px]:hidden">{label()}</span>
-            <span class="whitespace-nowrap text-muted tabular-nums max-[1080px]:hidden">
-              {onCount().toLocaleString()}
-            </span>
+            <span class={`truncate font-medium ${detail()}`}>{label()}</span>
+            <span class={`whitespace-nowrap text-muted tabular-nums ${detail()}`}>{onCount().toLocaleString()}</span>
             <Show when={deviceFilter() !== 'all'}>
-              <span class="rounded-chip bg-accent/15 px-1.5 text-[11px] font-medium text-accent max-[1080px]:hidden">
+              <span class={`rounded-chip bg-accent/15 px-1.5 text-[11px] font-medium text-accent ${detail()}`}>
                 filtered
               </span>
             </Show>
