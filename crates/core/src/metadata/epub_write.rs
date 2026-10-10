@@ -22,8 +22,8 @@ use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 use super::epub::{
-    LocalName, MAX_XML, Res, Zip, attr, child, declared_cover, identifier, opf_path, parse_xml, read_entry, resolve,
-    text,
+    LocalName, MAX_XML, Res, Zip, attr, child, declared_cover, identifier, is_author, opf_path, parse_xml, read_entry,
+    resolve, text,
 };
 use super::{BookMetadata, language_tag};
 
@@ -163,10 +163,7 @@ fn rewrite_opf(
         match n.tag_name().name() {
             "title" | "publisher" | "subject" | "description" if dc => true,
             "language" if dc => manage_languages,
-            "creator" if dc => {
-                let role = attr(n, "role").map(str::to_owned).or_else(|| refines(n, "role"));
-                role.is_none_or(|r| r.eq_ignore_ascii_case("aut"))
-            }
+            "creator" if dc => is_author(n, metadata),
             "date" if dc => attr(n, "event").is_none_or(|e| e.contains("publication")),
             "identifier" if dc => attr(n, "id") != unique_id && identifier(attr(n, "scheme"), &text(n)).is_some(),
             "meta" if !dc => match (attr(n, "name"), attr(n, "property")) {
@@ -436,7 +433,7 @@ mod tests {
 
     use super::super::Author;
     use super::super::epub::read;
-    use super::super::epub::tests::{EPUB2_OPF, make_epub};
+    use super::super::epub::tests::{EPUB2_OPF, MIXED_ROLES_OPF, make_epub};
     use super::*;
 
     const JPEG: &[u8] = b"\xFF\xD8new-cover";
@@ -597,6 +594,28 @@ mod tests {
         assert_eq!(opf.matches("dcterms:modified").count(), 1);
         // The package's identity is untouched.
         assert!(opf.contains(r#"unique-identifier="pub-id""#));
+    }
+
+    #[test]
+    fn replaces_creators_with_aut_among_several_roles() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("book.epub");
+        make_epub(&path, MIXED_ROLES_OPF, None);
+
+        write(&path, &wanted(), None).unwrap();
+        // Read back without duplicates: every old author was replaced.
+        assert_reads_back(&path, &wanted());
+
+        let opf = opf_text(&path);
+        for kept in [
+            r#"<dc:creator id="c3">Only Illustrator</dc:creator>"#,
+            r##"<meta refines="#c3" property="role" scheme="marc:relators">ill</meta>"##,
+        ] {
+            assert!(opf.contains(kept), "missing {kept} in\n{opf}");
+        }
+        for gone in ["Arthur Conan Doyle", "Doyle, Arthur Conan", "Second Author", "No Role", ">ann<", ">dto<"] {
+            assert!(!opf.contains(gone), "{gone} still in\n{opf}");
+        }
     }
 
     #[test]
