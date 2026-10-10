@@ -134,6 +134,28 @@ export function setBlendAllThemes(on: boolean): void {
   storage.set('blendAllThemes', on ? 'on' : 'off');
 }
 
+/**
+ * The toolbar: two rows (the library, devices and app controls above; the
+ * sidebar, search and how books show below), or everything in one row.
+ */
+export type ToolbarLayout = 'two-rows' | 'one-row';
+const [toolbarLayout, setToolbarLayoutSignal] = createSignal<ToolbarLayout>(
+  storage.get('toolbar') === 'one-row' ? 'one-row' : 'two-rows',
+);
+export { toolbarLayout };
+
+/** On <html>, for the toolbar's height (styles.css). */
+function applyToolbar(layout: ToolbarLayout): void {
+  document.documentElement.dataset.toolbar = layout;
+}
+applyToolbar(toolbarLayout());
+
+export function setToolbarLayout(layout: ToolbarLayout): void {
+  setToolbarLayoutSignal(layout);
+  applyToolbar(layout);
+  storage.set('toolbar', layout);
+}
+
 /** Alternating row colours in the list view; on unless turned off. */
 const [zebraRows, setZebraRowsSignal] = createSignal(storage.get('tableZebra') !== 'off');
 export { zebraRows };

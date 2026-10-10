@@ -9,8 +9,6 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
-    // The title bar shows the app icon from crates/app/icons.
-    fs: { allow: ['.', '../icons'] },
   },
   build: {
     // Oldest engine we support: Safari 16.4's WebKit (what Tailwind v4 needs),

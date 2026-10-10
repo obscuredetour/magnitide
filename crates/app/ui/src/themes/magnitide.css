@@ -1,7 +1,10 @@
 /* Magnitide's own themes: light and dark (the defaults) with the coral of
-   the logo's bottom book as the accent (--coral, the same in every theme)
-   and teal for links, and sepia. Accents beyond the ones they set come from
-   Catppuccin Latte (light) and Mocha (dark), for the accent picker. */
+   the logo's bottom book as the accent (--coral) and teal for links, and
+   sepia. Dark's coral is lighter and pinker (#f07a6e, not #f14b4b), so on a
+   dark ground it reads as the brand rather than an error; its red, for
+   danger, is a deeper crimson to stay apart from it. Accents beyond the ones
+   they set come from Catppuccin Latte (light) and Mocha (dark), for the
+   accent picker. */
 
 :root:not([data-theme]),
 [data-theme='light'] {
@@ -56,7 +59,7 @@
   --subtext-0: #a1a0a6;
   --subtext-1: #c4c3c8;
   --text: #ececee;
-  --red: #f07a6e;
+  --red: #f53a51;
   --yellow: #e5c06a;
   --green: #6cc58a;
   --teal: #67c7c2;
@@ -66,11 +69,11 @@
   --pink: #f5c2e7;
   --mauve: #cba6f7;
   --maroon: #eba0ac;
-  --peach: #f67d5b;
+  --peach: #fab387;
   --sky: #89dceb;
   --sapphire: #74c7ec;
   --lavender: #b4befe;
-  --coral: #f14b4b;
+  --coral: #f07a6e;
 
   --accent: var(--coral);
   --link: var(--teal);

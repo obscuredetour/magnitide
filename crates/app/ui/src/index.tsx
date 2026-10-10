@@ -6,8 +6,8 @@ import { render } from 'solid-js/web';
 
 import { App } from './App';
 
-// macOS gets its own title bar (TitleBar), since the window's is an overlay
-// with the traffic lights in their usual place.
+// On macOS the window's title bar is an overlay, and the traffic lights sit
+// in the toolbar (see styles.css).
 document.documentElement.classList.toggle('is-mac', /Mac/.test(navigator.userAgent));
 
 render(() => <App />, document.getElementById('root')!);

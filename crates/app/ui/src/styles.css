@@ -89,20 +89,32 @@
   body {
     @apply h-full overflow-hidden font-sans text-[13px]/[1.4] text-fg antialiased select-none;
   }
-  /* Window chrome: the macOS title bar (0 elsewhere, where the system draws
-     one) and the toolbar under it. Everything below starts at --chrome-h,
-     and ends at the status bar along the bottom. */
+  /* Window chrome: the toolbar along the top (one row or two, view.ts) and
+     the status bar along the bottom; everything else sits between them.
+     Windows and Linux draw a title bar above the page; on macOS the window's
+     is an overlay, so the traffic lights sit in the toolbar's first row. */
   :root {
-    --titlebar-h: 0px;
-    --topbar-h: 52px;
-    --chrome-h: calc(var(--titlebar-h) + var(--topbar-h));
+    --toolbar-row: 44px;
+    --toolbar-row-2: 40px;
+    --topbar-h: calc(var(--toolbar-row) + var(--toolbar-row-2));
     --statusbar-h: 26px;
+    /* Room at the first row's start for the traffic lights. */
+    --lights-w: 0px;
   }
-  /* The title bar holds the traffic lights, which the window draws at a
-     fixed size, so it stays the native height at any interface size (--zoom,
-     set by zoom.ts) instead of zooming with the page. */
+  :root[data-toolbar='one-row'] {
+    --topbar-h: var(--toolbar-row);
+  }
+  /* The traffic lights are drawn at a fixed size and place
+     (trafficLightPosition in tauri.conf.json: centred in 44px), so the row
+     holding them and the room left for them stay native size at any
+     interface size (--zoom, set by zoom.ts); the row only grows to fit its
+     zoomed controls. macOS hides them in full screen (data-fullscreen,
+     TopBar.tsx). */
   :root.is-mac {
-    --titlebar-h: calc(28px / var(--zoom, 1));
+    --toolbar-row: max(calc(44px / var(--zoom, 1)), 40px);
+  }
+  :root.is-mac:not([data-fullscreen]) {
+    --lights-w: calc(72px / var(--zoom, 1));
   }
   /* While dragging books onto a shelf. */
   html[data-dragging-books] * {

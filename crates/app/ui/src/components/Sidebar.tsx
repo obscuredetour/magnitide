@@ -60,7 +60,13 @@ export function Sidebar() {
       .join(' · ') ?? '';
 
   return (
-    <nav class="flex w-52 flex-none flex-col overflow-y-auto border-r border-line bg-panel p-2" aria-label="Library">
+    // Children keep their heights (*:shrink-0): a column that scrolls would
+    // otherwise squeeze its rows (All Books, shelves) once open categories
+    // overflow it.
+    <nav
+      class="flex w-52 flex-none flex-col overflow-y-auto border-r border-line bg-panel p-2 *:shrink-0"
+      aria-label="Library"
+    >
       {/* Your shelves, or the library by what its books share. */}
       <div class="mb-1.5 flex rounded-control bg-element p-0.5" role="group" aria-label="Sidebar shows">
         <button class={segment} aria-pressed={sidebarMode() === 'shelves'} onClick={() => setSidebarMode('shelves')}>

@@ -13,11 +13,10 @@ import { EmptyState } from './components/EmptyState';
 import { ImportDialog } from './components/ImportDialog';
 import { NetworkWarning } from './components/NetworkWarning';
 import { SelectionBar } from './components/SelectionBar';
-import { SettingsDialog, type SettingsSection } from './components/Settings';
+import { SettingsDialog, type SettingsSection } from './components/settings/Settings';
 import { StatusBar } from './components/StatusBar';
 import { QuestionHost } from './question';
 import { ConfirmHost } from './confirm';
-import { TitleBar } from './components/TitleBar';
 import { TopBar } from './components/TopBar';
 import { selectedInOrder, shownItems, watchDevices } from './devices';
 import {
@@ -237,11 +236,10 @@ export function App() {
 
   return (
     <>
-      <TitleBar />
       <TopBar searchRef={(el) => (searchInput = el)} onLeaveSearch={leaveSearch} onOpenSettings={openSettings} />
       <Switch>
         <Match when={status().kind === 'ready'}>
-          <main class="fixed inset-x-0 top-(--chrome-h) bottom-(--statusbar-h) flex flex-col">
+          <main class="fixed inset-x-0 top-(--topbar-h) bottom-(--statusbar-h) flex flex-col">
             <NetworkWarning />
             <div class="relative flex min-h-0 flex-1">
               <Show when={sidebarOpen()}>
