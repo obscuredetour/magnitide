@@ -1,5 +1,6 @@
-/* Magnitide's own themes: light and dark (the defaults), with coral as the
-   accent (--coral) and teal for links, and sepia. Their accent picker offers
+/* Magnitide's own themes: light and dark (the defaults), with teal as the
+   accent (the mark's widest slab) and blue for links, so links and accented
+   controls differ as in every other theme, and sepia. Their accent picker offers
    the mark's four colours (yellow, teal, purple, coral), each tuned to read
    as text on its theme's ground, so lighter in Dark and darker in Light and
    Sepia than in the mark itself (brand README). Dark's coral is lighter and
@@ -39,8 +40,8 @@
   --coral: #f14b4b;
   --purple: #8838a8;
 
-  --accent: var(--coral);
-  --link: var(--teal);
+  --accent: var(--teal);
+  --link: var(--blue);
   --field: #ffffff;
   --on-accent: #ffffff;
   --border: rgb(0 0 0 / 0.08);
@@ -79,8 +80,8 @@
   --coral: #f07a6e;
   --purple: #ce99e5;
 
-  --accent: var(--coral);
-  --link: var(--teal);
+  --accent: var(--teal);
+  --link: var(--blue);
   --on-accent: #0e0e10;
   --field: var(--mantle);
   --border: rgb(255 255 255 / 0.08);

@@ -64,8 +64,8 @@ export type Theme = {
 };
 
 export const BUILTIN_THEMES: readonly Theme[] = [
-  { id: 'light', label: 'Light', appearance: 'light', accents: MAGNITIDE_ACCENTS, own: 'coral' },
-  { id: 'dark', label: 'Dark', appearance: 'dark', accents: MAGNITIDE_ACCENTS, own: 'coral' },
+  { id: 'light', label: 'Light', appearance: 'light', accents: MAGNITIDE_ACCENTS, own: 'teal' },
+  { id: 'dark', label: 'Dark', appearance: 'dark', accents: MAGNITIDE_ACCENTS, own: 'teal' },
   { id: 'sepia', label: 'Sepia', appearance: 'light', accents: SEPIA_ACCENTS, own: 'peach' },
   { id: 'catppuccin-latte', label: 'Catppuccin Latte', appearance: 'light', accents: CATPPUCCIN_ACCENTS, own: 'mauve' },
   {
