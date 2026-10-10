@@ -262,7 +262,7 @@ export function TopBar(props: Props) {
         when={toolbarLayout() === 'two-rows'}
         fallback={
           <div
-            class={`grid h-(--toolbar-row) grid-cols-[minmax(0,1fr)_minmax(160px,2fr)_minmax(max-content,1fr)] items-center gap-4 pr-4 ${start}`}
+            class={`grid h-(--toolbar-row) grid-cols-[minmax(0,1fr)_minmax(160px,2fr)_minmax(max-content,1fr)] items-center gap-4 pr-2 ${start}`}
             data-tauri-drag-region
           >
             <div class="flex min-w-0 items-center gap-1 justify-self-start" data-tauri-drag-region>
@@ -278,7 +278,7 @@ export function TopBar(props: Props) {
           </div>
         }
       >
-        <div class={`flex h-(--toolbar-row) items-center gap-4 pr-3 ${start}`} data-tauri-drag-region>
+        <div class={`flex h-(--toolbar-row) items-center gap-4 pr-2 ${start}`} data-tauri-drag-region>
           <div class="flex min-w-0 flex-1 items-center gap-1" data-tauri-drag-region>
             <LibraryMenu />
             <DeviceMenu />
@@ -286,7 +286,7 @@ export function TopBar(props: Props) {
           <AppControls onOpenSettings={props.onOpenSettings} />
         </div>
         <div
-          class="grid h-(--toolbar-row-2) grid-cols-[minmax(0,1fr)_minmax(160px,2fr)_minmax(max-content,1fr)] items-center gap-4 px-4 pb-1.5"
+          class="grid h-(--toolbar-row-2) grid-cols-[minmax(0,1fr)_minmax(160px,2fr)_minmax(max-content,1fr)] items-center gap-4 px-2 pb-1.5"
           data-tauri-drag-region
         >
           <div class="flex items-center justify-self-start" data-tauri-drag-region>
