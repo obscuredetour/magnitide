@@ -2798,6 +2798,7 @@ dependencies = [
  "tauri-plugin-opener",
  "trash",
  "ts-rs",
+ "webkit2gtk",
 ]
 
 [[package]]

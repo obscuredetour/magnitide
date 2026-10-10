@@ -44,6 +44,30 @@ pub fn respond(app: &AppHandle, path: &str) -> Response<Vec<u8>> {
     }
 }
 
+/// Lets every webview show `cover:` URLs from a page served over `http:`,
+/// which is what the dev build is (Vite on `http://localhost:1420`).
+///
+/// WebKitGTK 2.54 refuses that with "Unsafe attempt to load URL … Domains,
+/// protocols and ports must match": a custom scheme no longer passes its
+/// cross-origin display check from an `http:` page, though it still does from
+/// the packaged build's `tauri://localhost`. The view's CORS allowlist is the
+/// narrowest switch that clears it. Harmless in packaged builds.
+pub fn allow_on_http<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    tauri::plugin::Builder::new("cover-allowlist")
+        .on_webview_ready(|webview| {
+            #[cfg(target_os = "linux")]
+            if let Err(e) = webview.with_webview(|platform| {
+                use webkit2gtk::WebViewExt;
+                platform.inner().set_cors_allowlist(&["cover://*/*"]);
+            }) {
+                eprintln!("allowing cover: in {}: {e}", webview.label());
+            }
+            #[cfg(not(target_os = "linux"))]
+            let _ = webview;
+        })
+        .build()
+}
+
 fn status(code: StatusCode) -> Response<Vec<u8>> {
     let mut r = Response::new(Vec::new());
     *r.status_mut() = code;

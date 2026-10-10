@@ -98,6 +98,7 @@ fn main() {
 
     builder
         .plugin(tauri_plugin_dialog::init())
+        .plugin(covers::allow_on_http())
         .manage(AppState::default())
         .setup(|app| {
             devices::watch(app.handle().clone());
