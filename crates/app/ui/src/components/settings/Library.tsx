@@ -18,8 +18,8 @@ import {
 import { formatSize } from '../../sizes';
 import { toast } from '../../toast';
 import { describeWrite, plural, setWriteOnSave, writeOnSave } from '../../writeback';
-import { AppGlyph } from '../AppGlyph';
 import { Icon } from '../Icon';
+import { Mark } from '../Mark';
 import { CustomFieldsSettings } from './CustomFields';
 import { button, Callout, Group, Heading, help, Row, Toggle } from './parts';
 
@@ -46,7 +46,7 @@ function CurrentLibrary() {
         <section class="mb-7 rounded-card border border-line bg-bg/40">
           <div class="flex items-start gap-3.5 p-4">
             <span class="grid size-11 flex-none place-items-center rounded-card border border-line bg-popover text-fg shadow-card">
-              <AppGlyph size={30} />
+              <Mark size={28} colour />
             </span>
             <div class="min-w-0 flex-1">
               <Show when={editable()} fallback={<div class="text-base font-semibold">{lib().name}</div>}>

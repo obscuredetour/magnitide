@@ -28,8 +28,15 @@ const CATPPUCCIN_ACCENTS: Accent[] = [
   'Lavender',
 ].map((label) => ({ name: label.toLowerCase(), label }));
 
-/** Magnitide's own themes: their coral first, then Catppuccin's. */
-const MAGNITIDE_ACCENTS: Accent[] = [{ name: 'coral', label: 'Coral' }, ...CATPPUCCIN_ACCENTS];
+/** Magnitide's own themes: the mark's four colours, in its order (each theme tunes them; magnitide.css). */
+const MAGNITIDE_ACCENTS: Accent[] = [
+  { name: 'yellow', label: 'Yellow' },
+  { name: 'teal', label: 'Teal' },
+  { name: 'purple', label: 'Purple' },
+  { name: 'coral', label: 'Coral' },
+];
+/** Sepia's: its own peach, then the mark's. */
+const SEPIA_ACCENTS: Accent[] = [{ name: 'peach', label: 'Peach' }, ...MAGNITIDE_ACCENTS];
 
 /** Dracula's accents, by its own names (mapped onto the palette's in dracula.css). */
 const DRACULA_ACCENTS: Accent[] = [
@@ -57,9 +64,9 @@ export type Theme = {
 };
 
 export const BUILTIN_THEMES: readonly Theme[] = [
-  { id: 'light', label: 'Light', appearance: 'light', accents: MAGNITIDE_ACCENTS, own: 'coral' },
-  { id: 'dark', label: 'Dark', appearance: 'dark', accents: MAGNITIDE_ACCENTS, own: 'coral' },
-  { id: 'sepia', label: 'Sepia', appearance: 'light', accents: MAGNITIDE_ACCENTS, own: 'peach' },
+  { id: 'light', label: 'Light', appearance: 'light', accents: MAGNITIDE_ACCENTS, own: 'teal' },
+  { id: 'dark', label: 'Dark', appearance: 'dark', accents: MAGNITIDE_ACCENTS, own: 'teal' },
+  { id: 'sepia', label: 'Sepia', appearance: 'light', accents: SEPIA_ACCENTS, own: 'peach' },
   { id: 'catppuccin-latte', label: 'Catppuccin Latte', appearance: 'light', accents: CATPPUCCIN_ACCENTS, own: 'mauve' },
   {
     id: 'catppuccin-frappe',

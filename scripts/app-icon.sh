@@ -1,7 +1,7 @@
 #!/bin/sh
 # Compile the macOS 26 app icon, crates/app/icons/Magnitide.icon (made in
-# Icon Composer: the books as layers, with colours for the Default, Dark,
-# Clear and Tinted styles), into crates/app/icons/Assets.car, which
+# Icon Composer: the mark's four slabs as layers, on a ground that's light
+# in the Default style and dark in Dark), into crates/app/icons/Assets.car, which
 # tauri.conf.json bundles beside icon.icns (the fallback for older macOS).
 # The compiled file is committed so builds don't need Xcode 26; run this
 # after editing the .icon. Needs Xcode 26's actool; the Command Line Tools
