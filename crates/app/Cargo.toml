@@ -31,6 +31,8 @@ trash = "5.2.9"
 [target.'cfg(target_os = "linux")'.dependencies]
 # Already in the tree through wry; named for WebViewExt::set_cors_allowlist (covers::allow_on_http).
 webkit2gtk = { version = "2.0", features = ["v2_34"] }
+# Already in the tree through gtk; for set_prgname, which names the window for the desktop (main).
+glib = "0.18"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

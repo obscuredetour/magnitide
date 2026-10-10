@@ -7,7 +7,7 @@
 
 pkgname=magnitide-bin
 pkgver=0.7.0
-pkgrel=1
+pkgrel=2
 pkgdesc='A fast, modern ebook library manager that starts from the calibre library you already have'
 arch=('x86_64')
 url='https://magnitide.com'
@@ -46,6 +46,16 @@ package() {
     rm -r "${icons}/256x256@2"
   fi
 
+  # KWin finds the titlebar icon through the desktop entry named after the
+  # window's app_id, which StartupWMClass gives. 0.7.0's window is
+  # "magnitide" but its entry is "Magnitide.desktop", so name it to match.
+  local apps="${pkgdir}/usr/share/applications"
+  local wmclass
+  wmclass=$(sed -n 's/^StartupWMClass=//p' "${apps}/Magnitide.desktop")
+  if [[ -n "${wmclass}" && "${wmclass}" != Magnitide ]]; then
+    mv "${apps}/Magnitide.desktop" "${apps}/${wmclass}.desktop"
+  fi
+
   # 0.7.0's desktop entry has no category, so menus file it under Other.
-  sed -i 's/^Categories=$/Categories=Office;/' "${pkgdir}/usr/share/applications/Magnitide.desktop"
+  sed -i 's/^Categories=$/Categories=Office;/' "${apps}"/*.desktop
 }

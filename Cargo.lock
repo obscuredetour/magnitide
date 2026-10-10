@@ -2781,6 +2781,7 @@ dependencies = [
  "anyhow",
  "calibre-compat",
  "chrono",
+ "glib",
  "image",
  "magnitide-catalog",
  "magnitide-core",
