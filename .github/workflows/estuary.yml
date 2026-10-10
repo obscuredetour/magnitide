@@ -137,6 +137,6 @@ jobs:
           v="$(cat scripts/estuary/VERSION | tr -d '[:space:]')"
           tag="estuary-v$v"
           if ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" --title "Estuary $v" --notes "Estuary, Magnitide's compatibility layer for calibre plugins, version $v (see scripts/estuary/README.md). Magnitide downloads the archive for its platform on request." --target "$GITHUB_SHA"
+            gh release create "$tag" --title "Estuary $v" --notes "Estuary, Magnitide's compatibility layer for calibre plugins, version $v (see scripts/estuary/README.md). Magnitide downloads the archive for its platform on request." --target "$GITHUB_SHA" --latest=false
           fi
           gh release upload "$tag" dist/*.tar.zst dist/*.tar.zst.json dist/manifest.json dist/sha256sums.txt --clobber
