@@ -150,7 +150,7 @@ the Catppuccin and [Dracula](https://draculatheme.com/spec) role tables. A theme
 palette plus any role overrides; `theme.ts` switches between them at runtime by setting
 `data-theme` (and `data-appearance`) on `<html>`. Built in: light, dark, sepia, the four
 Catppuccin flavours, Dracula and Alucard, and "system" (follows the OS). An accent picker
-(theme menu, Settings → Appearance) swaps in any of the theme's palette accents, as
+(theme menu, Settings → Themes) swaps in any of the theme's palette accents, as
 Catppuccin's ports do. The webview's focus ring, text cursor and form controls follow the
 theme too. To add a theme, add a block in a `themes/` family file (a Catppuccin port pastes
 its palette as is) and register it in `BUILTIN_THEMES` in `theme.ts` with its appearance and

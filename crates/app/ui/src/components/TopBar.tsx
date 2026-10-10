@@ -10,7 +10,7 @@ import Settings from 'lucide-solid/icons/settings';
 import X from 'lucide-solid/icons/x';
 
 import type { SortKey } from '../api';
-import type { SettingsSection } from './Settings';
+import type { SettingsSection } from './settings/Settings';
 import { query, queryError, search, setSort, sort, sortDir } from '../library';
 import { setSidebarOpen, setViewMode, sidebarOpen, toolbarLayout, viewMode } from '../view';
 import { CoverSizeSlider } from './CoverSizeSlider';

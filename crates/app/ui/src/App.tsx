@@ -13,7 +13,7 @@ import { EmptyState } from './components/EmptyState';
 import { ImportDialog } from './components/ImportDialog';
 import { NetworkWarning } from './components/NetworkWarning';
 import { SelectionBar } from './components/SelectionBar';
-import { SettingsDialog, type SettingsSection } from './components/Settings';
+import { SettingsDialog, type SettingsSection } from './components/settings/Settings';
 import { StatusBar } from './components/StatusBar';
 import { QuestionHost } from './question';
 import { ConfirmHost } from './confirm';

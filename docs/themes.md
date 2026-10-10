@@ -2,7 +2,7 @@
 
 Magnitide themes are a **palette** (named colours) plus optional **role** overrides
 (what the UI paints with). Add-on themes are JSON files in the app's themes folder:
-Settings → Appearance → Theme add-ons → **Add Theme File…** copies one in, and
+Settings → Themes → Theme add-ons → **Add Theme File…** copies one in, and
 **Open Themes Folder** shows where they live:
 
 | OS      | Folder                                                   |
