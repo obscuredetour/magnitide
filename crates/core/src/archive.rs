@@ -149,7 +149,8 @@ fn os(s: &str) -> std::ffi::OsString {
     s.into()
 }
 
-/// The first tool found: bsdtar, then 7-Zip, then unrar.
+/// The first tool found: bsdtar, then 7-Zip, then unrar (on Windows, 7-Zip,
+/// unrar, then its tar.exe).
 fn detect() -> Option<RarTool> {
     let in_path = |names: &[&str]| -> Vec<PathBuf> {
         let Some(path) = std::env::var_os("PATH") else { return Vec::new() };
@@ -189,12 +190,15 @@ fn detect() -> Option<RarTool> {
                 .output()
                 .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains("bsdtar"))
     };
-    bsdtar
-        .into_iter()
-        .find(is_bsdtar)
-        .map(|path| RarTool { kind: Kind::Bsdtar, path })
-        .or_else(|| seven.into_iter().find(|p| p.is_file()).map(|path| RarTool { kind: Kind::SevenZip, path }))
-        .or_else(|| unrar.into_iter().find(|p| p.is_file()).map(|path| RarTool { kind: Kind::Unrar, path }))
+    let bsdtar = || bsdtar.iter().find(|p| is_bsdtar(p)).map(|path| RarTool { kind: Kind::Bsdtar, path: path.clone() });
+    let seven = || seven.iter().find(|p| p.is_file()).map(|path| RarTool { kind: Kind::SevenZip, path: path.clone() });
+    let unrar = || unrar.iter().find(|p| p.is_file()).map(|path| RarTool { kind: Kind::Unrar, path: path.clone() });
+    if cfg!(windows) {
+        // Windows' own tar.exe may be built without RAR on older releases: it's the last resort there.
+        seven().or_else(unrar).or_else(bsdtar)
+    } else {
+        bsdtar().or_else(seven).or_else(unrar)
+    }
 }
 
 #[cfg(test)]
