@@ -21,6 +21,7 @@ What's done and what's next, in roughly the order it happened. The
 - [x] Native Magnitide library (schema v1) and calibre import, in the app with progress (also `cargo run --release -p magnitide-core --example import_calibre -- <calibre> <dest>`)
 - [x] Library safety: single-writer lock (`.magnitide.lock`), warning for libraries on network shares
 - [x] Drag and drop (and "Add Books…") to add books: EPUB metadata and covers, file-name fallback, formats grouped, duplicates skipped
+- [x] Big or mixed drops asked about first: a folder of more than 50 books, documents (TXT, HTML, RTF, DOCX, ODT; skippable), or a calibre library inside, which can be imported with its tags, series, ratings and custom columns instead of file by file
 - [x] MOBI/AZW/AZW3 metadata and covers (adding books, device matching); "Surname, Given" authors turned around
 - [ ] PDF metadata reader (drag and drop uses file names for PDFs today)
 - [x] Native EPUB → AZW3 converter (KF8, a port of calibre's writer): Kindles no longer need calibre installed; calibre is a fallback for unusual books

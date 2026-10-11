@@ -74,6 +74,7 @@ import type { SourceId } from './bindings/SourceId';
 import type { SourceRecord } from './bindings/SourceRecord';
 import type { SourceStatus } from './bindings/SourceStatus';
 import type { AddReport } from './bindings/AddReport';
+import type { DropScan } from './bindings/DropScan';
 import type { BookRow } from './bindings/BookRow';
 import type { AuthorSort } from './bindings/AuthorSort';
 import type { BookEdit } from './bindings/BookEdit';
@@ -111,6 +112,7 @@ export type {
   FieldValue,
   NewField,
   AddReport,
+  DropScan,
   ApplyReport,
   InstalledPlugin,
   NativePlugin,
@@ -261,8 +263,21 @@ export const api = {
   /**
    * Add book files and folders to the open Magnitide library (calibre libraries
    * refuse). Progress arrives via onAddProgress; the library is reloaded after.
+   * `skipDocuments` leaves out TXT, HTML, RTF, DOCX and ODT files; folders in
+   * `exclude` are left out.
    */
-  addBooks: (paths: string[]) => invoke<AddReport>('add_books', { paths }),
+  addBooks: (paths: string[], options: { skipDocuments?: boolean; exclude?: string[] } = {}) =>
+    invoke<AddReport>('add_books', { paths, ...options }),
+
+  /** What adding these files and folders would find, before anything is copied. */
+  scanDrop: (paths: string[]) => invoke<DropScan>('scan_drop', { paths }),
+
+  /**
+   * Import the calibre library at `path` into the open Magnitide library,
+   * with its tags, series, ratings and custom columns. Progress arrives via
+   * onImportProgress.
+   */
+  importCalibreIntoLibrary: (path: string) => invoke<ImportReport>('import_calibre_into_library', { path }),
 
   /** Pick book files to add; empty when cancelled. */
   async chooseBookFiles(): Promise<string[]> {

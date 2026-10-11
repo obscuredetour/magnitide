@@ -154,21 +154,46 @@ pub async fn close_library(app: AppHandle, state: State<'_, AppState>) -> CmdRes
 /// Sent while books are being added. Event name matches `onAddProgress` in ui/src/api.ts.
 pub const ADD_PROGRESS_EVENT: &str = "add-progress";
 
+/// What adding these files and folders would find (book files by format,
+/// documents, calibre libraries), before anything is copied: a big or mixed
+/// drop is asked about first.
+#[tauri::command]
+pub async fn scan_drop(app: AppHandle, paths: Vec<String>) -> CmdResult<magnitide_core::import::DropScan> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    tauri::async_runtime::spawn_blocking(move || {
+        let extra: Vec<String> = magnitide_core::hooks::ImportHooks::file_types(&crate::plugins::AppHooks(app))
+            .into_iter()
+            .map(|e| e.to_lowercase())
+            .collect();
+        magnitide_core::import::scan(&paths, &extra)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
 /// Add book files and folders (drag and drop, "Add Books…") to the open
 /// Magnitide library, then reload it. Progress arrives as `add-progress` events
-/// (same payload as import progress).
+/// (same payload as import progress). `skip_documents` leaves out TXT, HTML,
+/// RTF, DOCX and ODT files; folders in `exclude` (calibre libraries imported
+/// instead) are left out.
 #[tauri::command]
 pub async fn add_books(
     app: AppHandle,
     state: State<'_, AppState>,
     paths: Vec<String>,
+    skip_documents: Option<bool>,
+    exclude: Option<Vec<String>>,
 ) -> CmdResult<magnitide_core::import::AddReport> {
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    let filter = magnitide_core::import::AddFilter {
+        skip_documents: skip_documents.unwrap_or(false),
+        exclude: exclude.unwrap_or_default().into_iter().map(PathBuf::from).collect(),
+    };
     let hooks = crate::plugins::AppHooks(app.clone());
     let handle = app.clone();
     let report = write_library(&state, move |lib| {
         let mut last = Instant::now();
-        magnitide_core::import::add_files_with(lib, &paths, &hooks, &hooks, |p| {
+        magnitide_core::import::add_files_filtered(lib, &paths, &filter, &hooks, &hooks, |p| {
             if p.done == 0 || p.done == p.total || last.elapsed().as_millis() >= 50 {
                 last = Instant::now();
                 let _ = handle.emit(
@@ -707,6 +732,30 @@ pub async fn import_calibre_library(
     .await
     .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())
+}
+
+/// Import the calibre library at `path` into the open Magnitide library (a
+/// calibre library dropped on the window), keeping what calibre knows: tags,
+/// series, ratings, custom columns. Progress arrives as `import-progress` events.
+#[tauri::command]
+pub async fn import_calibre_into_library(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> CmdResult<magnitide_core::import::ImportReport> {
+    write_library(&state, move |lib| {
+        let mut last = Instant::now();
+        magnitide_core::import::import_calibre_into(lib, path.as_ref(), |p| {
+            if p.done == 0 || p.done == p.total || last.elapsed().as_millis() >= 50 {
+                last = Instant::now();
+                let _ = app.emit(
+                    IMPORT_PROGRESS_EVENT,
+                    ImportProgress { done: p.done, total: p.total, title: p.title.to_owned() },
+                );
+            }
+        })
+    })
+    .await
 }
 
 /// One book in the grid or table. Flat and display-ready, because every

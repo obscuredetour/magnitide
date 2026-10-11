@@ -9,8 +9,8 @@ type Request = {
   title: string;
   /** Rendered inside the dialog (so it can hold its own controls). */
   message: () => JSX.Element;
-  /** The confirm button's label, e.g. "Remove 3 Books". */
-  confirm: string;
+  /** The confirm button's label, e.g. "Remove 3 Books"; a function when it follows choices in the message. */
+  confirm: string | (() => string);
   /** Red confirm button. */
   danger?: boolean;
   /** The cancel button's label (default "Cancel"). */
@@ -78,7 +78,7 @@ function ConfirmDialog(props: { request: Request }) {
           class={props.request.danger ? dangerButton : primaryButton}
           onClick={() => done(true)}
         >
-          {props.request.confirm}
+          {typeof props.request.confirm === 'function' ? props.request.confirm() : props.request.confirm}
         </button>
       </div>
     </dialog>
