@@ -1,5 +1,6 @@
-//! Comic book archives: CBZ, CB7, and the many CBRs that are really ZIPs
-//! (true RAR archives can't be read here). Metadata comes from ComicInfo.xml
+//! Comic book archives: CBZ, CB7 and CBR (a RAR read with a tool on the
+//! computer, see [`crate::archive`]; many CBRs are really ZIPs and need none).
+//! Metadata comes from ComicInfo.xml
 //! (ComicRack's, which ComicTagger, Mylar, Kavita and Komga read and write)
 //! or else ComicBookInfo (JSON in the ZIP's comment); the cover is the page
 //! ComicInfo marks as the front cover, else the first image.
@@ -13,6 +14,7 @@ use chrono::NaiveDate;
 use zip::ZipArchive;
 
 use super::{Author, BookMetadata, language_code};
+use crate::archive::{RarTool, is_rar};
 
 /// What a comic carries beyond a book's metadata. Stored in the "comic"
 /// group of custom fields (see `Library::ensure_comic_fields`).
@@ -103,6 +105,7 @@ const MAX_PAGE: u64 = 64 << 20;
 enum Archive {
     Zip(ZipArchive<BufReader<File>>),
     SevenZ(Box<sevenz_rust2::ArchiveReader<File>>),
+    Rar { path: std::path::PathBuf, tool: &'static RarTool, names: Vec<String> },
 }
 
 impl Archive {
@@ -115,6 +118,11 @@ impl Archive {
         } else if magic == *b"7z\xbc\xaf\x27\x1c" {
             let reader = sevenz_rust2::ArchiveReader::open(path, sevenz_rust2::Password::empty()).ok()?;
             Some(Self::SevenZ(Box::new(reader)))
+        } else if is_rar(path) {
+            let tool = RarTool::find()?;
+            // A damaged RAR can list as empty without the tool failing.
+            let names = tool.list(path).ok().filter(|n| !n.is_empty())?;
+            Some(Self::Rar { path: path.to_owned(), tool, names })
         } else {
             None
         }
@@ -126,6 +134,7 @@ impl Archive {
             Self::SevenZ(r) => {
                 r.archive().files.iter().filter(|e| !e.is_directory()).map(|e| e.name().to_owned()).collect()
             }
+            Self::Rar { names, .. } => names.clone(),
         }
     }
 
@@ -148,13 +157,14 @@ impl Archive {
                 }
                 r.read_file(name).ok()
             }
+            Self::Rar { path, tool, .. } => tool.read(path, name, max),
         }
     }
 
     fn comment(&self) -> Option<&str> {
         match self {
             Self::Zip(z) => std::str::from_utf8(z.comment()).ok().filter(|c| !c.trim().is_empty()),
-            Self::SevenZ(_) => None,
+            Self::SevenZ(_) | Self::Rar { .. } => None,
         }
     }
 }
@@ -528,10 +538,28 @@ pub(crate) mod tests {
         let m = read(&path).unwrap();
         assert_eq!((m.title, m.cover.as_deref()), (None, Some(&b"one"[..])));
         assert_eq!(m.comic.as_deref(), Some(&ComicDetails::default()));
-        // Not an archive this module reads (a real RAR): nothing.
+        // A damaged archive (here, a RAR signature and nothing after): nothing.
         let rar = tmp.path().join("real.cbr");
         std::fs::write(&rar, b"Rar!\x1a\x07\x01\x00rest").unwrap();
         assert!(read(&rar).is_none());
+    }
+
+    #[test]
+    fn reads_a_rar_cbr_with_a_tool() {
+        if RarTool::find().is_none() {
+            eprintln!("no RAR tool on this computer; skipped");
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("saga.cbr");
+        crate::archive::tests::make_rar(
+            &path,
+            &[("Saga/page2.jpg", b"two"), ("Saga/page1.jpg", b"one"), ("ComicInfo.xml", COMIC_INFO.as_bytes())],
+        );
+        let m = read(&path).unwrap();
+        assert_eq!(m.title.as_deref(), Some("Saga #1"));
+        assert_eq!(m.cover.as_deref(), Some(&b"two"[..]), "the page marked as the front cover");
+        assert_eq!(m.comic.unwrap().artists, ["Fiona Staples"]);
     }
 
     #[test]

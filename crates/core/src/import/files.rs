@@ -186,6 +186,8 @@ pub fn add_files_filtered(
 
     let total = groups.len();
     let mut comic_fields = None;
+    let convert_cbr = lib.convert_cbr_on_add()?;
+    let mut work = None;
     for (done, files) in groups.into_values().enumerate() {
         // Plugins first (calibre's on_import), on each file; a plugin may
         // hand back a rewritten file, possibly with another extension.
@@ -207,6 +209,9 @@ pub fn add_files_filtered(
                 }
             })
             .collect();
+        // CBR comics repacked as CBZ on the way in, when the library asks for that.
+        let files =
+            if convert_cbr { cbr_as_cbz(files, &mut work, &mut temporary, &mut report.warnings) } else { files };
         let (format, path) = metadata_source(&files);
         let meta = metadata::read_with(path, format, plugins);
         let title = meta.title.clone().unwrap_or_else(|| book_stem(path));
@@ -359,6 +364,49 @@ fn comic_custom(
         })
         .collect();
     lib.clean_custom(&values)
+}
+
+/// A book's CBR as a CBZ (written in `work`, and listed in `temporary` to be
+/// removed once stored), unless it has a CBZ already. One that can't be
+/// converted (a RAR with no tool to read it) is kept as a CBR, with a warning.
+fn cbr_as_cbz(
+    files: Vec<(String, PathBuf)>,
+    work: &mut Option<crate::convert::TempDir>,
+    temporary: &mut Vec<PathBuf>,
+    warnings: &mut Vec<String>,
+) -> Vec<(String, PathBuf)> {
+    if files.iter().any(|(f, _)| f == "CBZ") {
+        return files;
+    }
+    files
+        .into_iter()
+        .map(|(format, path)| {
+            if format != "CBR" {
+                return (format, path);
+            }
+            let dir = match work {
+                Some(dir) => dir,
+                None => match crate::convert::TempDir::new() {
+                    Ok(dir) => work.insert(dir),
+                    Err(e) => {
+                        warnings.push(format!("{}: kept as CBR: {e}", path.display()));
+                        return (format, path);
+                    }
+                },
+            };
+            let dest = dir.0.join(format!("{}-{}.cbz", temporary.len(), book_stem(&path)));
+            match crate::convert::cbz::convert(&path, &dest) {
+                Ok(()) => {
+                    temporary.push(dest.clone());
+                    ("CBZ".to_owned(), dest)
+                }
+                Err(e) => {
+                    warnings.push(format!("{}: kept as CBR, couldn't make it a CBZ: {e}", path.display()));
+                    (format, path)
+                }
+            }
+        })
+        .collect()
 }
 
 /// Files a plugin made while adding a book, no longer needed.
@@ -534,6 +582,28 @@ mod tests {
             (Some(("Saga TPB".into(), 1.0)), Some(6.0)),
             "an omnibus of issues 1–6"
         );
+    }
+
+    #[test]
+    fn cbrs_become_cbzs_when_the_library_asks() {
+        use crate::metadata::comic::tests::{COMIC_INFO, make_cbz};
+
+        let (_tmp, mut lib, drop) = setup();
+        assert!(!lib.convert_cbr_on_add().unwrap(), "off by default");
+        // A CBR that's a ZIP needs no tool; it's added as it is when the setting is off…
+        make_cbz(&drop.join("saga1.cbr"), &[("1.jpg", &png()), ("ComicInfo.xml", COMIC_INFO.as_bytes())], None);
+        let report = add_files(&mut lib, std::slice::from_ref(&drop), |_| {}).unwrap();
+        assert_eq!(report.formats, [(report.added[0], "CBR".to_owned())]);
+
+        // …and as a CBZ when it's on (the dropped file untouched).
+        let (_tmp2, mut lib2, drop2) = setup();
+        lib2.set_convert_cbr_on_add(true).unwrap();
+        make_cbz(&drop2.join("saga1.cbr"), &[("1.jpg", &png()), ("ComicInfo.xml", COMIC_INFO.as_bytes())], None);
+        let report = add_files(&mut lib2, std::slice::from_ref(&drop2), |_| {}).unwrap();
+        assert_eq!(report.formats, [(report.added[0], "CBZ".to_owned())], "{report:?}");
+        assert_eq!(report.covers, 1);
+        assert_eq!(lib2.book(report.added[0]).unwrap().title, "Saga #1");
+        assert!(drop2.join("saga1.cbr").is_file());
     }
 
     #[test]

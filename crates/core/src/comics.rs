@@ -73,6 +73,28 @@ impl Library {
     }
 }
 
+/// Whether CBR comics added to this library are repacked as CBZ on the way in,
+/// so the library keeps the open, writable format. Off unless turned on.
+const CONVERT_CBR: &str = "convert_cbr_on_add";
+
+impl Library {
+    pub fn convert_cbr_on_add(&self) -> Result<bool> {
+        let value: Option<String> = self
+            .conn
+            .query_row("SELECT value FROM library_info WHERE key = ?", [CONVERT_CBR], |r| r.get(0))
+            .optional()?;
+        Ok(value.as_deref() == Some("true"))
+    }
+
+    pub fn set_convert_cbr_on_add(&mut self, on: bool) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO library_info (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            params![CONVERT_CBR, on.to_string()],
+        )?;
+        Ok(())
+    }
+}
+
 /// A comic's values for the comic fields, by key: #comic is always set.
 pub fn comic_values(c: &ComicDetails) -> BTreeMap<String, Option<FieldValue>> {
     let list = |v: &[String]| (!v.is_empty()).then(|| FieldValue::List(v.to_vec()));

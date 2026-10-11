@@ -214,6 +214,11 @@ export const api = {
   deleteCustomField: (id: number) => invoke<void>('delete_custom_field', { id }),
   /** Make the comic fields (issue, volume, artists, …) if the library hasn't got them. */
   ensureComicFields: () => invoke<CustomField[]>('ensure_comic_fields'),
+  /** Whether CBR comics added to the open library are repacked as CBZ. */
+  convertCbrOnAdd: () => invoke<boolean>('convert_cbr_on_add'),
+  setConvertCbrOnAdd: (on: boolean) => invoke<void>('set_convert_cbr_on_add', { on }),
+  /** The program that reads RAR archives (most CBRs) here: "bsdtar", "7-Zip" or "unrar"; null if none. */
+  rarTool: () => invoke<string | null>('rar_tool'),
 
   bookDetails: (id: number) => invoke<BookDetails>('book_details', { id }),
 

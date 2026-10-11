@@ -1,6 +1,7 @@
 //! Converting books between formats.
 //!
-//! EPUB → KEPUB ([`kepub`]) and EPUB → AZW3 ([`azw3`]) are done natively.
+//! EPUB → KEPUB ([`kepub`]), EPUB → AZW3 ([`azw3`]) and CBR or CB7 → CBZ
+//! ([`cbz`], a RAR with a tool on the computer) are done natively.
 //! Everything else goes through calibre's `ebook-convert` command when
 //! calibre is installed (detected, never bundled): MOBI, EPUB from other
 //! formats, and so on. calibre also stands in if a native AZW3 conversion
@@ -18,6 +19,7 @@ use crate::import::store::add_formats;
 use crate::library::{BookId, Library};
 
 pub mod azw3;
+pub mod cbz;
 pub mod kepub;
 
 /// Formats calibre's `ebook-convert` reads (KEPUB as EPUB). KFX isn't one.
@@ -62,6 +64,8 @@ impl Converter {
         }
         let ok = |from: &str| match (from, to) {
             ("EPUB", "KEPUB") | ("EPUB" | "KEPUB", "AZW3") => true,
+            // Repacked natively (a RAR needs a tool, which converting says if it's missing).
+            ("CBR" | "CB7", "CBZ") => true,
             // calibre to EPUB, then native.
             (_, "KEPUB") => self.calibre.is_some() && CALIBRE_INPUTS.contains(&from),
             _ => self.calibre.is_some() && CALIBRE_INPUTS.contains(&from) && CALIBRE_OUTPUTS.contains(&to),
@@ -71,7 +75,7 @@ impl Converter {
 
     /// Every format a book with `have` can be converted to.
     pub fn targets(&self, have: &[String]) -> Vec<String> {
-        let mut all: Vec<&str> = vec!["KEPUB"];
+        let mut all: Vec<&str> = vec!["KEPUB", "CBZ"];
         all.extend(CALIBRE_OUTPUTS);
         all.into_iter().filter(|t| self.source_for(have, t).is_some()).map(str::to_owned).collect()
     }
@@ -80,6 +84,7 @@ impl Converter {
     pub fn convert(&self, src: &Path, from: &str, to: &str, dest: &Path) -> std::result::Result<(), String> {
         match (from, to) {
             ("EPUB", "KEPUB") => kepub::convert(src, dest).map(|_| ()).map_err(|e| e.to_string()),
+            ("CBR" | "CB7", "CBZ") => cbz::convert(src, dest),
             ("EPUB" | "KEPUB", "AZW3") => match azw3::convert(src, dest) {
                 Ok(_) => Ok(()),
                 // calibre is more forgiving of unusual books, if it's here.

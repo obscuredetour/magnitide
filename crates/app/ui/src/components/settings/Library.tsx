@@ -272,6 +272,43 @@ function TidyNames() {
  * EPUB files carry their own copy of the metadata. Two ways to keep it in
  * step: as each edit is saved (a setting), or every file at once (an action).
  */
+/** Comics: CBRs repacked as CBZ when added, and what reads RAR here. */
+function Comics() {
+  const [on, { mutate }] = createResource(() => api.convertCbrOnAdd().catch(() => false));
+  const [tool] = createResource(() => api.rarTool().catch(() => null));
+  const set = async (value: boolean) => {
+    mutate(value);
+    try {
+      await api.setConvertCbrOnAdd(value);
+    } catch (err) {
+      mutate(!value);
+      toast(errorMessage(err), { error: true });
+    }
+  };
+  return (
+    <Group title="Comics">
+      <Row
+        label="Convert CBR to CBZ when adding"
+        description="CBR comics are repacked as CBZ on the way in: the same pages, nothing recompressed, and the library keeps the CBZ. Metadata can be written into a CBZ; a RAR can't be written. The files you add are never changed."
+      >
+        <Toggle label="Convert CBR to CBZ when adding" checked={on() ?? false} onChange={(v) => void set(v)} />
+      </Row>
+      <p class={`pb-3 ${help}`}>
+        <Show
+          when={tool()}
+          fallback={
+            tool.loading
+              ? 'Looking for a program that reads RAR…'
+              : 'Most CBRs are RAR archives, which need bsdtar (libarchive), 7-Zip or unrar installed. None was found, so only CBRs that are really ZIPs can be read or converted.'
+          }
+        >
+          {(name) => `RAR archives (most CBRs) are read with ${name()}.`}
+        </Show>
+      </p>
+    </Group>
+  );
+}
+
 function EpubMetadata() {
   const [preview, { refetch }] = createResource(() => api.writebackPreview().catch(() => null));
   const [confirming, setConfirming] = createSignal(false);
@@ -364,6 +401,7 @@ export function LibrarySettings() {
       </Show>
       <Show when={magnitide()}>
         <EpubMetadata />
+        <Comics />
         <Group title="Files">
           <TidyNames />
         </Group>
