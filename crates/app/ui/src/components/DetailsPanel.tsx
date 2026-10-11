@@ -7,7 +7,7 @@ import { api, type BookDetails, type CustomDetail, errorMessage, fileManagerName
 import { openEditor } from '../editor';
 import { DETAILS_WIDTH, detailsWidth, setDetailsWidth } from '../view';
 import { editRevision, library, openBook, search, setSelectedId } from '../library';
-import { COMIC_GROUP, COMIC_KEY, customFields, formatCustom } from '../fields';
+import { byComicOrder, COMIC_GROUP, COMIC_KEY, customFields, formatCustom } from '../fields';
 import { identifierOrder } from '../identifiers';
 import { languageName } from '../languages';
 import { toast } from '../toast';
@@ -475,7 +475,11 @@ function Details(props: { book: BookDetails }) {
         <Show when={b().custom.filter((c) => inComicGroup(c.key) && c.key !== COMIC_KEY).length}>
           <section class={section}>
             <h3 class={sectionLabel}>Comic</h3>
-            <CustomValues items={b().custom.filter((c) => inComicGroup(c.key) && c.key !== COMIC_KEY)} />
+            <CustomValues
+              items={b()
+                .custom.filter((c) => inComicGroup(c.key) && c.key !== COMIC_KEY)
+                .sort((x, y) => byComicOrder(x.key, y.key))}
+            />
           </section>
         </Show>
         <Show when={b().custom.filter((c) => !inComicGroup(c.key)).length}>

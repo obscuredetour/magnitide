@@ -23,8 +23,35 @@ export const COMIC_KEY = 'comic';
 
 /** The fields of the user's own (not in a group). */
 export const ownFields = () => customFields().filter((f) => !f.group);
+/** The comic fields in the order they're shown, whatever order a library made them in. Mirrors core's `COMIC_FIELDS`. */
+const COMIC_ORDER = [
+  COMIC_KEY,
+  'issue',
+  'format',
+  'volume',
+  'artists',
+  'inkers',
+  'colorists',
+  'letterers',
+  'cover_artists',
+  'editors',
+  'story_arcs',
+  'characters',
+  'teams',
+  'locations',
+  'age_rating',
+  'right_to_left',
+];
+/** Sort by `COMIC_ORDER`; keys it doesn't know go last. */
+export const byComicOrder = (a: string, b: string) => {
+  const rank = (k: string) => (COMIC_ORDER.indexOf(k) + COMIC_ORDER.length + 1) % (COMIC_ORDER.length + 1);
+  return rank(a) - rank(b);
+};
 /** The comic fields shown for a comic, without the field that marks it as one. */
-export const comicFields = () => customFields().filter((f) => f.group === COMIC_GROUP && f.key !== COMIC_KEY);
+export const comicFields = () =>
+  customFields()
+    .filter((f) => f.group === COMIC_GROUP && f.key !== COMIC_KEY)
+    .sort((a, b) => byComicOrder(a.key, b.key));
 /** The field that marks a book as a comic, once the library has it. */
 export const comicMarker = () => customFields().find((f) => f.group === COMIC_GROUP && f.key === COMIC_KEY);
 
