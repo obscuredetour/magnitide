@@ -276,6 +276,11 @@ export async function forgetOpenLibrary(): Promise<void> {
   });
 }
 
+/** The last part of a path (a file or folder's name), on any platform. */
+export function baseName(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+}
+
 /** Ask where to create a new Magnitide library, then create and open it. */
 export async function createLibrary(): Promise<boolean> {
   const path = await api.chooseNewLibraryLocation('Magnitide Library');
@@ -297,9 +302,8 @@ export async function chooseLibrary(): Promise<void> {
     await openLibrary(path);
     return;
   }
-  const folder = path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
   const create = await confirm({
-    title: `“${folder}” isn’t a library`,
+    title: `“${baseName(path)}” isn’t a library`,
     message: () =>
       'Open a Magnitide library, or a calibre library (the folder containing metadata.db). To start one, create a new library, then add books by dropping them on the window or with Add Books.',
     confirm: 'Create New Library…',

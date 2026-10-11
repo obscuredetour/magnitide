@@ -17,7 +17,8 @@ _**This wouldn't exist without [calibre](https://github.com/kovidgoyal/calibre) 
 - **Edit.** One book or many at once, including author sort names, omnibus editions, several series per book and
   custom fields. Find Metadata looks books up on Open Library and Google Books and lets you take what you want field
   by field. Folders and file names follow your edits, and metadata can be written back into EPUB files.
-- **Add books.** Drag and drop EPUB, MOBI, AZW3 and more, with their metadata and covers.
+- **Add books.** Drag and drop EPUB, MOBI, AZW3 and more, with their metadata and covers. Drop a folder and
+  its folders are searched; drop a calibre library and it can be imported with its tags, series and ratings.
 - **E-readers.** Kobo, Kindle and other devices show up when plugged in. Books go over in the format each reads
   best, converted from EPUB to KEPUB or AZW3 natively (calibre is only a fallback), and shelves become collections
   on a Kobo, for Kobo's own app and KOReader alike.

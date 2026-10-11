@@ -56,22 +56,9 @@ pub struct Progress<'a> {
 
 /// Import the calibre library at `source` into the Magnitide library at
 /// `dest`, creating it if needed (named after the calibre library).
-pub fn import_calibre(source: &Path, dest: &Path, mut progress: impl FnMut(Progress<'_>)) -> Result<ImportReport> {
-    let calibre = calibre_compat::Library::open(source).map_err(|e| Error::Import(format!("{e:#}")))?;
-    let src_root = canonical(calibre.root())?;
+pub fn import_calibre(source: &Path, dest: &Path, progress: impl FnMut(Progress<'_>)) -> Result<ImportReport> {
     let dest_abs = absolute(dest)?;
-    // Never write inside the calibre library, or make it part of ours.
-    if dest_abs.starts_with(&src_root) || src_root.starts_with(&dest_abs) {
-        return Err(Error::Import(format!(
-            "the Magnitide library ({}) must be outside the calibre library ({}), and not contain it",
-            dest_abs.display(),
-            src_root.display()
-        )));
-    }
-    let snap = calibre.load().map_err(|e| Error::Import(format!("{e:#}")))?;
-
-    let mut report = ImportReport::default();
-    report.warnings.extend(snap.warnings.iter().map(|w| format!("calibre: {w}")));
+    let (calibre, src_root) = open_apart_from(source, &dest_abs)?;
 
     // A new library goes in a new or empty folder, never scattered through an
     // existing one (Documents, Downloads, …).
@@ -82,6 +69,7 @@ pub fn import_calibre(source: &Path, dest: &Path, mut progress: impl FnMut(Progr
         )));
     }
 
+    let mut report = ImportReport::default();
     let mut lib = if Library::exists_at(&dest_abs) {
         Library::open(&dest_abs)?
     } else {
@@ -91,12 +79,51 @@ pub fn import_calibre(source: &Path, dest: &Path, mut progress: impl FnMut(Progr
         let name = dest_abs.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Library".into());
         Library::create(&dest_abs, &name)?
     };
+    import_books(&mut lib, &calibre, &src_root, report, progress)
+}
+
+/// Import the calibre library at `source` into `lib`, a library already open
+/// (one with books of its own: a calibre library dropped on the window).
+/// As with [`import_calibre`], books imported from it before are skipped.
+pub fn import_calibre_into(
+    lib: &mut Library,
+    source: &Path,
+    progress: impl FnMut(Progress<'_>),
+) -> Result<ImportReport> {
+    let (calibre, src_root) = open_apart_from(source, &canonical(&lib.root)?)?;
+    import_books(lib, &calibre, &src_root, ImportReport::default(), progress)
+}
+
+/// Open the calibre library at `source`, which must be apart from `dest`: never
+/// write inside the calibre library, or make it part of ours.
+fn open_apart_from(source: &Path, dest: &Path) -> Result<(calibre_compat::Library, PathBuf)> {
+    let calibre = calibre_compat::Library::open(source).map_err(|e| Error::Import(format!("{e:#}")))?;
+    let src_root = canonical(calibre.root())?;
+    if dest.starts_with(&src_root) || src_root.starts_with(dest) {
+        return Err(Error::Import(format!(
+            "the Magnitide library ({}) must be outside the calibre library ({}), and not contain it",
+            dest.display(),
+            src_root.display()
+        )));
+    }
+    Ok((calibre, src_root))
+}
+
+fn import_books(
+    lib: &mut Library,
+    calibre: &calibre_compat::Library,
+    src_root: &Path,
+    mut report: ImportReport,
+    mut progress: impl FnMut(Progress<'_>),
+) -> Result<ImportReport> {
+    let snap = calibre.load().map_err(|e| Error::Import(format!("{e:#}")))?;
+    report.warnings.extend(snap.warnings.iter().map(|w| format!("calibre: {w}")));
 
     // Identifies this calibre library in provenance records. Very old
     // libraries may lack one; fall back to the folder path.
     let source_library = snap.library_uuid.clone().unwrap_or_else(|| format!("path:{}", src_root.display()));
 
-    let fields = import_custom_fields(&mut lib, &snap.custom_columns, &mut report)?;
+    let fields = import_custom_fields(lib, &snap.custom_columns, &mut report)?;
 
     // Each book commits on its own (so a failure rolls back just that book), but
     // SQLite's automatic WAL checkpoint after every ~1000 pages would then
@@ -107,11 +134,11 @@ pub fn import_calibre(source: &Path, dest: &Path, mut progress: impl FnMut(Progr
     let total = snap.books.len();
     for (done, book) in snap.books.iter().enumerate() {
         progress(Progress { done, total, title: &book.title });
-        if already_imported(&lib, &source_library, book.id)? {
+        if already_imported(lib, &source_library, book.id)? {
             report.books_skipped += 1;
             continue;
         }
-        match import_book(&mut lib, calibre.root(), book, &source_library, &fields, &mut report) {
+        match import_book(lib, calibre.root(), book, &source_library, &fields, &mut report) {
             Ok(()) => report.books_imported += 1,
             Err(e) => report.failed.push(e.to_string()),
         }

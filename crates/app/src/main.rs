@@ -128,6 +128,8 @@ fn main() {
             commands::close_library,
             commands::create_library,
             commands::library_kind_at,
+            commands::scan_drop,
+            commands::import_calibre_into_library,
             commands::list_books,
             custom::custom_fields,
             custom::add_custom_field,
