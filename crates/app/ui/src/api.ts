@@ -190,6 +190,12 @@ export type { FormatInfo } from './bindings/FormatInfo';
 export const api = {
   /** Open `path`, or calibre's current/default library when `path` is null. */
   openLibrary: (path: string | null) => invoke<LibraryInfo>('open_library', { path }),
+  /** Close the open library, leaving none open. */
+  closeLibrary: () => invoke<void>('close_library'),
+  /** Create an empty Magnitide library in `path` (then open it). */
+  createLibrary: (path: string) => invoke<void>('create_library', { path }),
+  /** What kind of library `path` is; null if it isn't one. */
+  libraryKindAt: (path: string) => invoke<LibraryKind | null>('library_kind_at', { path }),
 
   /** Books matching `query` (calibre-style search subset), in `sort` order. */
   /** With `field` (a custom field's key), sorted by that instead of `sort`. */

@@ -4,17 +4,31 @@ import { batch } from 'solid-js';
 
 import { type AddReport, api, errorMessage, onAddProgress } from './api';
 import { type JobHandle, startJob } from './jobs';
-import { library, refresh, setDetailsOpen, setEditRevision, setLibrary, setSelectedId } from './library';
+import {
+  createLibrary,
+  library,
+  refresh,
+  setDetailsOpen,
+  setEditRevision,
+  setLibrary,
+  setSelectedId,
+  status,
+} from './library';
 import { toast } from './toast';
 
 const READ_ONLY = 'This calibre library is read-only. Import it into a Magnitide library (library menu) to add books.';
 
 let busy = false;
 
-/** Add files and folders to the open library, with progress and a summary. */
+/**
+ * Add files and folders to the open library, with progress and a summary.
+ * With none open (the empty screen), create one for them first.
+ */
 export async function addPaths(paths: string[]): Promise<void> {
+  if (paths.length === 0) return;
+  if (!library() && status().kind === 'no-library' && !(await createLibrary())) return;
   const lib = library();
-  if (!lib || paths.length === 0) return;
+  if (!lib) return;
   if (lib.kind !== 'magnitide') {
     toast(READ_ONLY, { error: true });
     return;
