@@ -7,7 +7,7 @@ import { items, refresh, setEditRevision } from '../library';
 import { startJob } from '../jobs';
 import { plural, writeOnSave } from '../writeback';
 import { Autocomplete } from './Autocomplete';
-import { customFields } from '../fields';
+import { COMIC_KEY, comicFields, comicMarker, customFields, isComicFormat, ownFields } from '../fields';
 import { CustomFieldInput, customFieldHint } from './CustomFieldInput';
 import { primaryButton, secondaryButton, smallButton } from '../buttons';
 import { keys } from '../keys';
@@ -79,6 +79,24 @@ export function BulkEditDialog(props: { ids: number[] }) {
   /** Custom fields changed, by key: a value to set on every book, or null to clear it on all. */
   const [customDraft, setCustomDraft] = createStore<Record<string, FieldValue | null>>({});
   const sharedCustom = (key: string) => values()?.custom[key];
+  // The comic fields show when any of these books is a comic, or they're being marked as comics.
+  const showComic = () => {
+    if (!comicMarker()) return false;
+    const draft = customDraft[COMIC_KEY];
+    if (draft !== undefined) return draft === true;
+    const shared = sharedCustom(COMIC_KEY);
+    if (shared?.mixed || shared?.value === true) return true;
+    return props.ids.some((id) =>
+      items()
+        .find((b) => b.id === id)
+        ?.formats.some(isComicFormat),
+    );
+  };
+  const bulkFields = () => [
+    ...ownFields(),
+    ...(comicMarker() ? [comicMarker()!] : []),
+    ...(showComic() ? comicFields() : []),
+  ];
   const setCustom = (key: string, value: FieldValue | null) => {
     const shared = sharedCustom(key);
     // As for the other fields: emptying a mixed field keeps each book's;
@@ -413,7 +431,7 @@ export function BulkEditDialog(props: { ids: number[] }) {
                   </div>
                 </Row>
               </Show>
-              <For each={customFields()}>
+              <For each={bulkFields()}>
                 {(f) => {
                   const changed = () => f.key in customDraft;
                   const shared = () => sharedCustom(f.key);

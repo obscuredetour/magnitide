@@ -212,6 +212,11 @@ export const api = {
     invoke<CustomField>('update_custom_field', { id, name, choices }),
   /** Delete a field and every book's value for it. */
   deleteCustomField: (id: number) => invoke<void>('delete_custom_field', { id }),
+  /** Make the comic fields (issue, volume, artists, …) if the library hasn't got them. */
+  ensureComicFields: () => invoke<CustomField[]>('ensure_comic_fields'),
+  /** Whether comics added to the open library list their artists as authors, after the writers. */
+  comicArtistsAsAuthors: () => invoke<boolean>('comic_artists_as_authors'),
+  setComicArtistsAsAuthors: (on: boolean) => invoke<void>('set_comic_artists_as_authors', { on }),
 
   bookDetails: (id: number) => invoke<BookDetails>('book_details', { id }),
 

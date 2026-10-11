@@ -17,6 +17,27 @@ export async function loadCustomFields(): Promise<void> {
   }
 }
 
+/** The comic fields' group, and the field in it that marks a book as a comic. Mirrors core's `comics`. */
+export const COMIC_GROUP = 'comic';
+export const COMIC_KEY = 'comic';
+
+/** The fields of the user's own (not in a group). */
+export const ownFields = () => customFields().filter((f) => !f.group);
+/** The comic fields shown for a comic, without the field that marks it as one. */
+export const comicFields = () => customFields().filter((f) => f.group === COMIC_GROUP && f.key !== COMIC_KEY);
+/** The field that marks a book as a comic, once the library has it. */
+export const comicMarker = () => customFields().find((f) => f.group === COMIC_GROUP && f.key === COMIC_KEY);
+
+/** Comic archive formats: a book in one is taken for a comic until said otherwise. */
+export const isComicFormat = (format: string) => ['CBZ', 'CBR', 'CB7'].includes(format.toUpperCase());
+
+/** Make the comic fields if the library hasn't got them, and load them. */
+export async function ensureComicFields(): Promise<void> {
+  if (comicMarker()) return;
+  await api.ensureComicFields();
+  await loadCustomFields();
+}
+
 export const FIELD_KINDS: Record<FieldKind, string> = {
   text: 'Text',
   longText: 'Long text',

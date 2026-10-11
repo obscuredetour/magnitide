@@ -36,3 +36,24 @@ pub async fn update_custom_field(
 pub async fn delete_custom_field(state: State<'_, AppState>, id: i64) -> CmdResult<()> {
     write_library(&state, move |lib| lib.delete_custom_field(id)).await
 }
+
+/// Make the comic fields (issue, volume, artists, …) if the library hasn't got
+/// them yet, for a book marked as a comic by hand. Returns those fields.
+#[tauri::command]
+pub async fn ensure_comic_fields(state: State<'_, AppState>) -> CmdResult<Vec<CustomField>> {
+    write_library(&state, move |lib| lib.ensure_comic_fields()).await
+}
+
+/// Whether comics added to the open library list their artists as authors (after the writers).
+#[tauri::command]
+pub async fn comic_artists_as_authors(state: State<'_, AppState>) -> CmdResult<bool> {
+    let lib = state.current().ok_or("No library is open")?;
+    let Some(native) = lib.native.clone() else { return Ok(false) };
+    let on = native.lock().unwrap_or_else(|e| e.into_inner()).comic_artists_as_authors();
+    on.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn set_comic_artists_as_authors(state: State<'_, AppState>, on: bool) -> CmdResult<()> {
+    write_library(&state, move |lib| lib.set_comic_artists_as_authors(on)).await
+}

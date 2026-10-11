@@ -22,6 +22,10 @@ What's done and what's next, in roughly the order it happened. The
 - [x] Library safety: single-writer lock (`.magnitide.lock`), warning for libraries on network shares
 - [x] Drag and drop (and "Add Books…") to add books: EPUB metadata and covers, file-name fallback, formats grouped, duplicates skipped
 - [x] Big or mixed drops asked about first: a folder of more than 50 books, documents (TXT, HTML, RTF, DOCX, ODT; skippable), or a calibre library inside, which can be imported with its tags, series, ratings and custom columns instead of file by file
+- [x] Comic metadata: ComicInfo.xml (or ComicBookInfo) and covers from CBZ, CB7 and CBRs that are really ZIPs; comic fields (issue, format, volume, artists, inkers, colorists, letterers, cover artists, editors, story arcs, characters, teams, age rating, right-to-left) shown when a book is marked Comic, ticked for comic files; artists listed as authors after the writers (a library setting, on by default) and "Written by … · Art by …" under a comic's authors; "1-6" issue ranges become omnibus ranges; the format (Issue, TPB, Annual, Manga Volume, …) words a comic's place in its series: "Issue 17 of Saga", "Volume 3 of …", "Issues 13–18 of Saga · TPB"
+- [ ] Comics in RAR archives (CBRs that aren't ZIPs)
+- [ ] Write ComicInfo.xml back into CBZ files
+- [ ] A comic metadata source (Metron, Comic Vine)
 - [x] MOBI/AZW/AZW3 metadata and covers (adding books, device matching); "Surname, Given" authors turned around
 - [ ] PDF metadata reader (drag and drop uses file names for PDFs today)
 - [x] Native EPUB → AZW3 converter (KF8, a port of calibre's writer): Kindles no longer need calibre installed; calibre is a fallback for unusual books

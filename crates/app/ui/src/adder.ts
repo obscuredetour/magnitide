@@ -96,6 +96,8 @@ async function addFiles(paths: string[], plan: DropPlan, job: JobHandle, outcome
   });
   try {
     const r = await api.addBooks(paths, { skipDocuments: plan.skipDocuments, exclude: plan.importCalibre });
+    // The first comic added makes the comic fields.
+    await loadCustomFields();
     await refresh();
     const first = r.added[0] ?? r.formatsAddedTo[0];
     const touched = r.added.length + r.formatsAddedTo.length;
