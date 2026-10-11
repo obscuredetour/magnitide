@@ -95,6 +95,52 @@ impl Library {
     }
 }
 
+impl Library {
+    /// A book's comic values, from its comic fields (a field of the user's own
+    /// with the same name doesn't count). The range end isn't a field: it's the
+    /// book's `series_end`.
+    pub(crate) fn comic_details(&self, id: crate::library::BookId) -> Result<ComicDetails> {
+        let fields = self.custom_fields()?;
+        let values = self.custom_edit_values(id)?;
+        let get = |key: &str| {
+            let ours = fields.iter().any(|f| f.key == key && f.group.as_deref() == Some(COMIC_GROUP));
+            if ours { values.get(key).cloned().flatten() } else { None }
+        };
+        let text = |key: &str| match get(key) {
+            Some(FieldValue::Text(t)) => Some(t).filter(|t| !t.trim().is_empty()),
+            _ => None,
+        };
+        let list = |key: &str| match get(key) {
+            Some(FieldValue::List(v)) => v,
+            Some(FieldValue::Text(t)) => {
+                t.split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned).collect()
+            }
+            _ => Vec::new(),
+        };
+        Ok(ComicDetails {
+            issue: text("issue"),
+            issue_end: None,
+            volume: match get("volume") {
+                Some(FieldValue::Number(n)) => Some(n as i64),
+                _ => None,
+            },
+            format: text("format").and_then(|f| crate::metadata::comic::comic_format(&f)),
+            artists: list("artists"),
+            inkers: list("inkers"),
+            colorists: list("colorists"),
+            letterers: list("letterers"),
+            cover_artists: list("cover_artists"),
+            editors: list("editors"),
+            story_arcs: list("story_arcs"),
+            characters: list("characters"),
+            teams: list("teams"),
+            locations: list("locations"),
+            age_rating: text("age_rating"),
+            right_to_left: get("right_to_left") == Some(FieldValue::Bool(true)),
+        })
+    }
+}
+
 /// A comic's values for the comic fields, by key: #comic is always set.
 pub fn comic_values(c: &ComicDetails) -> BTreeMap<String, Option<FieldValue>> {
     let list = |v: &[String]| (!v.is_empty()).then(|| FieldValue::List(v.to_vec()));

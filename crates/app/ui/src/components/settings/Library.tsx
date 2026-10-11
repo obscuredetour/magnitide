@@ -268,10 +268,6 @@ function TidyNames() {
   );
 }
 
-/**
- * EPUB files carry their own copy of the metadata. Two ways to keep it in
- * step: as each edit is saved (a setting), or every file at once (an action).
- */
 /** Comics: CBRs repacked as CBZ when added, and what reads RAR here. */
 function Comics() {
   const [on, { mutate }] = createResource(() => api.convertCbrOnAdd().catch(() => false));
@@ -293,7 +289,7 @@ function Comics() {
       >
         <Toggle label="Convert CBR to CBZ when adding" checked={on() ?? false} onChange={(v) => void set(v)} />
       </Row>
-      <p class={`pb-3 ${help}`}>
+      <p class={`mt-2 pb-3 ${help}`}>
         <Show
           when={tool()}
           fallback={
@@ -309,6 +305,10 @@ function Comics() {
   );
 }
 
+/**
+ * EPUB and CBZ files carry their own copy of the metadata. Two ways to keep it
+ * in step: as each edit is saved (a setting), or every file at once (an action).
+ */
 function EpubMetadata() {
   const [preview, { refetch }] = createResource(() => api.writebackPreview().catch(() => null));
   const [confirming, setConfirming] = createSignal(false);
@@ -336,22 +336,26 @@ function EpubMetadata() {
     if (p === undefined) return 'Checking…';
     if (p === null) return 'Couldn’t check the library.';
     return p.files
-      ? `${plural(p.books, 'book has', 'books have')} EPUB files that differ from the library (${plural(p.files, 'file', 'files')}).`
-      : 'Every EPUB matches the library.';
+      ? `${plural(p.books, 'book has', 'books have')} EPUB or CBZ files that differ from the library (${plural(p.files, 'file', 'files')}).`
+      : 'Every EPUB and CBZ matches the library.';
   };
 
   return (
     <Group
-      title="Metadata in EPUB files"
-      description="An EPUB carries its own copy of the title, authors, cover and the rest, which e-readers and other apps read. Magnitide can keep that copy matching the library."
+      title="Metadata in book files"
+      description="An EPUB carries its own copy of the title, authors, cover and the rest, and a CBZ comic its ComicInfo.xml, which e-readers and other apps read. Magnitide can keep that copy matching the library."
     >
       <Row
-        label="Update a book’s EPUB when saving edits"
+        label="Update a book’s EPUB or CBZ when saving edits"
         description="Off by default, since every save rewrites the file."
       >
-        <Toggle label="Update a book’s EPUB when saving edits" checked={writeOnSave()} onChange={setWriteOnSave} />
+        <Toggle
+          label="Update a book’s EPUB or CBZ when saving edits"
+          checked={writeOnSave()}
+          onChange={setWriteOnSave}
+        />
       </Row>
-      <Row label="Update every EPUB now" description={status()}>
+      <Row label="Update every EPUB and CBZ now" description={status()}>
         <Show
           when={confirming()}
           fallback={

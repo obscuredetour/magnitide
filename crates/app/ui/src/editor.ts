@@ -90,7 +90,7 @@ export async function saveEdit(id: number, edit: BookEdit | null, then?: number)
       try {
         const r = await api.writeMetadataToFiles(id);
         if (r.failed.length) warning = r.failed.join('; ');
-        else if (r.written) message += ' · EPUB updated';
+        else if (r.written) message += r.written === 1 ? ' · File updated' : ' · Files updated';
       } catch (err) {
         warning = errorMessage(err);
       }

@@ -129,6 +129,64 @@ impl Library {
         })
     }
 
+    /// "Fill from a book": the change that gives `ids` what `source` has wherever
+    /// the others lack it. A field is filled when the source has a value and
+    /// every other book either shares it or has none, so fields the books
+    /// already differ in are left alone. What belongs to each book isn't
+    /// filled: the date, rating, and a comic's issue number; of the user's own
+    /// fields, only text, choice and series fields are (not dates, numbers,
+    /// ratings, yes/no or long text, which tend to be a book's own). The
+    /// source's tags are added to every book.
+    pub fn bulk_fill(&self, ids: &[BookId], source: BookId) -> Result<BulkEdit> {
+        use crate::custom::FieldKind;
+
+        let from = self.book_edit(source)?;
+        let books = ids.iter().filter(|id| **id != source).map(|id| self.book_edit(*id)).collect::<Result<Vec<_>>>()?;
+        /// Worth filling: the source has it, and every other book has it too or nothing.
+        fn fills<T: PartialEq>(value: Option<T>, others: impl Iterator<Item = Option<T>>) -> Option<T> {
+            let value = value?;
+            let mut lacking = false;
+            for other in others {
+                match other {
+                    None => lacking = true,
+                    Some(o) if o == value => {}
+                    Some(_) => return None,
+                }
+            }
+            lacking.then_some(value)
+        }
+        let text = |s: &Option<String>| s.clone().filter(|s| !s.trim().is_empty());
+        let list = |v: &Vec<String>| Some(v.clone()).filter(|v| !v.is_empty());
+
+        let fields = self.custom_fields()?;
+        let mut custom = BTreeMap::new();
+        for (key, value) in &from.custom {
+            let Some(field) = fields.iter().find(|f| &f.key == key) else { continue };
+            let comic = field.group.as_deref() == Some(crate::comics::COMIC_GROUP);
+            let shared = if comic {
+                key != "issue"
+            } else {
+                matches!(field.kind, FieldKind::Text | FieldKind::Choice | FieldKind::Series)
+            };
+            if !shared {
+                continue;
+            }
+            let others = books.iter().map(|b| b.custom.get(key).cloned().flatten());
+            if let Some(v) = fills(value.clone(), others) {
+                custom.insert(key.clone(), Some(v));
+            }
+        }
+        Ok(BulkEdit {
+            authors: fills(list(&from.authors), books.iter().map(|b| list(&b.authors))),
+            publisher: fills(text(&from.publisher), books.iter().map(|b| text(&b.publisher))),
+            languages: fills(list(&from.languages), books.iter().map(|b| list(&b.languages))),
+            series: fills(text(&from.series), books.iter().map(|b| text(&b.series))),
+            add_tags: from.tags.clone(),
+            custom,
+            ..Default::default()
+        })
+    }
+
     /// Apply `change` to each of `ids`, in order. A book that fails is
     /// reported and left as it was; the others are still saved.
     pub fn bulk_edit(
@@ -211,6 +269,55 @@ mod tests {
             ids.push(add_files(&mut lib, &[src], |_| {}).unwrap().added[0]);
         }
         (tmp, lib, ids)
+    }
+
+    #[test]
+    fn fills_what_the_others_lack_from_one_book() {
+        use crate::custom::{FieldKind, NewField};
+
+        let (_tmp, mut lib, ids) = library();
+        lib.ensure_comic_fields().unwrap();
+        lib.add_custom_field(&NewField {
+            name: "Date Read".into(),
+            key: String::new(),
+            kind: Some(FieldKind::Date),
+            multiple: false,
+            choices: vec![],
+        })
+        .unwrap();
+        let text = |s: &str| Some(FieldValue::Text(s.into()));
+        let list = |v: &[&str]| Some(FieldValue::List(v.iter().map(|s| s.to_string()).collect()));
+        // The first, edited in full; the second has nothing; the third its own artist.
+        let mut e = lib.book_edit(ids[0]).unwrap();
+        e.publisher = Some("Image".into());
+        e.series = Some("Saga".into());
+        e.tags = vec!["Comics".into()];
+        e.custom.insert("issue".into(), text("1"));
+        e.custom.insert("format".into(), text("Issue"));
+        e.custom.insert("artists".into(), list(&["Fiona Staples"]));
+        e.custom.insert("letterers".into(), list(&["Fonografiks"]));
+        e.custom.insert("date_read".into(), text("2026-10-01"));
+        lib.update_book(ids[0], &e).unwrap();
+        let mut e = lib.book_edit(ids[2]).unwrap();
+        e.custom.insert("artists".into(), list(&["Someone Else"]));
+        lib.update_book(ids[2], &e).unwrap();
+
+        let fill = lib.bulk_fill(&ids, ids[0]).unwrap();
+        assert_eq!(fill.publisher.as_deref(), Some("Image"));
+        assert_eq!(fill.series.as_deref(), Some("Saga"));
+        assert_eq!(fill.authors, None, "they all have the same author already");
+        assert_eq!(fill.add_tags, ["Comics"]);
+        let keys: Vec<&str> = fill.custom.keys().map(String::as_str).collect();
+        assert_eq!(keys, ["format", "letterers"], "not the issue, the differing artists or a date read");
+        assert_eq!((fill.published.as_deref(), fill.rating, fill.series_start), (None, None, None));
+
+        // Applied, the others have it; the third keeps its own artist.
+        lib.bulk_edit(&ids, &fill, |_, _| {}).unwrap();
+        let third = lib.book_edit(ids[2]).unwrap();
+        assert_eq!(third.publisher.as_deref(), Some("Image"));
+        assert_eq!(third.custom["letterers"], list(&["Fonografiks"]));
+        assert_eq!(third.custom["artists"], list(&["Someone Else"]));
+        assert_eq!(lib.book_edit(ids[1]).unwrap().custom["issue"], None);
     }
 
     #[test]

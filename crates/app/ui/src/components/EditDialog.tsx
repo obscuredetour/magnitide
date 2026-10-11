@@ -7,7 +7,15 @@ import { api, type AuthorSort, type BookEdit, type BookRow, type CustomField, er
 import { Autocomplete } from './Autocomplete';
 import { changeCover, closeEditor, type Editing, saveEdit } from '../editor';
 import { items } from '../library';
-import { COMIC_KEY, comicFields, comicMarker, ensureComicFields, isComicFormat, ownFields } from '../fields';
+import {
+  COMIC_GROUP,
+  COMIC_KEY,
+  comicFields,
+  comicMarker,
+  ensureComicFields,
+  isComicFormat,
+  ownFields,
+} from '../fields';
 import { identifierOrder } from '../identifiers';
 import { CustomFieldInput, customFieldHint } from './CustomFieldInput';
 import { Cover } from './Cover';
@@ -243,6 +251,9 @@ export function EditDialog(props: { editing: Editing }) {
 
   const stars = () => (form.rating ? Math.round(form.rating / 2) : 0);
 
+  // The rest of a comic's art team is often its artist: one click copies Artists in.
+  const fromArtists = (f: CustomField) =>
+    f.group === COMIC_GROUP && ['inkers', 'colorists', 'letterers', 'cover_artists'].includes(f.key);
   const customField = (f: CustomField) => (
     <div classList={{ 'col-span-2': f.kind === 'longText' || f.kind === 'series' }}>
       <Field label={f.name} hint={customFieldHint(f)} for={`custom-${f.key}`}>
@@ -253,6 +264,22 @@ export function EditDialog(props: { editing: Editing }) {
           onChange={(v) => setForm('custom', f.key, v)}
         />
       </Field>
+      <Show
+        when={
+          fromArtists(f) &&
+          form.custom.artists != null &&
+          JSON.stringify(form.custom.artists) !== JSON.stringify(form.custom[f.key] ?? null)
+        }
+      >
+        <button
+          type="button"
+          class="-mt-1 cursor-pointer text-[11px] text-link hover:underline"
+          title="Copy the Artists into this field"
+          onClick={() => setForm('custom', f.key, structuredClone(unwrap(form.custom.artists!)))}
+        >
+          Same as Artists
+        </button>
+      </Show>
     </div>
   );
 

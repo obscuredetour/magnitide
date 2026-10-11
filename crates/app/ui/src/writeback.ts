@@ -7,7 +7,7 @@ import { refresh, setEditRevision } from './library';
 import { storage } from './storage';
 import { toast } from './toast';
 
-/** "Also write to EPUB files when saving"; off unless turned on. */
+/** "Also write to the book's EPUB and CBZ files when saving"; off unless turned on. */
 const [writeOnSave, setWriteOnSaveSignal] = createSignal(storage.get('writeFilesOnSave') === 'on');
 export { writeOnSave };
 
@@ -24,7 +24,7 @@ export function describeWrite(r: WriteReport): string {
   const parts = [];
   if (r.written) parts.push(`Wrote metadata into ${plural(r.written, 'file', 'files')}`);
   else if (r.upToDate) parts.push('Files already match the library');
-  else if (r.skipped) parts.push('No EPUB to write to; other formats aren’t supported yet');
+  else if (r.skipped) parts.push('No EPUB or CBZ to write to; other formats aren’t supported yet');
   else parts.push('Nothing to write');
   if (r.failed.length) parts.push(`${plural(r.failed.length, 'file', 'files')} couldn’t be written`);
   return parts.join(' · ');

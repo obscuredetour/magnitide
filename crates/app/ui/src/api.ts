@@ -301,6 +301,8 @@ export const api = {
 
   /** What these books have in common, for the bulk editor. */
   bulkValues: (ids: number[]) => invoke<BulkValues>('bulk_values', { ids }),
+  /** What "Fill from a book" would set: `source`'s values wherever the others lack them. Saves nothing. */
+  bulkFill: (ids: number[], source: number) => invoke<BulkEdit>('bulk_fill', { ids, source }),
 
   /** Apply one change to several books, in this order (series numbering). Progress via onBulkProgress. */
   bulkEdit: (ids: number[], change: BulkEdit) => invoke<BulkReport>('bulk_edit', { ids, change }),
@@ -347,13 +349,13 @@ export const api = {
   /** Whether a book's files hold its current metadata; null for calibre libraries. */
   fileMetadataStatus: (id: number) => invoke<FileMetadataStatus | null>('file_metadata_status', { id }),
 
-  /** Write a book's metadata and cover into its EPUB files (only those that differ). */
+  /** Write a book's metadata into its EPUB (with the cover) and CBZ (as ComicInfo.xml) files, only those that differ. */
   writeMetadataToFiles: (id: number) => invoke<WriteReport>('write_metadata_to_files', { id }),
 
   /** How many books "Write metadata to files" would rewrite (changes nothing). */
   writebackPreview: () => invoke<WritebackPreview>('writeback_preview'),
 
-  /** Write every book's metadata into its EPUB files that differ from the library. */
+  /** Write every book's metadata into its EPUB and CBZ files that differ from the library. */
   writeAllMetadata: () => invoke<WriteReport>('write_all_metadata'),
 
   /** Metadata sources and whether each will be asked. */

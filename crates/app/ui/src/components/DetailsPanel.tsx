@@ -357,7 +357,7 @@ function Details(props: { book: BookDetails }) {
           </section>
         </Show>
 
-        {/* Files: formats, devices, and whether the EPUB's own metadata is out of date. */}
+        {/* Files: formats, devices, and whether the files' own metadata (EPUB, CBZ) is out of date. */}
         <Show when={b().formats.length || devices().length || fileStatus() === 'outdated'}>
           <section class={`${section} space-y-3!`}>
             <Show when={b().formats.length}>
@@ -453,11 +453,11 @@ function Details(props: { book: BookDetails }) {
             </Show>
             <Show when={fileStatus() === 'outdated'}>
               <p class="rounded-control border border-line bg-bg/50 p-2 text-xs text-muted">
-                The EPUB’s built-in metadata differs from the library.{' '}
+                The book file’s built-in metadata differs from the library.{' '}
                 <button
                   class="cursor-pointer text-link hover:underline disabled:opacity-60"
                   disabled={writing()}
-                  title="Write the library’s metadata and cover into the EPUB, for e-readers and other apps"
+                  title="Write the library’s metadata into the book’s EPUB (with its cover) or CBZ (as ComicInfo.xml), for e-readers and other apps"
                   onClick={async () => {
                     setWriting(true);
                     await writeBookFiles(b().id);

@@ -250,8 +250,8 @@ pub async fn file_metadata_status(
     .map_err(|e| e.to_string())
 }
 
-/// Write a book's metadata and cover into its files that differ (EPUB, and
-/// formats a metadata writer plugin handles).
+/// Write a book's metadata into its files that differ: EPUB (with the cover),
+/// CBZ (as ComicInfo.xml), and formats a metadata writer plugin handles.
 #[tauri::command]
 pub async fn write_metadata_to_files(
     app: AppHandle,
@@ -495,6 +495,23 @@ pub async fn bulk_values(state: State<'_, AppState>, ids: Vec<i64>) -> CmdResult
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())
+}
+
+/// "Fill from a book": the change giving these books what `source` has where
+/// they lack it (see `Library::bulk_fill`). Nothing is saved.
+#[tauri::command]
+pub async fn bulk_fill(
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+    source: i64,
+) -> CmdResult<magnitide_core::bulk::BulkEdit> {
+    let native = native(&state)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        native.lock().unwrap_or_else(|e| e.into_inner()).bulk_fill(&ids, source)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
 }
 
 /// Sent while several books are saved. Matches `onBulkProgress` in ui/src/api.ts.

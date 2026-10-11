@@ -25,7 +25,8 @@ What's done and what's next, in roughly the order it happened. The
 - [x] Comic metadata: ComicInfo.xml (or ComicBookInfo) and covers from CBZ, CB7 and CBR; comic fields (issue, format, volume, artists, inkers, colorists, letterers, cover artists, editors, story arcs, characters, teams, age rating, right-to-left) shown when a book is marked Comic, ticked for comic files; authors are the writers (ComicInfo's Writer), and the list and grid show a comic's artists after them, with "Written by … · Art by …" in its details; "1-6" issue ranges become omnibus ranges; the format (Issue, TPB, Annual, Manga Volume, …) words a comic's place in its series: "Issue 17 of Saga", "Volume 3 of …", "Issues 13–18 of Saga · TPB"
 - [x] Comics in RAR archives (CBRs that aren't ZIPs), read with bsdtar, 7-Zip or unrar if one is installed (the UnRAR source can't be built into a GPL program)
 - [x] CBR and CB7 → CBZ, losslessly (the same pages, repacked), in Convert and, as a library setting, when adding
-- [ ] Write ComicInfo.xml back into CBZ files
+- [x] Write ComicInfo.xml back into CBZ files (with EPUB write-back: on save, per book, or every file), keeping the file's own elements (Pages, Notes, Web, …) and its pages untouched
+- [x] Edit Books: "Fill from a book" copies one book's values into the fields the others leave empty (not dates, ratings or issue numbers); in a comic, "Same as Artists" fills Inkers, Colorists, Letterers and Cover Artists
 - [ ] A comic metadata source (Metron, Comic Vine)
 - [x] MOBI/AZW/AZW3 metadata and covers (adding books, device matching); "Surname, Given" authors turned around
 - [ ] PDF metadata reader (drag and drop uses file names for PDFs today)

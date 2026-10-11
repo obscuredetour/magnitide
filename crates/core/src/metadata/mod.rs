@@ -10,6 +10,7 @@ use std::path::Path;
 use chrono::NaiveDate;
 
 pub mod comic;
+pub mod comic_write;
 pub mod epub;
 pub mod epub_write;
 pub mod filename;

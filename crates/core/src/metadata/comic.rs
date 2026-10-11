@@ -372,7 +372,7 @@ fn split_list(s: &str) -> Vec<String> {
 }
 
 /// "Saga #1", for an issue with no title of its own.
-fn issue_title(series: &str, number: Option<&str>) -> String {
+pub(crate) fn issue_title(series: &str, number: Option<&str>) -> String {
     match number {
         Some(n) => format!("{series} #{n}"),
         None => series.to_owned(),
