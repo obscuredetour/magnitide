@@ -8,6 +8,7 @@ mod lookup;
 #[cfg(target_os = "macos")]
 mod menu;
 mod plugins;
+mod reader;
 mod server;
 mod themes;
 
@@ -111,6 +112,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(covers::allow_on_http())
         .manage(AppState::default())
+        .manage(reader::Reader::default())
         .setup(|app| {
             devices::watch(app.handle().clone());
             server::start_if_enabled(app.handle());
@@ -123,7 +125,16 @@ fn main() {
             let path = request.uri().path().to_owned();
             tauri::async_runtime::spawn_blocking(move || responder.respond(covers::respond(&app, &path)));
         })
+        // The comic open in the viewer, a page at a time (see reader.rs).
+        .register_asynchronous_uri_scheme_protocol("page", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            let path = request.uri().path().to_owned();
+            tauri::async_runtime::spawn_blocking(move || responder.respond(reader::respond(&app, &path)));
+        })
         .invoke_handler(tauri::generate_handler![
+            reader::open_comic,
+            reader::close_comic,
+            reader::save_reading_progress,
             commands::open_library,
             commands::close_library,
             commands::create_library,

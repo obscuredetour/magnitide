@@ -75,6 +75,8 @@ import type { SourceRecord } from './bindings/SourceRecord';
 import type { SourceStatus } from './bindings/SourceStatus';
 import type { AddReport } from './bindings/AddReport';
 import type { DropScan } from './bindings/DropScan';
+import type { OpenedComic } from './bindings/OpenedComic';
+import type { ReadingState } from './bindings/ReadingState';
 import type { BookRow } from './bindings/BookRow';
 import type { AuthorSort } from './bindings/AuthorSort';
 import type { BookEdit } from './bindings/BookEdit';
@@ -113,6 +115,8 @@ export type {
   NewField,
   AddReport,
   DropScan,
+  OpenedComic,
+  ReadingState,
   ApplyReport,
   InstalledPlugin,
   NativePlugin,
@@ -275,6 +279,14 @@ export const api = {
    */
   addBooks: (paths: string[], options: { skipDocuments?: boolean; exclude?: string[] } = {}) =>
     invoke<AddReport>('add_books', { paths, ...options }),
+
+  /** Open a book's comic (CBZ, else CB7, else CBR) in the viewer; a RAR or 7z is unpacked first. */
+  openComic: (id: number) => invoke<OpenedComic>('open_comic', { id }),
+  /** Close the viewer's comic. */
+  closeComic: () => invoke<void>('close_comic'),
+  /** The reader is at `page` of `pages`: the book's being read, or at the last page, read. */
+  saveReadingProgress: (id: number, page: number, pages: number) =>
+    invoke<ReadingState | null>('save_reading_progress', { id, page, pages }),
 
   /** What adding these files and folders would find, before anything is copied. */
   scanDrop: (paths: string[]) => invoke<DropScan>('scan_drop', { paths }),
@@ -608,6 +620,14 @@ export function coverChanged(id: number): void {
 }
 
 /** URL for the Rust `cover://` protocol (its form differs per platform). Reactive. */
+let pageBase: string | undefined;
+
+/** Page `n` (from 0) of the comic open in the viewer; `opening` tells one opening from another. */
+export function pageUrl(id: number, n: number, opening: number): string {
+  pageBase ??= convertFileSrc('', 'page');
+  return `${pageBase}${id}/${n}?o=${opening}`;
+}
+
 export function coverUrl(size: CoverSize, id: number): string {
   coverBase ??= convertFileSrc('', 'cover');
   const v = coverVersions().get(id);

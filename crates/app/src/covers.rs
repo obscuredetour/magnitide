@@ -44,8 +44,9 @@ pub fn respond(app: &AppHandle, path: &str) -> Response<Vec<u8>> {
     }
 }
 
-/// Lets every webview show `cover:` URLs from a page served over `http:`,
-/// which is what the dev build is (Vite on `http://localhost:1420`).
+/// Lets every webview show `cover:` and `page:` (the comic viewer's, see
+/// reader.rs) URLs from a page served over `http:`, which is what the dev
+/// build is (Vite on `http://localhost:1420`).
 ///
 /// WebKitGTK 2.54 refuses that with "Unsafe attempt to load URL … Domains,
 /// protocols and ports must match": a custom scheme no longer passes its
@@ -58,9 +59,10 @@ pub fn allow_on_http<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             #[cfg(target_os = "linux")]
             if let Err(e) = webview.with_webview(|platform| {
                 use webkit2gtk::WebViewExt;
-                platform.inner().set_cors_allowlist(&["cover://*/*"]);
+                // One list for the view: every scheme it needs goes in this call.
+                platform.inner().set_cors_allowlist(&["cover://*/*", "page://*/*"]);
             }) {
-                eprintln!("allowing cover: in {}: {e}", webview.label());
+                eprintln!("allowing cover: and page: in {}: {e}", webview.label());
             }
             #[cfg(not(target_os = "linux"))]
             let _ = webview;

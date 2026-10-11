@@ -7,7 +7,8 @@ import { api, type BookDetails, type CustomDetail, errorMessage, fileManagerName
 import { openEditor } from '../editor';
 import { DETAILS_WIDTH, detailsWidth, setDetailsWidth } from '../view';
 import { editRevision, library, openBook, search, setSelectedId } from '../library';
-import { byComicOrder, COMIC_GROUP, COMIC_KEY, customFields, formatCustom } from '../fields';
+import { byComicOrder, COMIC_GROUP, COMIC_KEY, customFields, formatCustom, isComicFormat } from '../fields';
+import { readComic } from '../viewer';
 import { identifierOrder } from '../identifiers';
 import { languageName } from '../languages';
 import { toast } from '../toast';
@@ -402,14 +403,19 @@ function Details(props: { book: BookDetails }) {
                 </div>
               </div>
             </Show>
-            {/* Actions on the files: send to each device it isn't on (the first is the
-              panel's main action), and convert. */}
-            <Show when={b().formats.length && (notOn().length || editable())}>
+            {/* Actions on the files: read a comic (the panel's main action then), send to
+              each device it isn't on (else the first is), and convert. */}
+            <Show when={b().formats.length && (readable(b()) || notOn().length || editable())}>
               <div class="flex flex-wrap gap-2">
+                <Show when={readable(b())}>
+                  <button class={primaryButton} onClick={() => readComic(b().id)}>
+                    Read
+                  </button>
+                </Show>
                 <For each={notOn()}>
                   {(d, i) => (
                     <button
-                      class={i() === 0 ? primaryButton : secondaryButton}
+                      class={i() === 0 && !readable(b()) ? primaryButton : secondaryButton}
                       onClick={() => void sendToDevice(d, [b().id])}
                     >
                       Send to {d.name}
@@ -548,6 +554,9 @@ function placeIn(custom: CustomDetail[], range: boolean): { noun: string; note?:
       return { noun: noun('Issue', 'Issues') };
   }
 }
+
+/** Whether the viewer can read the book: it has a CBZ, CB7 or CBR. */
+const readable = (b: BookDetails) => b.formats.some((f) => isComicFormat(f.format));
 
 /** Whether a book is a comic: marked as one, or with comic fields filled. */
 const comic = (custom: CustomDetail[]) =>

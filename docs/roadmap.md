@@ -26,6 +26,7 @@ What's done and what's next, in roughly the order it happened. The
 - [x] Comics in RAR archives (CBRs that aren't ZIPs), read with bsdtar, 7-Zip or unrar if one is installed (the UnRAR source can't be built into a GPL program)
 - [x] CBR and CB7 → CBZ, losslessly (the same pages, repacked), in Convert and, as a library setting, when adding
 - [x] Write ComicInfo.xml back into CBZ files (with EPUB write-back: on save, per book, or every file), keeping the file's own elements (Pages, Notes, Web, …) and its pages untouched
+- [x] A comic viewer: Read (or double-click) opens CBZ, CB7 and CBR comics over the library, pages served from the archive (a RAR or 7z unpacked once); one page or two (automatic in a wide window, the cover and wide spreads alone), fit to page, width or height, right to left for manga, full screen; it resumes where you left off and marks the comic Reading, then Read at the last page
 - [x] A comic's title that's just "Series #Number" (as readers make it) follows the series and number in the editor, and so does an Issue that's just the number
 - [x] Edit Books: "Fill from a book" copies one book's values into the fields the others leave empty (not dates, ratings or issue numbers); in a comic, "Same as Artists" fills Inkers, Colorists, Letterers and Cover Artists
 - [ ] A comic metadata source (Metron, Comic Vine)

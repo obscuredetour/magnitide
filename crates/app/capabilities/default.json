@@ -9,6 +9,7 @@
     "core:window:allow-toggle-maximize",
     "core:webview:allow-set-webview-zoom",
     "core:window:allow-set-min-size",
+    "core:window:allow-set-fullscreen",
     "dialog:allow-open",
     "dialog:allow-save"
   ]
