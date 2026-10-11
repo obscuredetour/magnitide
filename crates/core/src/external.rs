@@ -314,6 +314,7 @@ impl Library {
             authors: b.authors.clone(),
             author_sorts: Default::default(),
             series: b.series.clone().map(|s| (s, b.series_index)),
+            series_end: b.series_end,
             publisher: b.publisher.clone(),
             published: b.pubdate.map(|d| d.date_naive()),
             description_html: b.comments.as_deref().map(html::sanitize),

@@ -454,6 +454,7 @@ mod tests {
             tags: vec!["Fiction".into(), "Utopias".into()],
             cover: None,
             uuids: vec![],
+            comic: None,
         }
     }
 

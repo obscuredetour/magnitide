@@ -295,6 +295,7 @@ impl Library {
                 tags: b.tags,
                 cover,
                 uuids: Vec::new(),
+                comic: None,
             },
         })
     }

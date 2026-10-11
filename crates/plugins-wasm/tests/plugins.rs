@@ -378,6 +378,7 @@ impl magnitide_plugins_wasm::LibraryAccess for FakeLibrary {
             kind: magnitide_core::custom::FieldKind::Bool,
             multiple: false,
             choices: vec![],
+            group: None,
         }])
     }
 

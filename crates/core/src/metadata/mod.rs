@@ -1,14 +1,15 @@
 //! Reading metadata from book files being added to a library.
 //!
 //! EPUB (and KEPUB, which is EPUB) is read fully, cover included; so are
-//! MOBI, AZW and AZW3. Other formats fall back to the file name; a PDF
-//! reader is on the roadmap.
+//! MOBI, AZW and AZW3, and comics (CBZ, CB7, and CBRs that are ZIPs). Other
+//! formats fall back to the file name; a PDF reader is on the roadmap.
 
 use std::collections::BTreeMap;
 use std::path::Path;
 
 use chrono::NaiveDate;
 
+pub mod comic;
 pub mod epub;
 pub mod epub_write;
 pub mod filename;
@@ -35,6 +36,8 @@ pub struct BookMetadata {
     /// Book uuids the file carries (calibre writes its book uuid), lower
     /// case. Read only; used to recognize a book's copies.
     pub uuids: Vec<String>,
+    /// Set for a comic: what it says beyond a book's metadata (issue, artists, …).
+    pub comic: Option<Box<comic::ComicDetails>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -52,6 +55,7 @@ pub fn read(path: &Path, format: &str) -> BookMetadata {
 /// Whether Magnitide reads `format` itself.
 pub fn builtin_reads(format: &str) -> bool {
     matches!(format, "EPUB" | "KEPUB" | "MOBI" | "AZW" | "AZW3" | "AZW4" | "PRC" | "PDB")
+        || comic::is_comic_format(format)
 }
 
 /// [`read`], with plugin readers: one that overrides is asked first (ours
@@ -63,6 +67,10 @@ pub fn read_with(path: &Path, format: &str, plugins: &dyn crate::hooks::Metadata
     let builtin = || match format {
         "EPUB" | "KEPUB" => epub::read(path).unwrap_or_default(),
         "MOBI" | "AZW" | "AZW3" | "AZW4" | "PRC" | "PDB" => mobi::read(path).unwrap_or_default(),
+        // A comic it can't open (a real RAR) is still a comic.
+        f if comic::is_comic_format(f) => {
+            comic::read(path).unwrap_or_else(|| BookMetadata { comic: Some(Box::default()), ..Default::default() })
+        }
         _ => BookMetadata::default(),
     };
     let mut meta = match plugins.reads(format) {

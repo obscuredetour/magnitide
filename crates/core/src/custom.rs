@@ -44,7 +44,7 @@ pub enum FieldKind {
 
 impl FieldKind {
     /// The name stored in `custom_fields.kind`.
-    fn db_name(self) -> &'static str {
+    pub(crate) fn db_name(self) -> &'static str {
         match self {
             Self::Text => "text",
             Self::LongText => "long_text",
@@ -102,6 +102,9 @@ pub struct CustomField {
     pub multiple: bool,
     /// Choice only: the allowed values, in order.
     pub choices: Vec<String>,
+    /// Fields that belong together, shown together: "comic" for a comic's
+    /// (see [`crate::comics`]). None for a field of the user's own.
+    pub group: Option<String>,
 }
 
 /// A field to make.
@@ -149,7 +152,16 @@ impl CustomField {
             .or_else(|| c.display.get("enum_values"))
             .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
             .unwrap_or_default();
-        Some(Self { id: c.id, key: c.label.clone(), name: c.name.clone(), kind, multiple: c.is_multiple, choices })
+        let group = c.display.get("group").and_then(|g| g.as_str()).map(str::to_owned);
+        Some(Self {
+            id: c.id,
+            key: c.label.clone(),
+            name: c.name.clone(),
+            kind,
+            multiple: c.is_multiple,
+            choices,
+            group,
+        })
     }
 }
 

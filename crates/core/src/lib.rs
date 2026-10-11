@@ -4,6 +4,7 @@
 
 pub mod bulk;
 pub mod catalog;
+pub mod comics;
 pub mod convert;
 pub mod custom;
 pub mod db;

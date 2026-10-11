@@ -62,6 +62,7 @@ impl From<PluginMetadata> for BookMetadata {
             tags: m.tags,
             cover,
             uuids: m.uuid.into_iter().map(|u| u.to_lowercase()).collect(),
+            comic: None,
         }
     }
 }

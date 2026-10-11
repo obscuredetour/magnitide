@@ -1478,6 +1478,7 @@ fn from_wit_metadata(m: types::BookMetadata) -> BookMetadata {
         tags: m.tags,
         cover: m.cover.filter(|c| !c.is_empty()),
         uuids: m.uuids.into_iter().map(|u| u.to_lowercase()).collect(),
+        comic: None,
     }
 }
 
