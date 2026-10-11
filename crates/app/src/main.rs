@@ -136,8 +136,6 @@ fn main() {
             custom::update_custom_field,
             custom::delete_custom_field,
             custom::ensure_comic_fields,
-            custom::comic_artists_as_authors,
-            custom::set_comic_artists_as_authors,
             commands::book_rows,
             commands::book_details,
             commands::open_book,

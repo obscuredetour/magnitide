@@ -3,7 +3,7 @@
 
 import { createSignal } from 'solid-js';
 
-import { api, type CustomField, type FieldKind, type SortDir } from './api';
+import { api, type BookRow, type CustomField, type FieldKind, type SortDir } from './api';
 
 const [customFields, setCustomFields] = createSignal<CustomField[]>([]);
 export { customFields };
@@ -57,6 +57,23 @@ export const comicMarker = () => customFields().find((f) => f.group === COMIC_GR
 
 /** Comic archive formats: a book in one is taken for a comic until said otherwise. */
 export const isComicFormat = (format: string) => ['CBZ', 'CBR', 'CB7'].includes(format.toUpperCase());
+
+/**
+ * Who a book is by, as the list and grid show it: its authors, and for a comic
+ * its artists after them ("Brian K. Vaughan & Fiona Staples"), each once. Only
+ * shown that way: the authors stay the writers, the artists their own field.
+ */
+export function credited(row: BookRow): string {
+  const marked = row.custom[COMIC_KEY];
+  const comic = marked === 'true' || (marked === undefined && row.formats.some(isComicFormat));
+  const artists = comic && customFields().some((f) => f.key === 'artists' && f.group === COMIC_GROUP);
+  if (!artists || !row.custom.artists) return row.authors;
+  const names = row.authors ? row.authors.split(' & ') : [];
+  for (const name of row.custom.artists.split(', ')) {
+    if (name && !names.some((n) => n.toLowerCase() === name.toLowerCase())) names.push(name);
+  }
+  return names.join(' & ');
+}
 
 /** Make the comic fields if the library hasn't got them, and load them. */
 export async function ensureComicFields(): Promise<void> {

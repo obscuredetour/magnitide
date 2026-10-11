@@ -186,7 +186,6 @@ pub fn add_files_filtered(
 
     let total = groups.len();
     let mut comic_fields = None;
-    let mut artists_as_authors = None;
     for (done, files) in groups.into_values().enumerate() {
         // Plugins first (calibre's on_import), on each file; a plugin may
         // hand back a rewritten file, possibly with another extension.
@@ -213,16 +212,9 @@ pub fn add_files_filtered(
         let title = meta.title.clone().unwrap_or_else(|| book_stem(path));
         progress(AddProgress { done, total, title: &title });
 
-        let mut authors: Vec<String> =
+        // A comic's authors are its writers (ComicInfo's Writer); its artists keep their own field.
+        let authors: Vec<String> =
             meta.authors.iter().map(|a| a.name.trim().to_owned()).filter(|a| !a.is_empty()).collect();
-        // A comic's artists are its authors too, after the writers (unless the library says not).
-        if let Some(comic) = meta.comic.as_deref() {
-            let artists_too = match artists_as_authors {
-                Some(on) => on,
-                None => *artists_as_authors.insert(lib.comic_artists_as_authors()?),
-            };
-            authors = crate::comics::comic_authors(&authors, comic, artists_too);
-        }
         // The same book (title and first author) already here: add only the
         // formats it doesn't have yet.
         if let Some((existing, have)) = existing_book(lib, &title, authors.first().map(String::as_str))? {
@@ -525,7 +517,7 @@ mod tests {
 
         let books: Vec<_> = report.added.iter().map(|id| (*id, lib.book(*id).unwrap())).collect();
         let (issue, saga) = books.iter().find(|(_, b)| b.title == "Saga #1").unwrap();
-        assert_eq!(saga.authors, ["Brian K. Vaughan", "Fiona Staples"], "the artist is an author too");
+        assert_eq!(saga.authors, ["Brian K. Vaughan"], "the writer; the artist is in Artists");
         let values = lib.custom_edit_values(*issue).unwrap();
         assert_eq!(values["comic"], Some(FieldValue::Bool(true)));
         assert_eq!(values["issue"], Some(FieldValue::Text("1".into())));
@@ -559,19 +551,6 @@ mod tests {
         assert_eq!(report.added.len(), 1, "{report:?}");
         let values = lib.custom_edit_values(report.added[0]).unwrap();
         assert_eq!((values["format"].clone(), values["issue"].clone()), (None, Some(FieldValue::Text("1-6".into()))));
-    }
-
-    #[test]
-    fn a_library_can_keep_comic_artists_off_the_author_line() {
-        use crate::metadata::comic::tests::{COMIC_INFO, make_cbz};
-
-        let (_tmp, mut lib, drop) = setup();
-        assert!(lib.comic_artists_as_authors().unwrap(), "on by default");
-        lib.set_comic_artists_as_authors(false).unwrap();
-        assert!(!lib.comic_artists_as_authors().unwrap());
-        make_cbz(&drop.join("saga1.cbz"), &[("ComicInfo.xml", COMIC_INFO.as_bytes())], None);
-        let report = add_files(&mut lib, &[drop], |_| {}).unwrap();
-        assert_eq!(lib.book(report.added[0]).unwrap().authors, ["Brian K. Vaughan"]);
     }
 
     #[test]

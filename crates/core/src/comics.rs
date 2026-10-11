@@ -73,40 +73,6 @@ impl Library {
     }
 }
 
-/// Whether comics added to this library list their artists as authors, after
-/// the writers ("Brian K. Vaughan & Fiona Staples"). On unless turned off.
-const ARTISTS_AS_AUTHORS: &str = "comic_artists_as_authors";
-
-impl Library {
-    pub fn comic_artists_as_authors(&self) -> Result<bool> {
-        let value: Option<String> = self
-            .conn
-            .query_row("SELECT value FROM library_info WHERE key = ?", [ARTISTS_AS_AUTHORS], |r| r.get(0))
-            .optional()?;
-        Ok(value.as_deref() != Some("false"))
-    }
-
-    pub fn set_comic_artists_as_authors(&mut self, on: bool) -> Result<()> {
-        self.conn.execute(
-            "INSERT INTO library_info (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-            params![ARTISTS_AS_AUTHORS, on.to_string()],
-        )?;
-        Ok(())
-    }
-}
-
-/// A comic's authors: its writers, then (with `artists_too`) its artists, each once.
-pub fn comic_authors(writers: &[String], comic: &ComicDetails, artists_too: bool) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    let artists = if artists_too { comic.artists.as_slice() } else { &[] };
-    for name in writers.iter().chain(artists) {
-        if !out.iter().any(|o| o.eq_ignore_ascii_case(name)) {
-            out.push(name.clone());
-        }
-    }
-    out
-}
-
 /// A comic's values for the comic fields, by key: #comic is always set.
 pub fn comic_values(c: &ComicDetails) -> BTreeMap<String, Option<FieldValue>> {
     let list = |v: &[String]| (!v.is_empty()).then(|| FieldValue::List(v.to_vec()));

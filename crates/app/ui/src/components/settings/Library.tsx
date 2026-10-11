@@ -272,30 +272,6 @@ function TidyNames() {
  * EPUB files carry their own copy of the metadata. Two ways to keep it in
  * step: as each edit is saved (a setting), or every file at once (an action).
  */
-/** How comics are credited: artists beside the writers on the author line, or not. */
-function Comics() {
-  const [on, { mutate }] = createResource(() => api.comicArtistsAsAuthors().catch(() => true));
-  const set = async (value: boolean) => {
-    mutate(value);
-    try {
-      await api.setComicArtistsAsAuthors(value);
-    } catch (err) {
-      mutate(!value);
-      toast(errorMessage(err), { error: true });
-    }
-  };
-  return (
-    <Group title="Comics">
-      <Row
-        label="List artists as authors"
-        description="Comics added from now on list their artists after their writers, as “Brian K. Vaughan & Fiona Staples”. Either way, each comic keeps its artists in its Artists field. Comics already here keep their authors."
-      >
-        <Toggle label="List artists as authors" checked={on() ?? true} onChange={(v) => void set(v)} />
-      </Row>
-    </Group>
-  );
-}
-
 function EpubMetadata() {
   const [preview, { refetch }] = createResource(() => api.writebackPreview().catch(() => null));
   const [confirming, setConfirming] = createSignal(false);
@@ -388,7 +364,6 @@ export function LibrarySettings() {
       </Show>
       <Show when={magnitide()}>
         <EpubMetadata />
-        <Comics />
         <Group title="Files">
           <TidyNames />
         </Group>
