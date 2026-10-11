@@ -1,4 +1,15 @@
-import { createResource, createSignal, For, Index, type JSX, onMount, type ParentProps, Show } from 'solid-js';
+import {
+  createEffect,
+  createResource,
+  createSignal,
+  For,
+  Index,
+  type JSX,
+  on,
+  onMount,
+  type ParentProps,
+  Show,
+} from 'solid-js';
 import { createStore, unwrap } from 'solid-js/store';
 import ChevronRight from 'lucide-solid/icons/chevron-right';
 import X from 'lucide-solid/icons/x';
@@ -189,6 +200,49 @@ export function EditDialog(props: { editing: Editing }) {
     const marked = form.custom[COMIC_KEY];
     return marked === true || (marked == null && comicFormat);
   };
+  // A comic's title that's just "Series #Number" (what a reader makes when the file
+  // has none) follows the series and number, like title sort follows the title,
+  // until it's written as something of its own ("Chapter Seventeen").
+  const madeUpTitle = () => {
+    const series = form.series?.trim();
+    if (!series) return null;
+    const issue = form.custom.issue;
+    const number =
+      typeof issue === 'string' && issue.trim()
+        ? issue.trim()
+        : form.seriesEnd != null
+          ? `${form.seriesIndex}-${form.seriesEnd}`
+          : `${form.seriesIndex}`;
+    return `${series} #${number}`;
+  };
+  const titleFollows = () => isComic() && madeUpTitle() !== null && form.title.trim() === madeUpTitle();
+  // Its Issue, while it's just the number in series ("17", not "17.MU" or "Annual 1"),
+  // follows that number too, and with it the title.
+  createEffect(
+    on(
+      () => form.seriesIndex,
+      (now, before) => {
+        const issue = form.custom.issue;
+        if (before !== undefined && now !== before && typeof issue === 'string' && issue.trim() === `${before}`) {
+          setForm('custom', 'issue', `${now}`);
+        }
+      },
+      { defer: true },
+    ),
+  );
+  createEffect(
+    on(
+      madeUpTitle,
+      (now, before) => {
+        if (now && before && now !== before && isComic() && form.title.trim() === before) {
+          setForm('title', now);
+          if (!sortTouched()) setForm('titleSort', '');
+        }
+      },
+      { defer: true },
+    ),
+  );
+
   const setComic = async (on: boolean) => {
     try {
       await ensureComicFields();
@@ -346,7 +400,13 @@ export function EditDialog(props: { editing: Editing }) {
             {/* Fields */}
             <div class="col-start-2 row-start-1 grid min-w-0 grid-cols-2 content-start gap-x-4 gap-y-3.5">
               <div class="col-span-2">
-                <Field label="Title" for="edit-title">
+                <Field
+                  label="Title"
+                  for="edit-title"
+                  hint={
+                    titleFollows() ? 'Follows the series and number until you give it a title of its own.' : undefined
+                  }
+                >
                   <input
                     id="edit-title"
                     class={input}
