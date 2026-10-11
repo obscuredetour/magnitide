@@ -174,7 +174,7 @@ fn base(name: &str) -> &str {
 }
 
 /// An image that's a page: not in macOS's resource folder or a hidden file.
-fn is_page(name: &str) -> bool {
+pub(crate) fn is_page(name: &str) -> bool {
     let hidden = name.split(['/', '\\']).any(|part| part.starts_with('.') || part == "__MACOSX");
     let ext = base(name).rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase());
     !hidden && matches!(ext.as_deref(), Some("jpg" | "jpeg" | "png" | "webp" | "gif"))

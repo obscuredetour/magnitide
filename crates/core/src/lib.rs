@@ -25,6 +25,7 @@ pub mod lock;
 pub mod merge;
 pub mod metadata;
 pub mod names;
+pub mod pages;
 pub mod paths;
 pub mod shelves;
 pub mod tidy;

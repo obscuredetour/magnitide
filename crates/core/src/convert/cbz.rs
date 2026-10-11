@@ -76,7 +76,7 @@ fn write(src: &Path, dest: &Path) -> Result<(), String> {
 
 /// Every plain file under `dir`, named by its path inside `root` with "/"
 /// between folders. Links are skipped: an archive could point one anywhere.
-fn collect(root: &Path, dir: &Path, out: &mut Vec<(String, std::path::PathBuf)>) {
+pub(crate) fn collect(root: &Path, dir: &Path, out: &mut Vec<(String, std::path::PathBuf)>) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
         let path = entry.path();
