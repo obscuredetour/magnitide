@@ -430,7 +430,18 @@ mod tests {
         assert!(matches!(err, Error::LibraryInUse(_)), "{err}");
         assert!(err.to_string().contains("already open"), "{err}");
         drop(lib);
-        Library::open(dir.path()).unwrap();
+        // Closed, it opens again. A process another test starts at that moment
+        // briefly shares our open files (between its fork and exec), the lock's
+        // too, so allow it a moment to let go.
+        let mut reopened = Library::open(dir.path());
+        for _ in 0..50 {
+            if !matches!(reopened, Err(Error::LibraryInUse(_))) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            reopened = Library::open(dir.path());
+        }
+        reopened.unwrap();
     }
 
     #[test]
