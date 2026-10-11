@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use magnitide_core::import::import_calibre;
+use magnitide_core::import::{add_files, import_calibre, import_calibre_into};
 use magnitide_core::{Error, Library};
 use rusqlite::Connection;
 
@@ -254,4 +254,37 @@ fn refuses_a_non_empty_folder_that_is_not_a_library() {
     let empty = tmp.path().join("Empty");
     fs::create_dir(&empty).unwrap();
     assert_eq!(import_calibre(&src, &empty, |_| {}).unwrap().books_imported, 3);
+}
+
+#[test]
+fn imports_into_an_open_library_alongside_its_own_books() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (src, dest) = (tmp.path().join("calibre"), tmp.path().join("magnitide"));
+    fs::create_dir(&src).unwrap();
+    calibre_library(&src);
+    let mut lib = Library::create(&dest, "Mine").unwrap();
+    let own = tmp.path().join("Notes on a Life - Ann Writer.txt");
+    fs::write(&own, "a book of its own").unwrap();
+    add_files(&mut lib, &[own], |_| {}).unwrap();
+    let before = snapshot(&src);
+
+    let report = import_calibre_into(&mut lib, &src, |_| {}).unwrap();
+    assert!(!report.library_created);
+    assert_eq!((report.books_imported, report.books_skipped), (3, 0));
+    assert_eq!(lib.info().unwrap().book_count, 4);
+    assert_eq!(lib.info().unwrap().name, "Mine", "the open library keeps its name");
+    // Dropped again: nothing doubles up.
+    let again = import_calibre_into(&mut lib, &src, |_| {}).unwrap();
+    assert_eq!((again.books_imported, again.books_skipped), (0, 3));
+    assert_eq!(snapshot(&src), before, "calibre's library untouched");
+}
+
+#[test]
+fn refuses_to_import_a_calibre_library_into_one_inside_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    calibre_library(tmp.path());
+    let mut lib = Library::create(tmp.path().join("inside"), "Inside").unwrap();
+    let err = import_calibre_into(&mut lib, tmp.path(), |_| {}).err().unwrap();
+    assert!(matches!(err, Error::Import(ref m) if m.contains("must be outside")), "{err}");
+    assert_eq!(lib.info().unwrap().book_count, 0);
 }

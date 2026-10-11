@@ -26,6 +26,10 @@ pub const BOOK_EXTENSIONS: &[&str] = &[
     "rtf", "docx", "odt", "html", "htm", "lit", "pdb", "prc", "chm",
 ];
 
+/// Book formats that are as often just documents: a folder like Documents or
+/// Downloads is full of them (READMEs, saved pages, letters).
+pub const DOCUMENT_FORMATS: &[&str] = &["TXT", "HTML", "RTF", "DOCX", "ODT"];
+
 /// Formats preferred as the source of a book's metadata, best first.
 const METADATA_PREFERENCE: &[&str] = &["EPUB", "KEPUB"];
 
@@ -56,6 +60,34 @@ pub struct AddReport {
     pub formats: Vec<(BookId, String)>,
 }
 
+/// What adding some files and folders would take, found before anything is
+/// copied: enough to ask first about a big or mixed drop.
+#[derive(Debug, Default, Clone, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct DropScan {
+    /// Files by format (upper case), most first; documents included.
+    pub formats: Vec<(String, usize)>,
+    /// Files in a book format, documents included.
+    pub files: usize,
+    /// Files in one of [`DOCUMENT_FORMATS`].
+    pub documents: usize,
+    /// calibre libraries found (their folders). Their files aren't counted:
+    /// they're better imported, with what calibre knows about them.
+    pub calibre_libraries: Vec<String>,
+    /// A folder was among the paths (a single file is never a surprise).
+    pub has_folder: bool,
+}
+
+/// Which of the files found adding takes. The default takes them all.
+#[derive(Debug, Default, Clone)]
+pub struct AddFilter {
+    /// Leave out files in [`DOCUMENT_FORMATS`].
+    pub skip_documents: bool,
+    /// Folders left out (calibre libraries imported instead).
+    pub exclude: Vec<PathBuf>,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct AddProgress<'a> {
     pub done: usize,
@@ -68,12 +100,50 @@ pub fn add_files(lib: &mut Library, paths: &[PathBuf], progress: impl FnMut(AddP
     add_files_with(lib, paths, &NoHooks, &NoHooks, progress)
 }
 
+/// What adding `paths` would find: book files by format, documents, and
+/// calibre libraries. `extra` are lower-case extensions plugins handle.
+pub fn scan(paths: &[PathBuf], extra: &[String]) -> DropScan {
+    let mut found = Vec::new();
+    let mut calibre = Vec::new();
+    for p in paths {
+        collect(p, &[], Some(&mut calibre), &mut found, &mut Vec::new());
+    }
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+    for path in &found {
+        if let Some(format) = format_of_with(path, extra) {
+            *counts.entry(format).or_default() += 1;
+        }
+    }
+    let documents = counts.iter().filter(|(f, _)| DOCUMENT_FORMATS.contains(&f.as_str())).map(|(_, n)| n).sum();
+    let mut formats: Vec<(String, usize)> = counts.into_iter().collect();
+    formats.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    DropScan {
+        files: formats.iter().map(|(_, n)| n).sum(),
+        formats,
+        documents,
+        calibre_libraries: calibre.iter().map(|p| p.display().to_string()).collect(),
+        has_folder: paths.iter().any(|p| fs::symlink_metadata(p).is_ok_and(|m| m.is_dir())),
+    }
+}
+
 /// [`add_files`] with plugins: `hooks` run on each file before its metadata
 /// is read (and may hand back another file to add instead), and `plugins`
 /// may read metadata of formats Magnitide can't.
 pub fn add_files_with(
     lib: &mut Library,
     paths: &[PathBuf],
+    hooks: &dyn ImportHooks,
+    plugins: &dyn MetadataPlugins,
+    progress: impl FnMut(AddProgress<'_>),
+) -> Result<AddReport> {
+    add_files_filtered(lib, paths, &AddFilter::default(), hooks, plugins, progress)
+}
+
+/// [`add_files_with`], taking only what `filter` lets through.
+pub fn add_files_filtered(
+    lib: &mut Library,
+    paths: &[PathBuf],
+    filter: &AddFilter,
     hooks: &dyn ImportHooks,
     plugins: &dyn MetadataPlugins,
     mut progress: impl FnMut(AddProgress<'_>),
@@ -84,7 +154,7 @@ pub fn add_files_with(
 
     let mut found = Vec::new();
     for p in paths {
-        collect(p, &mut found, &mut report.skipped);
+        collect(p, &filter.exclude, None, &mut found, &mut report.skipped);
     }
 
     // Group by folder + name, so the formats of one book stay together.
@@ -99,6 +169,10 @@ pub fn add_files_with(
             report.skipped.push(format!("{} isn't a book format Magnitide recognises", path.display()));
             continue;
         };
+        // Left out on purpose, so not reported as skipped.
+        if filter.skip_documents && DOCUMENT_FORMATS.contains(&format.as_str()) {
+            continue;
+        }
         let parent = path.parent().map(Path::to_path_buf).unwrap_or_default();
         let entry = groups.entry((parent, book_stem(&path).to_lowercase())).or_default();
         // One file per format per book.
@@ -200,12 +274,25 @@ pub fn add_files_with(
 }
 
 /// Files under `path`; folders are searched recursively (hidden entries and
-/// symlinked folders skipped, so loops are impossible).
-fn collect(path: &Path, out: &mut Vec<PathBuf>, skipped: &mut Vec<String>) {
+/// symlinked folders skipped, so loops are impossible). Folders in `exclude`
+/// are left out; with `calibre`, so are calibre libraries, listed there.
+fn collect(
+    path: &Path,
+    exclude: &[PathBuf],
+    mut calibre: Option<&mut Vec<PathBuf>>,
+    out: &mut Vec<PathBuf>,
+    skipped: &mut Vec<String>,
+) {
     let hidden = path.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.'));
     match fs::symlink_metadata(path) {
         Ok(m) if m.is_dir() => {
-            if hidden {
+            if hidden || exclude.iter().any(|e| e == path) {
+                return;
+            }
+            if let Some(found) = calibre.as_deref_mut()
+                && path.join("metadata.db").is_file()
+            {
+                found.push(path.to_path_buf());
                 return;
             }
             let Ok(entries) = fs::read_dir(path) else {
@@ -215,7 +302,7 @@ fn collect(path: &Path, out: &mut Vec<PathBuf>, skipped: &mut Vec<String>) {
             let mut children: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
             children.sort();
             for child in children {
-                collect(&child, out, skipped);
+                collect(&child, exclude, calibre.as_deref_mut(), out, skipped);
             }
         }
         Ok(m) if m.is_file() || m.file_type().is_symlink() && path.is_file() => {
@@ -297,6 +384,59 @@ mod tests {
         let drop = tmp.path().join("Downloads");
         fs::create_dir(&drop).unwrap();
         (tmp, lib, drop)
+    }
+
+    /// A Documents-like folder: books, documents, a photo, hidden files, and a
+    /// calibre library.
+    fn mixed_folder(drop: &Path) {
+        fs::write(drop.join("Dune - Frank Herbert.epub"), "epub").unwrap();
+        fs::write(drop.join("Dune - Frank Herbert.pdf"), "pdf").unwrap();
+        fs::create_dir(drop.join("Series")).unwrap();
+        fs::write(drop.join("Series/Leviathan Wakes - James S. A. Corey.epub"), "epub").unwrap();
+        fs::write(drop.join("README.txt"), "read me").unwrap();
+        fs::write(drop.join("letter.docx"), "docx").unwrap();
+        fs::write(drop.join("photo.jpg"), "not a book").unwrap();
+        fs::write(drop.join(".secret.epub"), "hidden").unwrap();
+        let calibre = drop.join("Calibre Library");
+        fs::create_dir_all(calibre.join("Ann/Book (1)")).unwrap();
+        fs::write(calibre.join("metadata.db"), "").unwrap();
+        fs::write(calibre.join("Ann/Book (1)/Book - Ann.epub"), "epub").unwrap();
+    }
+
+    #[test]
+    fn scans_a_drop_counting_formats_documents_and_calibre_libraries() {
+        let (_tmp, _lib, drop) = setup();
+        mixed_folder(&drop);
+        let s = scan(std::slice::from_ref(&drop), &[]);
+        let formats: Vec<(&str, usize)> = s.formats.iter().map(|(f, n)| (f.as_str(), *n)).collect();
+        assert_eq!(formats, [("EPUB", 2), ("DOCX", 1), ("PDF", 1), ("TXT", 1)], "most first, then by name");
+        assert_eq!((s.files, s.documents), (5, 2));
+        assert_eq!(s.calibre_libraries, [drop.join("Calibre Library").display().to_string()]);
+        assert!(s.has_folder);
+
+        // A single file isn't a folder; a calibre library dropped by itself is found.
+        let one = scan(&[drop.join("README.txt")], &[]);
+        assert!(!one.has_folder);
+        assert_eq!((one.files, one.documents), (1, 1));
+        assert_eq!(scan(&[drop.join("Calibre Library")], &[]).calibre_libraries.len(), 1);
+    }
+
+    #[test]
+    fn adds_only_what_the_filter_lets_through() {
+        let (_tmp, mut lib, drop) = setup();
+        mixed_folder(&drop);
+        let filter = AddFilter { skip_documents: true, exclude: vec![drop.join("Calibre Library")] };
+        let report =
+            add_files_filtered(&mut lib, std::slice::from_ref(&drop), &filter, &NoHooks, &NoHooks, |_| {}).unwrap();
+        // Dune (EPUB + PDF) and Leviathan Wakes; no documents, nothing from calibre's folder.
+        assert_eq!((report.added.len(), report.files), (2, 3));
+        assert_eq!(report.skipped.len(), 1, "only the photo: {:?}", report.skipped);
+
+        // Unfiltered, the same folder takes everything, calibre's files included.
+        let (_tmp2, mut all, drop2) = setup();
+        mixed_folder(&drop2);
+        let report = add_files(&mut all, &[drop2], |_| {}).unwrap();
+        assert_eq!(report.added.len(), 5);
     }
 
     #[test]
