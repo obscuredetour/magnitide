@@ -6,7 +6,7 @@
 # Cargo.toml (and crates/app/ui/package.json's), or by hand
 # (workflow_dispatch) on a tag. The macOS builds are signed with a
 # Developer ID and notarized when these repository secrets are all set
-# (README.md › Releasing says how to make them), and ad-hoc signed when they
+# (docs/releasing.md says how to make them), and ad-hoc signed when they
 # aren't: Gatekeeper then asks once (Privacy & Security › Open Anyway), and
 # the release notes say so. Ad-hoc, not unsigned, which Apple Silicon calls
 # "damaged" with no way past it but the Terminal.
