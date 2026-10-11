@@ -6,7 +6,9 @@ import { api, errorMessage, fileManagerName } from '../../api';
 import { startImport } from '../../importer';
 import {
   chooseLibrary,
+  createLibrary,
   editRevision,
+  forgetOpenLibrary,
   forgetRecentLibrary,
   library,
   openLibrary,
@@ -58,9 +60,18 @@ function CurrentLibrary() {
                 {lib().kind === 'magnitide' ? 'Magnitide library' : 'calibre library, opened read-only'}
               </div>
             </div>
-            <button class={button} onClick={() => void run(api.showLibraryFolder)}>
-              Show in {fileManagerName}
-            </button>
+            <div class="flex flex-none gap-2">
+              <button class={button} onClick={() => void run(api.showLibraryFolder)}>
+                Show in {fileManagerName}
+              </button>
+              <button
+                class={button}
+                title="Close this library and remove it from the list. Its folder and books aren't touched."
+                onClick={() => void forgetOpenLibrary()}
+              >
+                Forget
+              </button>
+            </div>
           </div>
 
           <div class="flex items-center gap-2 border-t border-line px-4 py-2">
@@ -77,6 +88,9 @@ function CurrentLibrary() {
             </button>
             <button class={`${button} ml-auto`} onClick={() => void chooseLibrary()}>
               Open Another…
+            </button>
+            <button class={button} onClick={() => void createLibrary()}>
+              New…
             </button>
           </div>
           <Show when={showRecent()}>
@@ -362,6 +376,11 @@ export function LibrarySettings() {
           <Row label="Open a library" description="A Magnitide library, or a calibre library (opened read-only).">
             <button class={button} onClick={() => void chooseLibrary()}>
               Choose…
+            </button>
+          </Row>
+          <Row label="Create a library" description="A new, empty Magnitide library to add your books to.">
+            <button class={button} onClick={() => void createLibrary()}>
+              Create…
             </button>
           </Row>
         </Group>

@@ -40,8 +40,7 @@ pub struct LibraryInfo {
 pub async fn open_library(app: AppHandle, state: State<'_, AppState>, path: Option<String>) -> CmdResult<LibraryInfo> {
     let path = match path {
         Some(p) => PathBuf::from(p),
-        None => locate::default_library()
-            .ok_or("No library found. Choose a Magnitide or calibre library folder to open.")?,
+        None => locate::default_library().ok_or("No library found.")?,
     };
     let thumbs_root = thumbs_root(&app)?;
     // Reopening the library we already hold must reuse its handle: opening it
@@ -100,6 +99,56 @@ pub async fn open_library(app: AppHandle, state: State<'_, AppState>, path: Opti
     }
     state.replace(loaded);
     Ok(info)
+}
+
+/// What kind of library `path` is, if it is one (as `open_library` would see it).
+#[tauri::command]
+pub fn library_kind_at(path: String) -> Option<LibraryKind> {
+    let path = PathBuf::from(path);
+    if magnitide_core::Library::exists_at(&path) {
+        Some(LibraryKind::Magnitide)
+    } else if is_calibre_library(&path) {
+        Some(LibraryKind::Calibre)
+    } else {
+        None
+    }
+}
+
+/// A calibre library's folder, or its `metadata.db` (calibre_compat opens either).
+fn is_calibre_library(path: &Path) -> bool {
+    if path.is_dir() { path.join("metadata.db").is_file() } else { path.ends_with("metadata.db") && path.is_file() }
+}
+
+/// Create an empty Magnitide library in `path` (created if missing), named
+/// after the folder. The UI then opens it. A Magnitide library already there
+/// is left as it is, to be opened.
+#[tauri::command]
+pub async fn create_library(path: String) -> CmdResult<()> {
+    let path = PathBuf::from(path);
+    if is_calibre_library(&path) {
+        return Err("That folder is a calibre library. Open it, or import it into a new Magnitide library.".into());
+    }
+    if magnitide_core::Library::exists_at(&path) {
+        return Ok(());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Library".into());
+        magnitide_core::Library::create(&path, &name).map(drop)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
+/// Close the open library, leaving none open (forgetting it). Its folder isn't touched.
+#[tauri::command]
+pub async fn close_library(app: AppHandle, state: State<'_, AppState>) -> CmdResult<()> {
+    if state.close().is_some() {
+        tauri::async_runtime::spawn_blocking(move || crate::plugins::library_closing(&app))
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 /// Sent while books are being added. Event name matches `onAddProgress` in ui/src/api.ts.
@@ -1114,6 +1163,34 @@ mod tests {
         assert_eq!(magnitide_catalog::format_number(3.0, None), "3");
         assert_eq!(magnitide_catalog::format_number(2.5, None), "2.5");
         assert_eq!(magnitide_catalog::format_number(1.0, Some(3.0)), "1–3");
+    }
+
+    #[test]
+    fn creates_a_library_and_knows_one_when_it_sees_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let at = |p: &Path| library_kind_at(p.display().to_string());
+        let run = |p: &Path| tauri::async_runtime::block_on(create_library(p.display().to_string()));
+
+        // A folder of books isn't a library; a new one is made inside a missing folder.
+        let books = tmp.path().join("Books");
+        std::fs::create_dir(&books).unwrap();
+        std::fs::write(books.join("a.epub"), "").unwrap();
+        assert_eq!(at(&books), None);
+        let lib = tmp.path().join("New").join("My Books");
+        run(&lib).unwrap();
+        assert_eq!(at(&lib), Some(LibraryKind::Magnitide));
+        assert_eq!(magnitide_core::Library::open(&lib).unwrap().info().unwrap().name, "My Books");
+        // Creating it again leaves it to be opened.
+        run(&lib).unwrap();
+
+        // calibre's: the folder or its metadata.db, never made into a Magnitide library.
+        let calibre = tmp.path().join("Calibre Library");
+        std::fs::create_dir(&calibre).unwrap();
+        std::fs::write(calibre.join("metadata.db"), "").unwrap();
+        assert_eq!(at(&calibre), Some(LibraryKind::Calibre));
+        assert_eq!(at(&calibre.join("metadata.db")), Some(LibraryKind::Calibre));
+        assert!(run(&calibre).is_err());
+        assert!(!magnitide_core::Library::exists_at(&calibre));
     }
 }
 

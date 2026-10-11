@@ -3,7 +3,7 @@ import Upload from 'lucide-solid/icons/upload';
 
 import { onDragDrop } from '../api';
 import { addPaths } from '../adder';
-import { library } from '../library';
+import { library, status } from '../library';
 import { Icon } from './Icon';
 
 /** Covers the window while files are dragged over it; adds them on drop. */
@@ -22,10 +22,12 @@ export function DropOverlay() {
     onCleanup(() => void unlisten.then((off) => off()));
   });
 
-  const readOnly = () => library()?.kind !== 'magnitide';
+  const readOnly = () => library()?.kind === 'calibre';
+  // The empty screen: dropping starts a library (see addPaths).
+  const starting = () => !library() && status().kind === 'no-library';
 
   return (
-    <Show when={count() !== null && library()}>
+    <Show when={count() !== null && (library() || starting())}>
       <div class="pointer-events-none fixed inset-0 z-40 grid place-items-center bg-bg/70 p-8 backdrop-blur-sm">
         <div
           class="flex w-[min(420px,100%)] flex-col items-center gap-2 rounded-dialog border-2 border-dashed px-8 py-10 text-center shadow-lift"
@@ -41,10 +43,13 @@ export function DropOverlay() {
               </>
             }
           >
-            <p class="font-serif text-lg font-semibold">Drop to add to “{library()?.name}”</p>
+            <p class="font-serif text-lg font-semibold">
+              {starting() ? 'Drop to start a new library' : `Drop to add to “${library()?.name}”`}
+            </p>
             <p class="text-sm text-muted">
-              {count() === 1 ? '1 item' : `${count()} items`}. Folders are searched for books; files are cloned or
-              copied, never moved.
+              {count() === 1 ? '1 item' : `${count()} items`}.{' '}
+              {starting() ? 'You’ll choose where to keep the library first. ' : ''}Folders are searched for books; files
+              are cloned or copied, never moved.
             </p>
           </Show>
         </div>
