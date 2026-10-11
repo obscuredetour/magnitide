@@ -3,3 +3,9 @@
 
 # Python bytecode (the compat package and fixtures run from source)
 __pycache__/
+
+# makepkg's downloads, build directories and packages, from building the AUR package locally
+/packaging/aur/magnitide-bin/src/
+/packaging/aur/magnitide-bin/pkg/
+/packaging/aur/magnitide-bin/*.deb
+/packaging/aur/magnitide-bin/*.pkg.tar.*
