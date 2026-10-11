@@ -227,20 +227,17 @@ export function EditDialog(props: { editing: Editing }) {
           setForm('custom', 'issue', `${now}`);
         }
       },
-      { defer: true },
     ),
   );
+  // Not deferred: a deferred `on` skips its first run without noting the value,
+  // so the first change would arrive with no "before" to compare.
   createEffect(
-    on(
-      madeUpTitle,
-      (now, before) => {
-        if (now && before && now !== before && isComic() && form.title.trim() === before) {
-          setForm('title', now);
-          if (!sortTouched()) setForm('titleSort', '');
-        }
-      },
-      { defer: true },
-    ),
+    on(madeUpTitle, (now, before) => {
+      if (now && before && now !== before && isComic() && form.title.trim() === before) {
+        setForm('title', now);
+        if (!sortTouched()) setForm('titleSort', '');
+      }
+    }),
   );
 
   const setComic = async (on: boolean) => {
