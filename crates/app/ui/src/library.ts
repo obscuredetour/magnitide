@@ -13,6 +13,7 @@ import {
   type SortDir,
   type SortKey,
 } from './api';
+import { confirm } from './confirm';
 import { customFields, loadCustomFields, naturalFieldDir } from './fields';
 import { storage } from './storage';
 import { toast } from './toast';
@@ -251,9 +252,59 @@ export async function renameLibrary(name: string): Promise<boolean> {
   }
 }
 
+/**
+ * Close the open library and forget it: off the Recent list, and not reopened
+ * at startup. The library itself isn't touched.
+ */
+export async function forgetOpenLibrary(): Promise<void> {
+  const current = library();
+  if (!current) return;
+  try {
+    await api.closeLibrary();
+  } catch (err) {
+    toast(errorMessage(err), { error: true });
+    return;
+  }
+  forgetRecentLibrary(current.path);
+  storage.set('libraryPath', '');
+  batch(() => {
+    setLibrary(null);
+    setItems([]);
+    setSelectedId(null);
+    setDetailsOpen(false);
+    setStatus({ kind: 'no-library', message: 'No library open.' });
+  });
+}
+
+/** Ask where to create a new Magnitide library, then create and open it. */
+export async function createLibrary(): Promise<boolean> {
+  const path = await api.chooseNewLibraryLocation('Magnitide Library');
+  if (!path) return false;
+  try {
+    await api.createLibrary(path);
+  } catch (err) {
+    toast(errorMessage(err), { error: true });
+    return false;
+  }
+  return openLibrary(path);
+}
+
+/** Pick a library folder and open it; a folder that isn't one offers a new library instead. */
 export async function chooseLibrary(): Promise<void> {
   const path = await api.chooseLibraryFolder();
-  if (path) await openLibrary(path);
+  if (!path) return;
+  if (await api.libraryKindAt(path)) {
+    await openLibrary(path);
+    return;
+  }
+  const folder = path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+  const create = await confirm({
+    title: `“${folder}” isn’t a library`,
+    message: () =>
+      'Open a Magnitide library, or a calibre library (the folder containing metadata.db). To start one, create a new library, then add books by dropping them on the window or with Add Books.',
+    confirm: 'Create New Library…',
+  });
+  if (create) await createLibrary();
 }
 
 /** Startup: the last library used here, else calibre's current one. */

@@ -74,6 +74,11 @@ impl AppState {
         *self.lib.write().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(loaded));
     }
 
+    /// Close the open library, returning it (if one was open).
+    pub fn close(&self) -> Option<Arc<Loaded>> {
+        self.lib.write().unwrap_or_else(|e| e.into_inner()).take()
+    }
+
     pub fn devices(&self) -> Vec<Arc<magnitide_core::devices::Scan>> {
         self.devices.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
@@ -120,6 +125,9 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::open_library,
+            commands::close_library,
+            commands::create_library,
+            commands::library_kind_at,
             commands::list_books,
             custom::custom_fields,
             custom::add_custom_field,

@@ -2,7 +2,7 @@ import { For, Show } from 'solid-js';
 import ChevronDown from 'lucide-solid/icons/chevron-down';
 
 import { api, errorMessage, fileManagerName, type LibraryKind } from '../api';
-import { chooseLibrary, library, openLibrary, recentLibraries } from '../library';
+import { chooseLibrary, createLibrary, library, openLibrary, recentLibraries } from '../library';
 import { startImport } from '../importer';
 import { chooseAndAddBooks } from '../adder';
 import { toast } from '../toast';
@@ -95,6 +95,7 @@ export function LibraryMenu() {
         <MenuSeparator />
       </Show>
       <MenuItem onSelect={() => void chooseLibrary()}>Open Another Library…</MenuItem>
+      <MenuItem onSelect={() => void createLibrary()}>New Library…</MenuItem>
     </Menu>
   );
 }
