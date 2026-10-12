@@ -29,7 +29,9 @@ What's done and what's next, in roughly the order it happened. The
 - [x] A comic viewer: Read (or double-click) opens CBZ, CB7 and CBR comics over the library, pages served from the archive (a RAR or 7z unpacked once); one page or two (automatic in a wide window, the cover and wide spreads alone), fit to page, width or height, right to left for manga, full screen; it resumes where you left off and marks the comic Reading, then Read at the last page
 - [x] A comic's title that's just "Series #Number" (as readers make it) follows the series and number in the editor, and so does an Issue that's just the number
 - [x] Edit Books: "Fill from a book" copies one book's values into the fields the others leave empty (not dates, ratings or issue numbers); in a comic, "Same as Artists" fills Inkers, Colorists, Letterers and Cover Artists
-- [ ] A comic metadata source (Metron, Comic Vine)
+- [x] A comic metadata source: Metron, with your own account (Settings → Metadata Sources). Find Metadata searches a comic by series and issue (or its Metron id) and offers its comic fields beside the rest: issue, format, volume, the art team, story arcs, characters, teams, age rating
+- [ ] Comic Vine as a second comic source
+- [ ] Keys and logins in the system keychain rather than the settings file
 - [x] MOBI/AZW/AZW3 metadata and covers (adding books, device matching); "Surname, Given" authors turned around
 - [ ] PDF metadata reader (drag and drop uses file names for PDFs today)
 - [x] Native EPUB → AZW3 converter (KF8, a port of calibre's writer): Kindles no longer need calibre installed; calibre is a fallback for unusual books

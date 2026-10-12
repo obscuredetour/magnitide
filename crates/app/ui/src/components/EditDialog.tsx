@@ -189,6 +189,16 @@ export function EditDialog(props: { editing: Editing }) {
     }
     if (a.descriptionHtml !== undefined) description.innerHTML = a.descriptionHtml;
     if (a.coverUrl) void changeCover(id, { url: a.coverUrl });
+    // A comic source's comic fields: made first if the library hasn't them yet.
+    const custom = a.custom;
+    if (custom && Object.keys(custom).length) {
+      void ensureComicFields()
+        .then(() => {
+          setForm('custom', COMIC_KEY, true);
+          for (const [key, value] of Object.entries(custom)) setForm('custom', key, value);
+        })
+        .catch((err) => setError(errorMessage(err)));
+    }
   };
   // Existing names for autocomplete; the form works without them.
   const [names] = createResource(() => api.nameLists().catch(() => null));
@@ -840,6 +850,8 @@ export function EditDialog(props: { editing: Editing }) {
             descriptionHtml: description.textContent?.trim() ? description.innerHTML : null,
             hasCover: row()?.hasCover ?? false,
             isbn: splitIds(identifiers()).isbn ?? null,
+            comic: isComic(),
+            custom: { ...unwrap(form.custom) },
           }}
           onApply={applyFound}
           onClose={() => setMatching(false)}
