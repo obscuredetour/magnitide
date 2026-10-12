@@ -9,7 +9,8 @@ How a version of Magnitide gets built, signed and published. The
    `.github/workflows/release.yml` builds macOS (Apple Silicon and Intel `.dmg`s), Windows
    (`.msi` and `-setup.exe`) and Linux (`.AppImage`, `.deb`, `.rpm`) into a draft release.
 3. Look the draft over and publish it as the latest release: the site's download buttons read
-   GitHub's latest release (Estuary's releases are never marked latest).
+   GitHub's latest release (Estuary's releases are never marked latest), and so does the in-app
+   updater, through the release's `latest.json`. Publishing is what offers it to everyone.
 4. Update the Arch package: `scripts/aur-update.sh <version>`, then push it to the AUR
    ([packaging/aur/README.md](packaging/aur/README.md)).
 
@@ -30,3 +31,30 @@ Without them the Mac builds are ad-hoc signed: they run, but Gatekeeper asks onc
 Privacy & Security › Open Anyway), and the release notes say so. Some but not all of them set is an
 error. Signed builds run under the hardened runtime; `crates/app/Entitlements.plist` lets wasmtime
 compile Magnitide plugins there.
+
+## Updates
+
+Magnitide updates itself (Settings › About, and a banner when the daily check finds a version) from
+the latest release's `latest.json`, which `tauri-action` writes from the builds' updater signatures.
+The AppImage, the macOS app, the Windows installers, and the `.deb` and `.rpm` (while dpkg or rpm
+owns the program) update this way; the AUR package and source builds are left to their package
+manager (`crates/app/src/updates.rs`).
+
+The installers are signed with an updater key, separate from Apple's, and the release fails
+without it:
+
+| Secret | What it is |
+| --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | The private key: the contents of the file `cargo tauri signer generate -w <file>` wrote |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Its password, if it has one |
+
+Its public half is `plugins.updater.pubkey` in `crates/app/tauri.conf.json`. Keep the private key
+somewhere safe as well as in the secret: every copy out there accepts only updates signed with it,
+so a lost key means people have to download the next version by hand, once, to get one with a new
+public key.
+
+To try a signed build locally:
+
+```sh
+TAURI_SIGNING_PRIVATE_KEY="$(cat <key file>)" cargo tauri build --config '{"bundle":{"createUpdaterArtifacts":true}}'
+```
