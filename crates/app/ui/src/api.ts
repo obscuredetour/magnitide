@@ -65,6 +65,9 @@ import type { CalibreInstall } from './bindings/CalibreInstall';
 import type { InstallProgress } from './bindings/InstallProgress';
 import type { ApplyReport } from './bindings/ApplyReport';
 import type { ServerStatus } from './bindings/ServerStatus';
+import type { UpdateInfo } from './bindings/UpdateInfo';
+import type { UpdateProgress } from './bindings/UpdateProgress';
+import type { UpdateStatus } from './bindings/UpdateStatus';
 import type { TransferProgress } from './bindings/TransferProgress';
 import type { Lookup } from './bindings/Lookup';
 import type { Match as MetadataMatch } from './bindings/Match';
@@ -138,6 +141,9 @@ export type {
   CalibreInstall,
   InstallProgress,
   ServerStatus,
+  UpdateInfo,
+  UpdateProgress,
+  UpdateStatus,
   AuthorSort,
   BookDetails,
   BookEdit,
@@ -408,6 +414,20 @@ export const api = {
   /** Turn the server on or off, or change its port; `password` replaces it ("" removes it, null leaves it). */
   setServer: (enabled: boolean, port: number, password: string | null = null) =>
     invoke<ServerStatus>('set_server', { enabled, port, password }),
+
+  /** Whether this copy can update itself, and whether it looks for updates by itself (Settings › About). */
+  updateStatus: () => invoke<UpdateStatus>('update_status'),
+
+  setAutoUpdate: (on: boolean) => invoke<UpdateStatus>('set_auto_update', { on }),
+
+  /** A newer version, or null when this is the latest. */
+  checkForUpdate: () => invoke<UpdateInfo | null>('check_for_update'),
+
+  /** Download and install what the last check found, then restart into it (progress: onUpdateProgress). */
+  installUpdate: () => invoke<void>('install_update'),
+
+  /** A version's release notes, in the browser. */
+  openReleaseNotes: (version: string) => invoke<void>('open_release_notes', { version }),
 
   /** Open a device in the file manager. */
   revealDevice: (id: string) => invoke<void>('reveal_device', { id }),
@@ -691,6 +711,11 @@ export const ESTUARY_OR_CALIBRE_MISSING =
 export function isHostMissing(err: unknown): boolean {
   const m = errorMessage(err);
   return m === ESTUARY_MISSING || m === CALIBRE_MISSING || m === ESTUARY_OR_CALIBRE_MISSING;
+}
+
+/** An update's download and install, as it goes. Matches `UPDATE_PROGRESS_EVENT` in updates.rs. */
+export function onUpdateProgress(handler: (p: UpdateProgress) => void): Promise<UnlistenFn> {
+  return listen<UpdateProgress>('update-progress', (e) => handler(e.payload));
 }
 
 export function onZoomMenu(handler: (action: 'in' | 'out' | 'reset') => void): Promise<UnlistenFn> {

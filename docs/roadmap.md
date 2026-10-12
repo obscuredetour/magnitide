@@ -9,6 +9,7 @@ What's done and what's next, in roughly the order it happened. The
 - [x] Solid + TypeScript UI with types generated from Rust
 - [x] Toolbar (library menu, cover size, theme picker) and table view (sortable, resizable, choosable columns)
 - [x] Settings panel (⌘,): appearance, library, list columns, thumbnail cache, about
+- [x] Updates itself (AppImage, macOS, Windows, `.deb`, `.rpm`): checks at launch and daily (Settings › About turns it off), a banner offers the new version, signed installers; package-managed copies (the AUR) are left to their package manager
 - [x] List view zebra stripes (setting, on by default)
 - [x] Theme roles: zebra stripes, hover, selection and highlight are theme variables (`--row-stripe`, `--hover`, `--selection`, `--highlight`), consistent across themes; Catppuccin (all four flavours), Dracula and Alucard built in
 - [x] Clear search button (Jamie)
