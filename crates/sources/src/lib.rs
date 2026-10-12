@@ -200,6 +200,16 @@ pub fn is_cover_url(url: &str) -> bool {
         && !url.contains(['\\', '@', '#'])
 }
 
+/// Download a cover image a plugin's search returned (at most 20 MB): any
+/// https address, since a plugin's covers can live anywhere. The caller makes
+/// sure the address came from a search; see the app's `find_metadata`.
+pub fn download_returned_cover(url: &str) -> Result<Vec<u8>> {
+    if !url.starts_with("https://") || url.contains(['\\', '@', '#']) {
+        return Err(Error::new("not an https cover address"));
+    }
+    http::get_bytes(url, 20 << 20)
+}
+
 /// Download a cover image (at most 20 MB) from a source's cover URL.
 pub fn download_cover(url: &str) -> Result<Vec<u8>> {
     if !is_cover_url(url) {
@@ -316,6 +326,17 @@ mod tests {
         assert!(!is_cover_url("http://covers.openlibrary.org/b/id/1-L.jpg"));
         assert!(!is_cover_url("https://covers.openlibrary.org.evil.example/b/id/1.jpg"));
         assert!(!is_cover_url("https://example.com/?https://covers.openlibrary.org/b/"));
+    }
+
+    #[test]
+    fn a_returned_cover_must_be_plain_https() {
+        // Refused before anything is fetched.
+        for url in
+            ["http://example.com/c.jpg", "file:///etc/passwd", "https://user@example.com/c.jpg", "https://a\\b/c.jpg"]
+        {
+            let err = download_returned_cover(url).unwrap_err().to_string();
+            assert!(err.contains("not an https cover address"), "{url}: {err}");
+        }
     }
 
     #[test]

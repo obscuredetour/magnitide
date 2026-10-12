@@ -113,6 +113,7 @@ fn main() {
         .plugin(covers::allow_on_http())
         .manage(AppState::default())
         .manage(reader::Reader::default())
+        .manage(lookup::ReturnedCovers::default())
         .setup(|app| {
             devices::watch(app.handle().clone());
             server::start_if_enabled(app.handle());

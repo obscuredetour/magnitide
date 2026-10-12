@@ -139,7 +139,31 @@ pub async fn find_metadata(app: AppHandle, lookup: Lookup) -> CmdResult<SearchRe
     for m in &mut result.matches {
         m.records.iter_mut().for_each(clean);
     }
+    // A plugin's covers can be anywhere: the ones its search returned may be
+    // downloaded (see `cached_cover`), and only those.
+    let returned = result.matches.iter().flat_map(|m| &m.records).filter(|r| r.source.is_none());
+    app.state::<ReturnedCovers>().remember(returned.filter_map(|r| r.cover_url.clone()));
     Ok(result)
+}
+
+/// Cover addresses plugin searches returned: the only ones outside the
+/// built-in sources' hosts the app downloads. Kept for the session, and not
+/// too many of them.
+#[derive(Default)]
+pub struct ReturnedCovers(std::sync::Mutex<std::collections::HashSet<String>>);
+
+impl ReturnedCovers {
+    fn remember(&self, urls: impl Iterator<Item = String>) {
+        let mut set = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if set.len() > 5000 {
+            set.clear();
+        }
+        set.extend(urls.filter(|u| !is_plugin_cover(u)));
+    }
+
+    fn contains(&self, url: &str) -> bool {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).contains(url)
+    }
 }
 
 /// The rest of a record (Open Library's description), sanitized.
@@ -202,6 +226,9 @@ fn cached_cover(app: &AppHandle, dir: &std::path::Path, url: &str) -> CmdResult<
     }
     let bytes = if is_plugin_cover(url) {
         app.state::<Plugins>().cover(url).map_err(|e| format!("Couldn't get the cover: {e}"))?
+    } else if !magnitide_sources::is_cover_url(url) && app.state::<ReturnedCovers>().contains(url) {
+        // A Magnitide plugin's cover, from wherever its search said it is.
+        magnitide_sources::download_returned_cover(url).map_err(|e| format!("Couldn't download the cover: {e}"))?
     } else {
         magnitide_sources::download_cover(url).map_err(|e| format!("Couldn't download the cover: {e}"))?
     };
