@@ -69,8 +69,12 @@ fn a_metadata_source_plugin_end_to_end() {
     assert_eq!((name.as_str(), version.as_str()), ("Magnitide Test Source", "1.2.3"));
 
     // A lookup: the plugin's record, as a source record.
-    let answers =
-        plugins.identify(&Lookup { title: "Project Hail Mary".into(), authors: vec!["Andy Weir".into()], isbn: None });
+    let answers = plugins.identify(&Lookup {
+        title: "Project Hail Mary".into(),
+        authors: vec!["Andy Weir".into()],
+        isbn: None,
+        ..Default::default()
+    });
     assert_eq!(answers.len(), 1);
     let records = answers[0].1.as_ref().unwrap();
     let r = &records[0];
@@ -168,7 +172,12 @@ fn the_open_library_example_plugin_finds_a_book() {
     let plugins = WasmPlugins::new(dir.path().join("plugins")).unwrap();
     let installed = plugins.install(&root.join("target/plugins/openlibrary-source.mgp")).unwrap();
     assert_eq!(installed.manifest.capabilities, [Capability::Network]);
-    let found = plugins.identify(&Lookup { title: "The Hobbit".into(), authors: vec!["Tolkien".into()], isbn: None });
+    let found = plugins.identify(&Lookup {
+        title: "The Hobbit".into(),
+        authors: vec!["Tolkien".into()],
+        isbn: None,
+        ..Default::default()
+    });
     let records = found[0].1.as_ref().unwrap_or_else(|e| panic!("{e}\n{:?}", plugins.log("Open Library (plugin)")));
     let hobbit = records.iter().find(|r| r.title.to_lowercase().contains("hobbit")).expect("The Hobbit is found");
     assert!(hobbit.authors.iter().any(|a| a.contains("Tolkien")), "{:?}", hobbit.authors);
@@ -303,8 +312,12 @@ fn the_goodreads_plugin_finds_a_book() {
     let dir = tempfile::tempdir().unwrap();
     let plugins = WasmPlugins::new(dir.path().join("plugins")).unwrap();
     plugins.install(&root.join("target/plugins/goodreads-source.mgp")).unwrap();
-    let by_title =
-        plugins.identify(&Lookup { title: "Project Hail Mary".into(), authors: vec!["Andy Weir".into()], isbn: None });
+    let by_title = plugins.identify(&Lookup {
+        title: "Project Hail Mary".into(),
+        authors: vec!["Andy Weir".into()],
+        isbn: None,
+        ..Default::default()
+    });
     if let Err(e) = &by_title[0].1
         && e.contains("browser check")
     {
@@ -316,8 +329,12 @@ fn the_goodreads_plugin_finds_a_book() {
     assert_eq!((book.title.as_str(), book.authors.as_slice()), ("Project Hail Mary", &["Andy Weir".to_owned()][..]));
     assert_eq!(book.identifiers.get("goodreads").map(String::as_str), Some("54493401"));
     assert!(book.cover_url.is_some() && book.description_html.is_some());
-    let by_isbn =
-        plugins.identify(&Lookup { title: String::new(), authors: vec![], isbn: Some("9780593135204".into()) });
+    let by_isbn = plugins.identify(&Lookup {
+        title: String::new(),
+        authors: vec![],
+        isbn: Some("9780593135204".into()),
+        ..Default::default()
+    });
     let records = by_isbn[0].1.as_ref().unwrap_or_else(|e| panic!("{e}\n{:?}", plugins.log("Goodreads")));
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].identifiers.get("isbn").map(String::as_str), Some("9780593135204"));

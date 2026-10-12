@@ -247,6 +247,7 @@ mod tests {
             title: " Dune ".into(),
             authors: vec!["Frank Herbert".into(), " ".into()],
             isbn: Some("978".into()),
+            ..Default::default()
         });
         assert_eq!(p["title"], "Dune");
         assert_eq!(p["authors"], json!(["Frank Herbert"]));
