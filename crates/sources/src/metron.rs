@@ -1,6 +1,7 @@
 //! Metron (metron.cloud), a community comic database: issues by series and
-//! number, or by Metron id. It needs the user's own account (HTTP Basic) and
-//! allows 20 requests a minute, so a search asks only for the list of
+//! number, or by Metron id. It needs the user's own API token (sent as
+//! `Authorization: Bearer`, as Metron's own client does) and allows 20
+//! requests a minute, so a search asks only for the list of
 //! matching issues; an issue's credits, arcs and the rest come with
 //! [`details`], when it's picked.
 
@@ -13,9 +14,9 @@ const API: &str = "https://metron.cloud/api";
 
 /// Issues matching the lookup's series and issue number (the number may be
 /// left out), or the one with its Metron id.
-pub(crate) fn search(lookup: &Lookup, login: (&str, &str)) -> Result<Vec<SourceRecord>> {
+pub(crate) fn search(lookup: &Lookup, token: &str) -> Result<Vec<SourceRecord>> {
     if let Some(id) = lookup.identifiers.get("metron").filter(|id| id.chars().all(|c| c.is_ascii_digit())) {
-        return Ok(vec![issue(id, login)?]);
+        return Ok(vec![issue(id, token)?]);
     }
     let Some(series) = lookup.series.as_deref().map(str::trim).filter(|s| !s.is_empty()) else {
         return Ok(Vec::new());
@@ -24,17 +25,17 @@ pub(crate) fn search(lookup: &Lookup, login: (&str, &str)) -> Result<Vec<SourceR
     if let Some(number) = lookup.issue.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
         query.push(("number", number));
     }
-    let list = http::get_json_with(&format!("{API}/issue/"), &query, Some(login))?;
+    let list = http::get_json_with(&format!("{API}/issue/"), &query, Some(token))?;
     Ok(parse_list(&list))
 }
 
 /// An issue's full record: its credits, story arcs, characters, …
-pub(crate) fn details(record: &SourceRecord, login: (&str, &str)) -> Result<SourceRecord> {
-    issue(&record.source_key, login)
+pub(crate) fn details(record: &SourceRecord, token: &str) -> Result<SourceRecord> {
+    issue(&record.source_key, token)
 }
 
-fn issue(id: &str, login: (&str, &str)) -> Result<SourceRecord> {
-    parse_issue(&http::get_json_with(&format!("{API}/issue/{id}/"), &[], Some(login))?)
+fn issue(id: &str, token: &str) -> Result<SourceRecord> {
+    parse_issue(&http::get_json_with(&format!("{API}/issue/{id}/"), &[], Some(token))?)
         .ok_or_else(|| crate::Error::new("the answer wasn't readable"))
 }
 
@@ -255,19 +256,17 @@ mod tests {
         assert_eq!(parse_issue(&v).unwrap().title, "Saga, Volume Three");
     }
 
-    /// Against the real Metron, with your own account:
-    /// `METRON_USERNAME=… METRON_PASSWORD=… cargo test -p magnitide-sources -- --ignored metron`
+    /// Against the real Metron, with your own API token:
+    /// `METRON_TOKEN=… cargo test -p magnitide-sources -- --ignored metron`
     #[test]
-    #[ignore = "uses the network and a Metron account"]
+    #[ignore = "uses the network and a Metron API token"]
     fn live_metron() {
-        let (Ok(user), Ok(password)) = (std::env::var("METRON_USERNAME"), std::env::var("METRON_PASSWORD")) else {
-            panic!("set METRON_USERNAME and METRON_PASSWORD");
-        };
+        let token = std::env::var("METRON_TOKEN").expect("set METRON_TOKEN");
         let lookup =
             Lookup { comic: true, series: Some("Saga".into()), issue: Some("17".into()), ..Default::default() };
-        let found = search(&lookup, (&user, &password)).unwrap();
+        let found = search(&lookup, &token).unwrap();
         let saga = found.iter().find(|r| r.series.as_deref() == Some("Saga")).expect("Saga #17 is on Metron");
-        let full = details(saga, (&user, &password)).unwrap();
+        let full = details(saga, &token).unwrap();
         assert!(full.authors.iter().any(|a| a.contains("Vaughan")), "{full:#?}");
         assert!(full.comic.as_ref().is_some_and(|c| !c.artists.is_empty()), "{full:#?}");
     }

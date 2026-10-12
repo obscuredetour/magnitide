@@ -17,7 +17,7 @@ const SOURCE_NOTES: Record<SourceId, string> = {
   google:
     'Needs your own free API key: in the Google Cloud console, enable the Books API, then create an API key under Credentials.',
   metron:
-    'Comics: issues by series and number, with credits, story arcs and characters. Needs a free account at metron.cloud; only comics are looked up there.',
+    'Comics: issues by series and number, with credits, story arcs and characters. Needs the API token of your free metron.cloud account; only comics are looked up there.',
 };
 
 export function SourceSettings() {
@@ -36,33 +36,23 @@ export function SourceSettings() {
   );
   const pluginSources = () => (plugins() ?? []).filter((p) => p.kind === 'metadataSource');
   const nativeSources = () => (native() ?? []).filter((p) => p.manifest.kind === 'metadata-source');
-  // What's typed for each source's key (or password) and username, until saved.
-  const [drafts, setDrafts] = createStore<Partial<Record<SourceId, { key?: string; user?: string }>>>({});
-  const keyDraft = (s: SourceStatus) => drafts[s.id]?.key ?? '';
-  const userDraft = (s: SourceStatus) => drafts[s.id]?.user ?? s.username ?? '';
-  const canSave = (s: SourceStatus) =>
-    s.needsLogin ? userDraft(s).trim() !== '' && (keyDraft(s) !== '' || s.hasKey) : keyDraft(s).trim() !== '';
+  // What's typed for each source's key, until saved.
+  const [drafts, setDrafts] = createStore<Partial<Record<SourceId, string>>>({});
+  const keyDraft = (s: SourceStatus) => drafts[s.id] ?? '';
+  const canSave = (s: SourceStatus) => keyDraft(s).trim() !== '';
 
-  const update = async (
-    s: SourceStatus,
-    enabled: boolean,
-    apiKey: string | null = null,
-    username: string | null = null,
-  ) => {
+  const update = async (s: SourceStatus, enabled: boolean, apiKey: string | null = null) => {
     try {
-      mutate(await api.setMetadataSource(s.id, enabled, apiKey, username));
-      if (apiKey !== null || username !== null) {
-        setDrafts(s.id, {});
-        const what = s.needsLogin ? 'Login' : 'API key';
-        toast(apiKey === '' ? `${what} removed` : `${what} saved`);
+      mutate(await api.setMetadataSource(s.id, enabled, apiKey));
+      if (apiKey !== null) {
+        setDrafts(s.id, undefined);
+        toast(apiKey ? 'API key saved' : 'API key removed');
       }
     } catch (err) {
       toast(errorMessage(err), { error: true });
     }
   };
-  /** Save what's typed: the key, or the username and (if typed) the password. */
-  const save = (s: SourceStatus) =>
-    void update(s, s.enabled, s.needsLogin ? keyDraft(s) || null : keyDraft(s), s.needsLogin ? userDraft(s) : null);
+  const save = (s: SourceStatus) => void update(s, s.enabled, keyDraft(s));
 
   return (
     <>
@@ -84,9 +74,7 @@ export function SourceSettings() {
                   <>
                     {SOURCE_NOTES[s.id]}
                     <Show when={s.needsKey && s.enabled && !s.hasKey}>
-                      <span class="mt-1 block text-danger">
-                        {s.needsLogin ? 'Not used until a login is saved.' : 'Not used until a key is saved.'}
-                      </span>
+                      <span class="mt-1 block text-danger">Not used until a key is saved.</span>
                     </Show>
                   </>
                 }
@@ -95,35 +83,15 @@ export function SourceSettings() {
               </Row>
               <Show when={s.needsKey}>
                 <div class="-mt-1 flex items-center gap-2 border-b border-line pb-3 last:border-b-0">
-                  <Show when={s.needsLogin}>
-                    <input
-                      autocomplete="off"
-                      spellcheck={false}
-                      aria-label={`${s.name} username`}
-                      placeholder="Username"
-                      class="h-7 w-36 min-w-0 rounded-control border border-line bg-field px-2 text-xs outline-none focus:border-focus"
-                      value={userDraft(s)}
-                      onInput={(e) => setDrafts(s.id, { ...drafts[s.id], user: e.currentTarget.value })}
-                      onKeyDown={(e) => e.key === 'Enter' && canSave(s) && save(s)}
-                    />
-                  </Show>
                   <input
                     type="password"
                     autocomplete="off"
                     spellcheck={false}
-                    aria-label={s.needsLogin ? `${s.name} password` : `${s.name} API key`}
-                    placeholder={
-                      s.needsLogin
-                        ? s.hasKey
-                          ? 'Password saved · enter a new one to replace it'
-                          : 'Password'
-                        : s.hasKey
-                          ? 'Key saved · enter a new one to replace it'
-                          : 'API key'
-                    }
+                    aria-label={`${s.name} API key`}
+                    placeholder={s.hasKey ? 'Key saved · enter a new one to replace it' : 'API key'}
                     class="h-7 min-w-0 flex-1 rounded-control border border-line bg-field px-2 text-xs outline-none focus:border-focus"
                     value={keyDraft(s)}
-                    onInput={(e) => setDrafts(s.id, { ...drafts[s.id], key: e.currentTarget.value })}
+                    onInput={(e) => setDrafts(s.id, e.currentTarget.value)}
                     onKeyDown={(e) => e.key === 'Enter' && canSave(s) && save(s)}
                   />
                   <button class={button} disabled={!canSave(s)} onClick={() => save(s)}>

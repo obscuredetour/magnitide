@@ -375,12 +375,9 @@ export const api = {
   /** Metadata sources and whether each will be asked. */
   metadataSources: () => invoke<SourceStatus[]>('metadata_sources'),
 
-  /**
-   * Turn a source on or off; `apiKey` replaces its key, or for a source with an
-   * account its password ("" clears it, null leaves it), and `username` its username.
-   */
-  setMetadataSource: (id: SourceId, enabled: boolean, apiKey: string | null = null, username: string | null = null) =>
-    invoke<SourceStatus[]>('set_metadata_source', { id, enabled, apiKey, username }),
+  /** Turn a source on or off; `apiKey` replaces its key ("" clears it, null leaves it). */
+  setMetadataSource: (id: SourceId, enabled: boolean, apiKey: string | null = null) =>
+    invoke<SourceStatus[]>('set_metadata_source', { id, enabled, apiKey }),
 
   /** Search the active metadata sources (network). Descriptions come back sanitized. */
   findMetadata: (lookup: Lookup) => invoke<SearchResult>('find_metadata', { lookup }),

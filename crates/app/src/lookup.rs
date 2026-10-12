@@ -33,10 +33,6 @@ pub struct SourceStatus {
     enabled: bool,
     needs_key: bool,
     has_key: bool,
-    /// It needs an account: a username as well as the password (`has_key`).
-    needs_login: bool,
-    /// The account's username, once given (the password is never sent back).
-    username: Option<String>,
     /// A comic source, asked for comics only.
     comics: bool,
     /// Will be asked: enabled, and keyed if it needs one.
@@ -73,11 +69,6 @@ fn statuses(s: &Settings) -> Vec<SourceStatus> {
             enabled: !s.disabled.contains(&id),
             needs_key: id.needs_key(),
             has_key: s.key(id).is_some(),
-            needs_login: id.needs_login(),
-            username: match id {
-                SourceId::Metron => s.metron_username.clone().filter(|u| !u.trim().is_empty()),
-                _ => None,
-            },
             comics: id.comics(),
             active: s.enabled(id),
         })
@@ -89,16 +80,13 @@ pub async fn metadata_sources(app: AppHandle) -> CmdResult<Vec<SourceStatus>> {
     Ok(statuses(&load_settings(&app)))
 }
 
-/// Turn a source on or off; `api_key` (a password, for a source with an
-/// account) replaces its key when given ("" clears it), and `username` its
-/// account's username.
+/// Turn a source on or off; `api_key` replaces its key when given ("" clears it).
 #[tauri::command]
 pub async fn set_metadata_source(
     app: AppHandle,
     id: SourceId,
     enabled: bool,
     api_key: Option<String>,
-    username: Option<String>,
 ) -> CmdResult<Vec<SourceStatus>> {
     let mut s = load_settings(&app);
     s.disabled.retain(|d| *d != id);
@@ -106,15 +94,12 @@ pub async fn set_metadata_source(
         s.disabled.push(id);
     }
     if let Some(key) = api_key {
+        let key = Some(key.trim().to_owned()).filter(|k| !k.is_empty());
         match id {
-            SourceId::Google => s.google_key = Some(key.trim().to_owned()).filter(|k| !k.is_empty()),
-            // A password is kept as typed (spaces and all); "" clears it.
-            SourceId::Metron => s.metron_password = Some(key).filter(|k| !k.is_empty()),
+            SourceId::Google => s.google_key = key,
+            SourceId::Metron => s.metron_key = key,
             SourceId::OpenLibrary => {}
         }
-    }
-    if let (Some(user), SourceId::Metron) = (username, id) {
-        s.metron_username = Some(user.trim().to_owned()).filter(|u| !u.is_empty());
     }
     let path = settings_path(&app)?;
     if let Some(dir) = path.parent() {
@@ -122,7 +107,7 @@ pub async fn set_metadata_source(
     }
     let json = serde_json::to_vec_pretty(&s).map_err(|e| e.to_string())?;
     fs::write(&path, json).map_err(|e| e.to_string())?;
-    // Keys and passwords: for this user's eyes only.
+    // API keys: for this user's eyes only.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

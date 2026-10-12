@@ -59,7 +59,7 @@ impl From<ureq::Error> for Error {
     fn from(e: ureq::Error) -> Self {
         Self(match e {
             ureq::Error::StatusCode(429) => "too many requests; try again in a minute".into(),
-            ureq::Error::StatusCode(400 | 401 | 403) => "the request was refused (check the API key or login)".into(),
+            ureq::Error::StatusCode(400 | 401 | 403) => "the request was refused (check the API key)".into(),
             ureq::Error::StatusCode(404) => "not found".into(),
             ureq::Error::StatusCode(code) => format!("the server answered with an error ({code})"),
             ureq::Error::Timeout(_) => "no answer in time".into(),
@@ -89,16 +89,16 @@ pub(crate) fn get_json(url: &str, query: &[(&str, &str)]) -> Result<serde_json::
     get_json_with(url, query, None)
 }
 
-/// [`get_json`], signed in with a username and password (HTTP Basic).
+/// [`get_json`], with an account's API token (`Authorization: Bearer`).
 pub(crate) fn get_json_with(
     url: &str,
     query: &[(&str, &str)],
-    login: Option<(&str, &str)>,
+    token: Option<&str>,
 ) -> Result<serde_json::Value, Error> {
     throttle(url);
     let mut req = AGENT.get(url).header("Accept", "application/json");
-    if let Some((user, password)) = login {
-        req = req.header("Authorization", format!("Basic {}", base64(format!("{user}:{password}").as_bytes())));
+    if let Some(token) = token {
+        req = req.header("Authorization", format!("Bearer {}", token.trim()));
     }
     for (k, v) in query {
         req = req.query(*k, *v);
@@ -112,33 +112,4 @@ pub(crate) fn get_bytes(url: &str, limit: u64) -> Result<Vec<u8>, Error> {
     throttle(url);
     let mut resp = AGENT.get(url).call()?;
     Ok(resp.body_mut().with_config().limit(limit).read_to_vec()?)
-}
-
-/// Standard base64, for an HTTP Basic login.
-fn base64(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let n = chunk.iter().enumerate().fold(0u32, |n, (i, b)| n | u32::from(*b) << (16 - 8 * i));
-        for i in 0..4 {
-            if i <= chunk.len() {
-                out.push(ALPHABET[(n >> (18 - 6 * i) & 63) as usize] as char);
-            } else {
-                out.push('=');
-            }
-        }
-    }
-    out
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn base64_for_basic_auth() {
-        assert_eq!(super::base64(b"Aladdin:open sesame"), "QWxhZGRpbjpvcGVuIHNlc2FtZQ==");
-        assert_eq!(super::base64(b"a"), "YQ==");
-        assert_eq!(super::base64(b"ab"), "YWI=");
-        assert_eq!(super::base64(b"abc"), "YWJj");
-        assert_eq!(super::base64(b""), "");
-    }
 }

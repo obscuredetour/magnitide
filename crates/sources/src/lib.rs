@@ -51,15 +51,10 @@ impl SourceId {
         matches!(self, SourceId::Metron)
     }
 
-    /// Whether it needs an account (a username as well as the password).
-    pub fn needs_login(self) -> bool {
-        matches!(self, SourceId::Metron)
-    }
-
     /// Whether the source only works with the user's own API key.
     pub fn needs_key(self) -> bool {
         // Google Books no longer serves anonymous requests (daily quota 0);
-        // Metron answers only its members.
+        // Metron answers only its members, by their API token.
         matches!(self, SourceId::Google | SourceId::Metron)
     }
 }
@@ -179,10 +174,9 @@ pub struct SearchResult {
 pub struct Settings {
     pub disabled: Vec<SourceId>,
     pub google_key: Option<String>,
+    /// A Metron account's API token.
     #[serde(default)]
-    pub metron_username: Option<String>,
-    #[serde(default)]
-    pub metron_password: Option<String>,
+    pub metron_key: Option<String>,
 }
 
 impl Settings {
@@ -193,19 +187,9 @@ impl Settings {
     pub fn key(&self, id: SourceId) -> Option<&str> {
         match id {
             SourceId::Google => self.google_key.as_deref().filter(|k| !k.trim().is_empty()),
-            // The password, once there's a username to go with it.
-            SourceId::Metron => self.login(id).map(|(_, password)| password),
+            SourceId::Metron => self.metron_key.as_deref().filter(|k| !k.trim().is_empty()),
             SourceId::OpenLibrary => None,
         }
-    }
-
-    /// The username and password of a source that needs an account.
-    pub fn login(&self, id: SourceId) -> Option<(&str, &str)> {
-        let (user, password) = match id {
-            SourceId::Metron => (self.metron_username.as_deref()?, self.metron_password.as_deref()?),
-            _ => return None,
-        };
-        (!user.trim().is_empty() && !password.is_empty()).then_some((user.trim(), password))
     }
 
     /// Whether to ask this source for `lookup`: comic sources for comics only,
@@ -239,7 +223,7 @@ pub fn search_records(lookup: &Lookup, settings: &Settings) -> (Vec<SourceRecord
                     scope.spawn(move || match s {
                         SourceId::OpenLibrary => openlibrary::search(lookup),
                         SourceId::Google => google::search(lookup, settings.key(s).unwrap_or_default()),
-                        SourceId::Metron => metron::search(lookup, settings.login(s).unwrap_or_default()),
+                        SourceId::Metron => metron::search(lookup, settings.key(s).unwrap_or_default()),
                     }),
                 )
             })
@@ -270,10 +254,8 @@ pub fn details(record: &SourceRecord, settings: &Settings) -> Result<SourceRecor
     match record.source {
         Some(SourceId::OpenLibrary) if record.has_details => openlibrary::details(record),
         Some(SourceId::Metron) if record.has_details => {
-            let login = settings
-                .login(SourceId::Metron)
-                .ok_or_else(|| Error::new("Metron needs your username and password"))?;
-            metron::details(record, login)
+            let token = settings.key(SourceId::Metron).ok_or_else(|| Error::new("Metron needs your API token"))?;
+            metron::details(record, token)
         }
         _ => Ok(record.clone()),
     }
@@ -452,13 +434,13 @@ mod tests {
     }
 
     #[test]
-    fn metron_needs_a_whole_login() {
+    fn metron_needs_a_token() {
         let mut s = Settings::default();
         assert!(!s.enabled(SourceId::Metron));
-        s.metron_username = Some(" reader ".into());
-        assert!(!s.enabled(SourceId::Metron), "a username alone isn't a login");
-        s.metron_password = Some("secret".into());
-        assert_eq!(s.login(SourceId::Metron), Some(("reader", "secret")));
+        s.metron_key = Some("  ".into());
+        assert!(!s.enabled(SourceId::Metron), "a blank token isn't one");
+        s.metron_key = Some("abc123".into());
+        assert_eq!(s.key(SourceId::Metron), Some("abc123"));
         assert!(s.enabled(SourceId::Metron));
         s.disabled.push(SourceId::Metron);
         assert!(!s.enabled(SourceId::Metron));
