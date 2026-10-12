@@ -16,6 +16,11 @@
 #   APPLE_ID                    the Apple Account that notarizes
 #   APPLE_PASSWORD              an app-specific password for it
 #   APPLE_TEAM_ID               the team id
+# The installers are also signed for the in-app updater, which reads the
+# latest release's latest.json (tauri-action writes it) and refuses an update
+# whose signature doesn't match tauri.conf.json's public key. That needs:
+#   TAURI_SIGNING_PRIVATE_KEY           the updater's private key (the file's contents)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  its password, if it has one
 name: Release
 
 on:
@@ -83,6 +88,13 @@ jobs:
               echo "::warning::No Apple Developer ID secrets: the macOS build is ad-hoc signed, not notarized"
             fi
           fi
+      # Without it there'd be no latest.json, and copies that update themselves would never hear of this release.
+      - name: Updater key
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          [ -n "$TAURI_SIGNING_PRIVATE_KEY" ] || { echo "The TAURI_SIGNING_PRIVATE_KEY secret isn't set (docs/releasing.md)"; exit 1; }
       - name: Linux build dependencies
         if: runner.os == 'Linux'
         run: |
@@ -110,9 +122,13 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: crates/app
           tauriScript: cargo tauri
+          # Here rather than in tauri.conf.json, so local builds don't need the key.
+          args: --config '{"bundle":{"createUpdaterArtifacts":true}}'
           tagName: ${{ github.ref_name }}
           releaseName: Magnitide __VERSION__
           releaseBody: |
