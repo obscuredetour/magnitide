@@ -11,6 +11,7 @@ mod plugins;
 mod reader;
 mod server;
 mod themes;
+mod updates;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
@@ -110,10 +111,12 @@ fn main() {
 
     builder
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(covers::allow_on_http())
         .manage(AppState::default())
         .manage(reader::Reader::default())
         .manage(lookup::ReturnedCovers::default())
+        .manage(updates::Pending::default())
         .setup(|app| {
             devices::watch(app.handle().clone());
             server::start_if_enabled(app.handle());
@@ -239,7 +242,12 @@ fn main() {
             plugins::install_estuary,
             plugins::install_estuary_from_file,
             plugins::cancel_plugin_host_install,
-            plugins::remove_estuary
+            plugins::remove_estuary,
+            updates::update_status,
+            updates::set_auto_update,
+            updates::check_for_update,
+            updates::install_update,
+            updates::open_release_notes
         ])
         .build(tauri::generate_context!())
         .expect("error while running Magnitide")

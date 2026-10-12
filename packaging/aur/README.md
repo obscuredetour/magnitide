@@ -4,6 +4,9 @@
 from GitHub, repackaged (no build), so Arch users can `yay -S magnitide-bin` (or `paru`, or
 `makepkg -si` by hand). The AUR keeps its own git repository per package; these files are its source.
 
+Installed this way, Magnitide leaves updates to pacman and the AUR helper: its own updater (for the
+AppImage, `.deb` and `.rpm`) sees that dpkg doesn't own the program, and Settings › About says so.
+
 ## Publishing it the first time
 
 1. Make an account at aur.archlinux.org and add an SSH public key to it (My Account › SSH Public Key).

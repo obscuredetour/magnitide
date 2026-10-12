@@ -12,6 +12,7 @@ import { EditDialog } from './components/EditDialog';
 import { EmptyState } from './components/EmptyState';
 import { ImportDialog } from './components/ImportDialog';
 import { NetworkWarning } from './components/NetworkWarning';
+import { UpdateBanner } from './components/UpdateBanner';
 import { SelectionBar } from './components/SelectionBar';
 import { SettingsDialog, type SettingsSection } from './components/settings/Settings';
 import { StatusBar } from './components/StatusBar';
@@ -42,6 +43,7 @@ import { importState } from './importer';
 import { Toast } from './toast';
 import { deleteBooks } from './transfer';
 import { loadThemeAddons } from './theme';
+import { scheduleUpdateChecks } from './updates';
 import { coverSize, setViewMode, sidebarOpen, viewMode } from './view';
 import { resetZoom, stepZoom } from './zoom';
 import { drag, dragJustEnded, startBookDrag } from './bookDrag';
@@ -227,6 +229,7 @@ export function App() {
     );
     onCleanup(() => void unlistenZoom.then((off) => off()));
     void openInitialLibrary();
+    scheduleUpdateChecks();
     watchDevices();
     initPlugins();
     void loadThemeAddons().catch(() => {}); // the cached copy already applies
@@ -242,6 +245,7 @@ export function App() {
       <Switch>
         <Match when={status().kind === 'ready'}>
           <main class="fixed inset-x-0 top-(--topbar-h) bottom-(--statusbar-h) flex flex-col">
+            <UpdateBanner />
             <NetworkWarning />
             <div class="relative flex min-h-0 flex-1">
               <Show when={sidebarOpen()}>
