@@ -88,6 +88,7 @@ fn to_record(plugin: &str, v: &Value) -> SourceRecord {
         series: text("series"),
         series_index: v.get("seriesIndex").and_then(Value::as_f64),
         has_details: false,
+        comic: None,
     }
 }
 

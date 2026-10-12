@@ -3,4 +3,17 @@
 /**
  * What to look for. Any field may be empty; an ISBN is tried first.
  */
-export type Lookup = { title: string, authors: Array<string>, isbn: string | null, };
+export type Lookup = { title: string, authors: Array<string>, isbn: string | null, 
+/**
+ * A comic: asked of comic sources (Metron) by `series` and `issue`, and
+ * of the others only if it has an ISBN (collected editions do).
+ */
+comic: boolean, series: string | null, 
+/**
+ * The issue number as printed ("17", "1.MU").
+ */
+issue: string | null, 
+/**
+ * The book's identifiers ("metron": its id there finds it straight away).
+ */
+identifiers: { [key in string]: string }, };

@@ -33,6 +33,12 @@ pub struct SourceStatus {
     enabled: bool,
     needs_key: bool,
     has_key: bool,
+    /// It needs an account: a username as well as the password (`has_key`).
+    needs_login: bool,
+    /// The account's username, once given (the password is never sent back).
+    username: Option<String>,
+    /// A comic source, asked for comics only.
+    comics: bool,
     /// Will be asked: enabled, and keyed if it needs one.
     active: bool,
 }
@@ -67,6 +73,12 @@ fn statuses(s: &Settings) -> Vec<SourceStatus> {
             enabled: !s.disabled.contains(&id),
             needs_key: id.needs_key(),
             has_key: s.key(id).is_some(),
+            needs_login: id.needs_login(),
+            username: match id {
+                SourceId::Metron => s.metron_username.clone().filter(|u| !u.trim().is_empty()),
+                _ => None,
+            },
+            comics: id.comics(),
             active: s.enabled(id),
         })
         .collect()
@@ -77,13 +89,16 @@ pub async fn metadata_sources(app: AppHandle) -> CmdResult<Vec<SourceStatus>> {
     Ok(statuses(&load_settings(&app)))
 }
 
-/// Turn a source on or off; `api_key` replaces its key when given ("" clears it).
+/// Turn a source on or off; `api_key` (a password, for a source with an
+/// account) replaces its key when given ("" clears it), and `username` its
+/// account's username.
 #[tauri::command]
 pub async fn set_metadata_source(
     app: AppHandle,
     id: SourceId,
     enabled: bool,
     api_key: Option<String>,
+    username: Option<String>,
 ) -> CmdResult<Vec<SourceStatus>> {
     let mut s = load_settings(&app);
     s.disabled.retain(|d| *d != id);
@@ -91,11 +106,15 @@ pub async fn set_metadata_source(
         s.disabled.push(id);
     }
     if let Some(key) = api_key {
-        let key = Some(key.trim().to_owned()).filter(|k| !k.is_empty());
         match id {
-            SourceId::Google => s.google_key = key,
+            SourceId::Google => s.google_key = Some(key.trim().to_owned()).filter(|k| !k.is_empty()),
+            // A password is kept as typed (spaces and all); "" clears it.
+            SourceId::Metron => s.metron_password = Some(key).filter(|k| !k.is_empty()),
             SourceId::OpenLibrary => {}
         }
+    }
+    if let (Some(user), SourceId::Metron) = (username, id) {
+        s.metron_username = Some(user.trim().to_owned()).filter(|u| !u.is_empty());
     }
     let path = settings_path(&app)?;
     if let Some(dir) = path.parent() {
@@ -103,6 +122,12 @@ pub async fn set_metadata_source(
     }
     let json = serde_json::to_vec_pretty(&s).map_err(|e| e.to_string())?;
     fs::write(&path, json).map_err(|e| e.to_string())?;
+    // Keys and passwords: for this user's eyes only.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+    }
     Ok(statuses(&s))
 }
 
@@ -166,10 +191,12 @@ impl ReturnedCovers {
     }
 }
 
-/// The rest of a record (Open Library's description), sanitized.
+/// The rest of a record (Open Library's description, a Metron issue's
+/// credits and the rest), sanitized.
 #[tauri::command]
-pub async fn metadata_details(record: SourceRecord) -> CmdResult<SourceRecord> {
-    let mut full = tauri::async_runtime::spawn_blocking(move || magnitide_sources::details(&record))
+pub async fn metadata_details(app: AppHandle, record: SourceRecord) -> CmdResult<SourceRecord> {
+    let settings = load_settings(&app);
+    let mut full = tauri::async_runtime::spawn_blocking(move || magnitide_sources::details(&record, &settings))
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?;
@@ -179,6 +206,11 @@ pub async fn metadata_details(record: SourceRecord) -> CmdResult<SourceRecord> {
 
 fn clean(r: &mut SourceRecord) {
     r.description_html = r.description_html.as_deref().map(sanitize).filter(|d| !d.trim().is_empty());
+    // A comic source's kind of publication ("Ongoing Series") as a Format choice ("Issue").
+    if let Some(comic) = &mut r.comic {
+        comic.format =
+            comic.format.as_deref().and_then(magnitide_core::metadata::comic::comic_format).map(str::to_owned);
+    }
 }
 
 /// Download a source's cover into the cache so the UI can show it.

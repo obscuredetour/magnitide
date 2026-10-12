@@ -55,9 +55,9 @@ pub const FORMATS: &[&str] =
 pub fn comic_format(raw: &str) -> Option<&'static str> {
     let key: String = raw.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_ascii_lowercase();
     Some(match key.as_str() {
-        "issue" | "series" | "ongoing" | "ongoingseries" | "limitedseries" | "miniseries" | "maxiseries"
-        | "digitalchapter" | "webcomic" => "Issue",
-        "annual" => "Annual",
+        "issue" | "singleissue" | "series" | "ongoing" | "ongoingseries" | "limitedseries" | "miniseries"
+        | "maxiseries" | "cancelledseries" | "digitalchapter" | "digitalchapters" | "webcomic" => "Issue",
+        "annual" | "annualseries" => "Annual",
         "special" | "giant" | "giantsize" => "Special",
         "oneshot" => "One-Shot",
         "graphicnovel" | "gn" | "ogn" | "originalgraphicnovel" => "Graphic Novel",
