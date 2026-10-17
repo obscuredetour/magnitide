@@ -610,7 +610,7 @@ function CustomValues(props: { items: CustomDetail[] }) {
         {(c) => (
           <>
             <dt class="text-muted">{c.name}</dt>
-            <Switch fallback={<dd class="[overflow-wrap:anywhere]">{formatCustom(c.kind, c.value)}</dd>}>
+            <Switch fallback={<dd class="[overflow-wrap:anywhere]">{formatCustom(c.kind, c.value, c.key)}</dd>}>
               <Match when={c.kind === 'rating'}>
                 <dd class="tracking-[1px] text-star" title={`${Number(c.value) / 2} of 5`}>
                   {'★'.repeat(Math.floor(Number(c.value) / 2))}

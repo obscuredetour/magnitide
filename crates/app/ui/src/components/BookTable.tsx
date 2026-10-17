@@ -200,7 +200,7 @@ function customColumn(f: CustomField): ColumnDef<typeof features, BookRow, any> 
               .replace(/\s+/g, ' ')
               .trim()
           : raw;
-      return muted(formatCustom(f.kind, text));
+      return muted(formatCustom(f.kind, text, f.key));
     },
   });
 }
