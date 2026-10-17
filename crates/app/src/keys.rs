@@ -1,14 +1,16 @@
-//! Metadata-source keys (the Google Books API key, the Metron token) in the
-//! system keychain: the macOS Keychain, Windows Credential Manager, or the
-//! Secret Service on Linux (GNOME Keyring, KWallet). One entry per source,
-//! filed under the app's identifier with the source's id as the account.
+//! Secrets in the system keychain: the metadata sources' keys (the Google
+//! Books API key, the Metron token) and the library server's password go
+//! to the macOS Keychain, Windows Credential Manager, or the Secret Service
+//! on Linux (GNOME Keyring, KWallet). One entry each, filed under the app's
+//! identifier with an account name of its own (a source's id, or
+//! `server-password`).
 //!
-//! The keys used to live in the sources' settings file. On the first launch
-//! with a keychain reachable, any key still in the file moves into the
-//! keychain and the file is rewritten without it; from then on the file holds
-//! only the rest of the settings. Where no keychain is reachable (a headless
-//! or minimal Linux without a Secret Service) the keys stay in the settings
-//! file, readable only by its owner, and Settings says so.
+//! They used to live in their settings files. On the first launch with a
+//! keychain reachable, any secret still in a file moves into the keychain
+//! and the file is rewritten without it; from then on the files hold only
+//! the rest of their settings. Where no keychain is reachable (a headless
+//! or minimal Linux without a Secret Service) the secrets stay in their
+//! settings files, readable only by their owner, and Settings says so.
 //!
 //! The keychain is only touched off the main thread (commands reach it from
 //! blocking tasks): on Linux the Secret Service client runs its own runtime,
@@ -19,11 +21,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{OnceLock, RwLock};
 
-use magnitide_sources::{Settings, SourceId};
+use magnitide_sources::SourceId;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use ts_rs::TS;
 
-/// The keychain service every key is filed under; the account is the source's id.
+/// The keychain service every secret is filed under.
 pub const SERVICE: &str = "com.magnitide.app";
 
 /// What the keychain is called on this platform, for a sentence.
@@ -80,7 +83,34 @@ impl KeyStore for Keychain {
     }
 }
 
-/// Where the sources' keys are kept, as Settings says it.
+/// A settings file (JSON) with secrets in it, which the keychain takes over.
+pub trait SecretFile: Serialize + DeserializeOwned + Default + Clone {
+    /// The account names its secrets are filed under.
+    fn accounts() -> Vec<&'static str>;
+    /// Its secrets, by account.
+    fn secrets(&self) -> Vec<(&'static str, String)>;
+    /// Give it a secret (trimmed; blank or None clears it). An account that
+    /// isn't one of its own is ignored.
+    fn set_secret(&mut self, account: &str, secret: Option<&str>);
+}
+
+impl SecretFile for magnitide_sources::Settings {
+    fn accounts() -> Vec<&'static str> {
+        SourceId::ALL.into_iter().filter(|id| id.needs_key()).map(SourceId::id).collect()
+    }
+
+    fn secrets(&self) -> Vec<(&'static str, String)> {
+        self.keys().map(|(id, key)| (id.id(), key.to_owned())).collect()
+    }
+
+    fn set_secret(&mut self, account: &str, secret: Option<&str>) {
+        if let Some(id) = SourceId::ALL.into_iter().find(|id| id.id() == account) {
+            self.set_key(id, secret);
+        }
+    }
+}
+
+/// Where secrets are kept, as Settings says it.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -91,24 +121,39 @@ pub struct KeyStorage {
     pub fallback: Option<String>,
 }
 
-/// The sources' settings file and, when one is reachable, the keychain the
-/// keys are in. Opened on first use (off the main thread; see [`Secrets::warm`]).
+/// A settings file registered with [`Secrets`]: its secrets are read from
+/// the keychain at launch, and any still in the file move there.
+pub struct Registered {
+    path: PathBuf,
+    accounts: Vec<&'static str>,
+    migrate: fn(&Path, &dyn KeyStore) -> Vec<(String, String)>,
+}
+
+impl Registered {
+    pub fn file<T: SecretFile>(path: PathBuf) -> Self {
+        Self { path, accounts: T::accounts(), migrate: migrate_file::<T> }
+    }
+}
+
+/// The keychain, when one is reachable, and the secrets it holds for the
+/// registered settings files. Opened on first use (off the main thread; see
+/// [`Secrets::warm`]).
 pub struct Secrets {
-    settings_path: PathBuf,
+    files: Vec<Registered>,
     inner: OnceLock<Inner>,
 }
 
 impl Secrets {
-    pub fn new(settings_path: PathBuf) -> Self {
-        Self { settings_path, inner: OnceLock::new() }
+    pub fn new(files: Vec<Registered>) -> Self {
+        Self { files, inner: OnceLock::new() }
     }
 
     fn inner(&self) -> &Inner {
-        self.inner.get_or_init(|| Inner::open(&self.settings_path, Keychain::open()))
+        self.inner.get_or_init(|| Inner::open(&self.files, Keychain::open()))
     }
 
-    /// Reach the keychain and move any keys out of the settings file now,
-    /// rather than at the first search. Blocks: call from a thread of its own.
+    /// Reach the keychain and move any secrets out of the settings files
+    /// now, rather than at the first use. Blocks: call from a thread of its own.
     pub fn warm(&self) {
         self.inner();
     }
@@ -117,35 +162,36 @@ impl Secrets {
         self.inner().storage.clone()
     }
 
-    /// The sources' settings: the file's, with the keys the keychain holds.
-    pub fn settings(&self) -> Settings {
-        self.inner().settings(&self.settings_path)
+    /// A settings file's contents, with the secrets the keychain holds.
+    pub fn load<T: SecretFile>(&self, path: &Path) -> T {
+        self.inner().load(path)
     }
 
-    /// Give a source its key, or clear it (blank), where keys are kept;
-    /// `settings` follows (save it afterwards). Nothing changes on an error.
-    pub fn set_key(&self, settings: &mut Settings, id: SourceId, key: &str) -> Result<(), String> {
-        self.inner().set_key(settings, id, key)
+    /// Give `settings` a secret, or clear it (blank), where secrets are
+    /// kept; save the settings afterwards. Nothing changes on an error.
+    pub fn set_secret<T: SecretFile>(&self, settings: &mut T, account: &str, secret: &str) -> Result<(), String> {
+        self.inner().set_secret(settings, account, secret)
     }
 
-    /// Write the settings file, without the keys the keychain holds.
-    pub fn save(&self, settings: &Settings) -> Result<(), String> {
-        self.inner().save(&self.settings_path, settings)
+    /// Write a settings file, without the secrets the keychain holds.
+    pub fn save<T: SecretFile>(&self, path: &Path, settings: &T) -> Result<(), String> {
+        self.inner().save(path, settings)
     }
 }
 
 struct Inner {
-    /// None: no keychain; the keys stay in the settings file.
+    /// None: no keychain; the secrets stay in their settings files.
     store: Option<Box<dyn KeyStore>>,
     storage: KeyStorage,
-    /// The keys the keychain holds, read once; set and delete keep it current.
-    cache: RwLock<BTreeMap<SourceId, String>>,
+    /// The secrets the keychain holds, read once; set and delete keep it current.
+    cache: RwLock<BTreeMap<String, String>>,
 }
 
 impl Inner {
-    /// Open the keychain, read the keys it has and move the settings file's
-    /// keys into it; or, with no keychain (`Err(why)`), leave the file as it is.
-    fn open(settings_path: &Path, keychain: Result<Box<dyn KeyStore>, String>) -> Self {
+    /// Open the keychain, read the files' secrets from it and move the
+    /// files' own into it; or, with no keychain (`Err(why)`), leave the
+    /// files as they are.
+    fn open(files: &[Registered], keychain: Result<Box<dyn KeyStore>, String>) -> Self {
         let store = match keychain {
             Ok(store) => store,
             Err(why) => {
@@ -160,23 +206,17 @@ impl Inner {
             }
         };
         let mut cache = BTreeMap::new();
-        for id in SourceId::ALL.into_iter().filter(|id| id.needs_key()) {
-            match store.get(id.id()) {
-                Ok(Some(key)) => {
-                    cache.insert(id, key);
+        for account in files.iter().flat_map(|f| f.accounts.iter().copied()) {
+            match store.get(account) {
+                Ok(Some(secret)) => {
+                    cache.insert(account.to_owned(), secret);
                 }
                 Ok(None) => {}
-                Err(e) => eprintln!("reading the {} key from {PLACE}: {e}", id.name()),
+                Err(e) => eprintln!("reading {account} from {PLACE}: {e}"),
             }
         }
-        let mut settings = read_file(settings_path);
-        let moved = migrate(&mut settings, &*store);
-        if !moved.is_empty() {
-            match write_file(settings_path, &settings) {
-                Ok(()) => cache.extend(moved),
-                // The keys are in both places; next launch tries the file again.
-                Err(e) => eprintln!("writing {} without its keys: {e}", settings_path.display()),
-            }
+        for file in files {
+            cache.extend((file.migrate)(&file.path, &*store));
         }
         Self {
             store: Some(store),
@@ -185,65 +225,81 @@ impl Inner {
         }
     }
 
-    fn settings(&self, settings_path: &Path) -> Settings {
-        let mut settings = read_file(settings_path);
-        for (id, key) in self.cache.read().unwrap_or_else(|e| e.into_inner()).iter() {
-            settings.set_key(*id, Some(key));
+    fn load<T: SecretFile>(&self, path: &Path) -> T {
+        let mut settings: T = read_file(path);
+        for (account, secret) in self.cache.read().unwrap_or_else(|e| e.into_inner()).iter() {
+            settings.set_secret(account, Some(secret));
         }
         settings
     }
 
-    fn set_key(&self, settings: &mut Settings, id: SourceId, key: &str) -> Result<(), String> {
-        let key = key.trim();
+    fn set_secret<T: SecretFile>(&self, settings: &mut T, account: &str, secret: &str) -> Result<(), String> {
+        let secret = secret.trim();
         if let Some(store) = &self.store {
             let mut cache = self.cache.write().unwrap_or_else(|e| e.into_inner());
-            if key.is_empty() {
-                store.delete(id.id()).map_err(|e| format!("Couldn't remove the key from {PLACE}: {e}"))?;
-                cache.remove(&id);
+            if secret.is_empty() {
+                store.delete(account).map_err(|e| format!("Couldn't remove it from {PLACE}: {e}"))?;
+                cache.remove(account);
             } else {
-                store.set(id.id(), key).map_err(|e| format!("Couldn't save the key to {PLACE}: {e}"))?;
-                cache.insert(id, key.to_owned());
+                store.set(account, secret).map_err(|e| format!("Couldn't save it to {PLACE}: {e}"))?;
+                cache.insert(account.to_owned(), secret.to_owned());
             }
         }
-        settings.set_key(id, Some(key));
+        settings.set_secret(account, Some(secret));
         Ok(())
     }
 
-    fn save(&self, settings_path: &Path, settings: &Settings) -> Result<(), String> {
+    fn save<T: SecretFile>(&self, path: &Path, settings: &T) -> Result<(), String> {
         let mut on_disk = settings.clone();
-        for id in self.cache.read().unwrap_or_else(|e| e.into_inner()).keys() {
-            on_disk.set_key(*id, None);
+        for account in self.cache.read().unwrap_or_else(|e| e.into_inner()).keys() {
+            on_disk.set_secret(account, None);
         }
-        write_file(settings_path, &on_disk)
+        write_file(path, &on_disk)
     }
 }
 
-/// Move every key in `settings` into `store` (keyed by the source's id) and
-/// take it out of `settings`; the moved keys. A key the store won't take
-/// stays where it was.
-fn migrate(settings: &mut Settings, store: &dyn KeyStore) -> Vec<(SourceId, String)> {
-    let keys: Vec<(SourceId, String)> = settings.keys().map(|(id, k)| (id, k.to_owned())).collect();
+/// Move the secrets in the file at `path` into `store` and rewrite the file
+/// without them; the moved secrets. Nothing to move, nothing written.
+fn migrate_file<T: SecretFile>(path: &Path, store: &dyn KeyStore) -> Vec<(String, String)> {
+    let mut settings: T = read_file(path);
+    let moved = migrate(&mut settings, store);
+    if moved.is_empty() {
+        return moved;
+    }
+    match write_file(path, &settings) {
+        Ok(()) => moved,
+        // The secrets are in both places; next launch tries the file again.
+        Err(e) => {
+            eprintln!("writing {} without its secrets: {e}", path.display());
+            Vec::new()
+        }
+    }
+}
+
+/// Move every secret in `settings` into `store` and take it out of
+/// `settings`; the moved secrets. One the store won't take stays where it was.
+fn migrate<T: SecretFile>(settings: &mut T, store: &dyn KeyStore) -> Vec<(String, String)> {
     let mut moved = Vec::new();
-    for (id, key) in keys {
-        match store.set(id.id(), &key) {
+    for (account, secret) in settings.secrets() {
+        match store.set(account, &secret) {
             Ok(()) => {
-                settings.set_key(id, None);
-                moved.push((id, key));
+                settings.set_secret(account, None);
+                moved.push((account.to_owned(), secret));
             }
-            Err(e) => eprintln!("moving the {} key into {PLACE}: {e}", id.name()),
+            Err(e) => eprintln!("moving {account} into {PLACE}: {e}"),
         }
     }
     moved
 }
 
-/// The settings file's contents; defaults when there's no file or it's unreadable.
-fn read_file(path: &Path) -> Settings {
+/// A settings file's contents; defaults when there's no file or it's unreadable.
+fn read_file<T: DeserializeOwned + Default>(path: &Path) -> T {
     fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
 }
 
-/// Write the settings file, for this user's eyes only (it may still hold
-/// keys where there's no keychain).
-fn write_file(path: &Path, settings: &Settings) -> Result<(), String> {
+/// Write a settings file, for this user's eyes only (it may still hold
+/// secrets where there's no keychain).
+fn write_file<T: Serialize>(path: &Path, settings: &T) -> Result<(), String> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
@@ -261,7 +317,10 @@ fn write_file(path: &Path, settings: &Settings) -> Result<(), String> {
 mod tests {
     use std::sync::Mutex;
 
+    use magnitide_sources::Settings;
+
     use super::*;
+    use crate::server::{self, SERVER_PASSWORD};
 
     /// A keychain in memory; `broken` refuses every write.
     #[derive(Default)]
@@ -303,14 +362,22 @@ mod tests {
         }
     }
 
-    fn file_with(dir: &Path, json: &str) -> PathBuf {
-        let path = dir.join("metadata-sources.json");
+    fn file_with(dir: &Path, name: &str, json: &str) -> PathBuf {
+        let path = dir.join(name);
         fs::write(&path, json).unwrap();
         path
     }
 
     fn on_disk(path: &Path) -> serde_json::Value {
         serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
+    }
+
+    fn sources(path: &Path) -> Registered {
+        Registered::file::<Settings>(path.to_owned())
+    }
+
+    fn open(path: &Path, store: FakeStore) -> Inner {
+        Inner::open(&[sources(path)], Ok(Box::new(store)))
     }
 
     #[test]
@@ -322,7 +389,7 @@ mod tests {
         };
         let store = FakeStore::default();
         let moved = migrate(&mut settings, &store);
-        assert_eq!(moved, [(SourceId::Google, "g-key".to_owned()), (SourceId::Metron, "m-token".to_owned())]);
+        assert_eq!(moved, [("google".to_owned(), "g-key".to_owned()), ("metron".to_owned(), "m-token".to_owned())]);
         assert_eq!(
             store.all(),
             BTreeMap::from([("google".into(), "g-key".into()), ("metron".into(), "m-token".into())])
@@ -344,15 +411,18 @@ mod tests {
     #[test]
     fn opening_migrates_the_file_and_rewrites_it_without_keys() {
         let dir = tempfile::tempdir().unwrap();
-        let path = file_with(dir.path(), r#"{"disabled":["openLibrary"],"googleKey":"g-key","metronKey":"m-token"}"#);
-        let store = FakeStore::with(&[("metron", "old-token")]);
-        let inner = Inner::open(&path, Ok(Box::new(store)));
+        let path = file_with(
+            dir.path(),
+            "metadata-sources.json",
+            r#"{"disabled":["openLibrary"],"googleKey":"g-key","metronKey":"m-token"}"#,
+        );
+        let inner = open(&path, FakeStore::with(&[("metron", "old-token")]));
         assert_eq!(inner.storage, KeyStorage { place: PLACE.to_owned(), fallback: None });
         let written = on_disk(&path);
         assert_eq!(written["disabled"], serde_json::json!(["openLibrary"]));
         assert!(written["googleKey"].is_null() && written["metronKey"].is_null(), "{written}");
         // The settings carry the keys from the keychain; the file's token replaced the old one.
-        let settings = inner.settings(&path);
+        let settings: Settings = inner.load(&path);
         assert_eq!(settings.key(SourceId::Google), Some("g-key"));
         assert_eq!(settings.key(SourceId::Metron), Some("m-token"));
         assert_eq!(settings.disabled, [SourceId::OpenLibrary]);
@@ -361,12 +431,12 @@ mod tests {
     #[test]
     fn opening_reads_keys_the_keychain_already_has() {
         let dir = tempfile::tempdir().unwrap();
-        let path = file_with(dir.path(), r#"{"disabled":[]}"#);
+        let path = file_with(dir.path(), "metadata-sources.json", r#"{"disabled":[]}"#);
         let before = fs::metadata(&path).unwrap().modified().unwrap();
-        let store = FakeStore::with(&[("google", "g-key")]);
-        let inner = Inner::open(&path, Ok(Box::new(store)));
-        assert_eq!(inner.settings(&path).key(SourceId::Google), Some("g-key"));
-        assert!(!inner.settings(&path).enabled(SourceId::Metron));
+        let inner = open(&path, FakeStore::with(&[("google", "g-key")]));
+        let settings: Settings = inner.load(&path);
+        assert_eq!(settings.key(SourceId::Google), Some("g-key"));
+        assert!(!settings.enabled(SourceId::Metron));
         assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), before, "nothing to move: not rewritten");
     }
 
@@ -374,21 +444,21 @@ mod tests {
     fn opening_without_a_file_is_fine() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("nested").join("metadata-sources.json");
-        let inner = Inner::open(&path, Ok(Box::new(FakeStore::default())));
-        assert_eq!(inner.settings(&path), Settings::default());
+        let inner = open(&path, FakeStore::default());
+        assert_eq!(inner.load::<Settings>(&path), Settings::default());
         assert!(!path.exists());
     }
 
     #[test]
     fn without_a_keychain_keys_stay_in_the_file() {
         let dir = tempfile::tempdir().unwrap();
-        let path = file_with(dir.path(), r#"{"disabled":[],"googleKey":"g-key"}"#);
-        let inner = Inner::open(&path, Err("no Secret Service on the session bus".into()));
+        let path = file_with(dir.path(), "metadata-sources.json", r#"{"disabled":[],"googleKey":"g-key"}"#);
+        let inner = Inner::open(&[sources(&path)], Err("no Secret Service on the session bus".into()));
         assert_eq!(inner.storage.place, "the settings file");
         assert!(inner.storage.fallback.as_deref().unwrap().contains("no Secret Service on the session bus"));
-        let mut settings = inner.settings(&path);
+        let mut settings: Settings = inner.load(&path);
         assert_eq!(settings.key(SourceId::Google), Some("g-key"));
-        inner.set_key(&mut settings, SourceId::Metron, " m-token ").unwrap();
+        inner.set_secret(&mut settings, "metron", " m-token ").unwrap();
         inner.save(&path, &settings).unwrap();
         let written = on_disk(&path);
         assert_eq!(written["googleKey"], "g-key");
@@ -398,30 +468,30 @@ mod tests {
     #[test]
     fn setting_and_clearing_keys_goes_to_the_keychain() {
         let dir = tempfile::tempdir().unwrap();
-        let path = file_with(dir.path(), r#"{"disabled":[]}"#);
-        let inner = Inner::open(&path, Ok(Box::new(FakeStore::default())));
-        let mut settings = inner.settings(&path);
-        inner.set_key(&mut settings, SourceId::Google, " g-key ").unwrap();
+        let path = file_with(dir.path(), "metadata-sources.json", r#"{"disabled":[]}"#);
+        let inner = open(&path, FakeStore::default());
+        let mut settings: Settings = inner.load(&path);
+        inner.set_secret(&mut settings, "google", " g-key ").unwrap();
         assert_eq!(settings.key(SourceId::Google), Some("g-key"), "the settings follow at once");
         inner.save(&path, &settings).unwrap();
         assert!(on_disk(&path)["googleKey"].is_null(), "the file never gets the key");
-        assert_eq!(inner.settings(&path).key(SourceId::Google), Some("g-key"));
+        assert_eq!(inner.load::<Settings>(&path).key(SourceId::Google), Some("g-key"));
 
-        inner.set_key(&mut settings, SourceId::Google, "").unwrap();
+        inner.set_secret(&mut settings, "google", "").unwrap();
         assert_eq!(settings.key(SourceId::Google), None);
-        assert_eq!(inner.settings(&path).key(SourceId::Google), None);
+        assert_eq!(inner.load::<Settings>(&path).key(SourceId::Google), None);
     }
 
     #[test]
     fn a_failed_keychain_write_changes_nothing() {
         let dir = tempfile::tempdir().unwrap();
-        let path = file_with(dir.path(), r#"{"disabled":[]}"#);
-        let inner = Inner::open(&path, Ok(Box::new(FakeStore { broken: true, ..Default::default() })));
-        let mut settings = inner.settings(&path);
-        let err = inner.set_key(&mut settings, SourceId::Google, "g-key").unwrap_err();
+        let path = file_with(dir.path(), "metadata-sources.json", r#"{"disabled":[]}"#);
+        let inner = open(&path, FakeStore { broken: true, ..Default::default() });
+        let mut settings: Settings = inner.load(&path);
+        let err = inner.set_secret(&mut settings, "google", "g-key").unwrap_err();
         assert!(err.contains("the keychain is locked"), "{err}");
         assert_eq!(settings.key(SourceId::Google), None);
-        assert_eq!(inner.settings(&path).key(SourceId::Google), None);
+        assert_eq!(inner.load::<Settings>(&path).key(SourceId::Google), None);
     }
 
     #[test]
@@ -430,13 +500,50 @@ mod tests {
         // key in the file: the source keeps working, and saving the other
         // settings doesn't lose it.
         let dir = tempfile::tempdir().unwrap();
-        let path = file_with(dir.path(), r#"{"disabled":[],"googleKey":"g-key"}"#);
-        let inner = Inner::open(&path, Ok(Box::new(FakeStore { broken: true, ..Default::default() })));
-        let mut settings = inner.settings(&path);
+        let path = file_with(dir.path(), "metadata-sources.json", r#"{"disabled":[],"googleKey":"g-key"}"#);
+        let inner = open(&path, FakeStore { broken: true, ..Default::default() });
+        let mut settings: Settings = inner.load(&path);
         assert_eq!(settings.key(SourceId::Google), Some("g-key"));
         settings.disabled.push(SourceId::Metron);
         inner.save(&path, &settings).unwrap();
         assert_eq!(on_disk(&path)["googleKey"], "g-key");
+    }
+
+    #[test]
+    fn the_server_password_moves_with_the_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let keys = file_with(dir.path(), "metadata-sources.json", r#"{"disabled":[],"googleKey":"g-key"}"#);
+        let server = file_with(dir.path(), "server.json", r#"{"enabled":true,"port":8181,"password":"hunter2"}"#);
+        let store = FakeStore::default();
+        let inner =
+            Inner::open(&[sources(&keys), Registered::file::<server::Settings>(server.clone())], Ok(Box::new(store)));
+        let written = on_disk(&server);
+        assert_eq!(written["port"], 8181);
+        assert!(written["password"].is_null(), "{written}");
+        let settings: server::Settings = inner.load(&server);
+        assert_eq!((settings.enabled, settings.port, settings.password.as_deref()), (true, 8181, Some("hunter2")));
+        assert_eq!(inner.load::<Settings>(&keys).key(SourceId::Google), Some("g-key"));
+        // Each file only ever sees its own secrets.
+        assert!(on_disk(&keys).get("password").is_none());
+        assert_eq!(inner.load::<Settings>(&keys).keys().count(), 1);
+
+        let mut settings: server::Settings = inner.load(&server);
+        inner.set_secret(&mut settings, SERVER_PASSWORD, "").unwrap();
+        inner.save(&server, &settings).unwrap();
+        assert_eq!(inner.load::<server::Settings>(&server).password, None);
+        assert!(on_disk(&server)["password"].is_null());
+    }
+
+    #[test]
+    fn without_a_keychain_the_server_password_stays_in_its_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let server = file_with(dir.path(), "server.json", r#"{"enabled":false,"port":8180,"password":"hunter2"}"#);
+        let inner = Inner::open(&[Registered::file::<server::Settings>(server.clone())], Err("no keychain".into()));
+        let mut settings: server::Settings = inner.load(&server);
+        assert_eq!(settings.password.as_deref(), Some("hunter2"));
+        inner.set_secret(&mut settings, SERVER_PASSWORD, "letmein").unwrap();
+        inner.save(&server, &settings).unwrap();
+        assert_eq!(on_disk(&server)["password"], "letmein");
     }
 
     /// The real keychain, once round: for a developer checking a platform

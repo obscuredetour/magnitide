@@ -4,7 +4,6 @@
 //! positions, kept outside the library). Off until the user turns it on; the setting is
 //! remembered, and the server follows whichever library is open.
 
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -15,17 +14,38 @@ use tauri::{AppHandle, Manager};
 use ts_rs::TS;
 
 use crate::commands::CmdResult;
+use crate::keys::{KeyStorage, SecretFile, Secrets};
 use crate::{AppState, Loaded};
 
 /// Not 8080, which calibre's own server and many dev tools use.
 const DEFAULT_PORT: u16 = 8180;
 
-#[derive(Serialize, Deserialize, Clone)]
+/// The keychain account the password is filed under (see keys.rs).
+pub const SERVER_PASSWORD: &str = "server-password";
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
-struct Settings {
-    enabled: bool,
-    port: u16,
-    password: Option<String>,
+pub struct Settings {
+    pub enabled: bool,
+    pub port: u16,
+    /// In the keychain; here only where there's no keychain.
+    pub password: Option<String>,
+}
+
+impl SecretFile for Settings {
+    fn accounts() -> Vec<&'static str> {
+        vec![SERVER_PASSWORD]
+    }
+
+    fn secrets(&self) -> Vec<(&'static str, String)> {
+        self.password.iter().filter(|p| !p.is_empty()).map(|p| (SERVER_PASSWORD, p.clone())).collect()
+    }
+
+    fn set_secret(&mut self, account: &str, secret: Option<&str>) {
+        if account == SERVER_PASSWORD {
+            self.password = secret.map(str::trim).filter(|p| !p.is_empty()).map(str::to_owned);
+        }
+    }
 }
 
 impl Default for Settings {
@@ -43,6 +63,9 @@ pub struct ServerStatus {
     running: bool,
     port: u16,
     has_password: bool,
+    /// Where the password is kept: the system keychain, or the settings
+    /// file when no keychain is reachable.
+    password_storage: KeyStorage,
     /// The web page's address on this network ("http://192.168.1.20:8180/").
     url: Option<String>,
     /// Further addresses, when this computer is on more than one network.
@@ -82,24 +105,16 @@ impl Source for Open {
     }
 }
 
-fn settings_path(app: &AppHandle) -> CmdResult<PathBuf> {
-    Ok(app.path().app_config_dir().map_err(|e| e.to_string())?.join("server.json"))
+/// The server's settings file: on or off, the port, and only where there's
+/// no keychain, the password (see keys.rs).
+pub fn settings_path(app: &AppHandle) -> PathBuf {
+    app.path().app_config_dir().unwrap_or_default().join("server.json")
 }
 
+/// The settings, with the password from wherever it's kept. May reach the
+/// keychain: call from a blocking task.
 fn load_settings(app: &AppHandle) -> Settings {
-    settings_path(app)
-        .ok()
-        .and_then(|p| fs::read(p).ok())
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default()
-}
-
-fn save_settings(app: &AppHandle, s: &Settings) -> CmdResult<()> {
-    let path = settings_path(app)?;
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    }
-    fs::write(&path, serde_json::to_vec_pretty(s).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    app.state::<Secrets>().load(&settings_path(app))
 }
 
 /// Stop the server, then start it again if the settings say so.
@@ -129,7 +144,8 @@ fn apply(app: &AppHandle, s: &Settings) {
     }
 }
 
-/// Start the server at launch if it was left on.
+/// Start the server at launch if it was left on. Off the main thread, once
+/// the keychain has been read (see main).
 pub fn start_if_enabled(app: &AppHandle) {
     let s = load_settings(app);
     if s.enabled {
@@ -167,6 +183,7 @@ fn status(app: &AppHandle) -> ServerStatus {
         running,
         port,
         has_password: s.password.as_deref().is_some_and(|p| !p.is_empty()),
+        password_storage: app.state::<Secrets>().storage(),
         qr_svg: url.as_deref().and_then(qr_svg),
         url,
         other_urls,
@@ -177,7 +194,7 @@ fn status(app: &AppHandle) -> ServerStatus {
 
 #[tauri::command]
 pub async fn server_status(app: AppHandle) -> CmdResult<ServerStatus> {
-    Ok(status(&app))
+    tauri::async_runtime::spawn_blocking(move || status(&app)).await.map_err(|e| e.to_string())
 }
 
 /// Change the server's settings and (re)start or stop it. `password`: None
@@ -187,15 +204,20 @@ pub async fn set_server(app: AppHandle, enabled: bool, port: u16, password: Opti
     if port < 1024 {
         return Err("Pick a port from 1024 to 65535.".into());
     }
-    let mut s = load_settings(&app);
-    s.enabled = enabled;
-    s.port = port;
-    if let Some(p) = password {
-        s.password = Some(p).filter(|p| !p.is_empty());
-    }
-    save_settings(&app, &s)?;
-    let app2 = app.clone();
     // Stopping waits for requests in flight (a large download, say).
-    tauri::async_runtime::spawn_blocking(move || apply(&app2, &s)).await.map_err(|e| e.to_string())?;
-    Ok(status(&app))
+    tauri::async_runtime::spawn_blocking(move || {
+        let secrets = app.state::<Secrets>();
+        let path = settings_path(&app);
+        let mut s: Settings = secrets.load(&path);
+        s.enabled = enabled;
+        s.port = port;
+        if let Some(p) = password {
+            secrets.set_secret(&mut s, SERVER_PASSWORD, &p)?;
+        }
+        secrets.save(&path, &s)?;
+        apply(&app, &s);
+        Ok(status(&app))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
