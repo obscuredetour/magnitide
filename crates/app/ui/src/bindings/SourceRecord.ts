@@ -7,7 +7,7 @@ import type { SourceId } from "./SourceId";
  */
 export type SourceRecord = { 
 /**
- * A built-in source; None for a record from a calibre plugin.
+ * A built-in source; None for a record from a plugin.
  */
 source: SourceId | null, 
 /**

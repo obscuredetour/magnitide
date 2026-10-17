@@ -111,7 +111,7 @@ pub struct ComicRecord {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SourceRecord {
-    /// A built-in source; None for a record from a calibre plugin.
+    /// A built-in source; None for a record from a plugin.
     pub source: Option<SourceId>,
     /// What to call the source: "Open Library", or the plugin's name.
     #[serde(default)]
@@ -298,6 +298,8 @@ fn group(lookup: &Lookup, records: Vec<SourceRecord>) -> Vec<Match> {
     let key = |r: &SourceRecord| {
         (matching::normalize_title(&r.title), r.authors.first().map(|a| matching::surname(a)).unwrap_or_default())
     };
+    // Plugin records all have no built-in source, so tell them apart by name.
+    let from = |r: &SourceRecord| (r.source, r.source_name.clone());
     let mut groups: Vec<Vec<SourceRecord>> = Vec::new();
     for r in records {
         let isbn = r.identifiers.get("isbn").cloned();
@@ -307,11 +309,11 @@ fn group(lookup: &Lookup, records: Vec<SourceRecord>) -> Vec<Match> {
                 (isbn.is_some() && o.identifiers.get("isbn") == isbn.as_ref())
                     // One record per source and title: different editions
                     // from the same source stay separate.
-                    || (o.source != r.source && key(o) == k)
+                    || (from(o) != from(&r) && key(o) == k)
             })
         });
         match same {
-            Some(g) if !g.iter().any(|o| o.source == r.source) => g.push(r),
+            Some(g) if !g.iter().any(|o| from(o) == from(&r)) => g.push(r),
             _ => groups.push(vec![r]),
         }
     }
@@ -320,7 +322,8 @@ fn group(lookup: &Lookup, records: Vec<SourceRecord>) -> Vec<Match> {
     let mut matches: Vec<Match> = groups
         .into_iter()
         .map(|mut records| {
-            records.sort_by_key(|r| r.source);
+            // Built-in sources lead; plugin records follow in arrival order.
+            records.sort_by_key(|r| (r.source.is_none(), r.source));
             let (score, kind) = records
                 .iter()
                 .map(|r| {
@@ -382,6 +385,45 @@ mod tests {
             [SourceId::OpenLibrary, SourceId::Google]
         );
         assert!(matches[2].records[0].title.starts_with("Study Guide"));
+    }
+
+    fn plugin_record(plugin: &str, title: &str, author: &str, isbn: Option<&str>) -> SourceRecord {
+        SourceRecord { source: None, source_name: plugin.into(), ..record(SourceId::OpenLibrary, title, author, isbn) }
+    }
+
+    #[test]
+    fn records_from_different_plugins_join_one_match() {
+        let lookup = Lookup { title: "The Dispossessed".into(), ..Default::default() };
+        let matches = group(
+            &lookup,
+            vec![
+                plugin_record("Goodreads", "The Dispossessed", "Ursula K. Le Guin", Some("9780061054884")),
+                plugin_record("Amazon", "The Dispossessed", "Ursula K. Le Guin", Some("9780061054884")),
+                plugin_record("Amazon", "The Dispossessed", "Ursula K. Le Guin", Some("9781473228412")),
+            ],
+        );
+        assert_eq!(matches.len(), 2, "{matches:#?}");
+        let names = |m: &Match| m.records.iter().map(|r| r.source_name.clone()).collect::<Vec<_>>();
+        assert_eq!(names(&matches[0]), ["Goodreads", "Amazon"]);
+        assert_eq!(names(&matches[1]), ["Amazon"], "one record per plugin in a match");
+    }
+
+    #[test]
+    fn built_in_sources_lead_plugins_in_a_match() {
+        let lookup = Lookup { title: "The Dispossessed".into(), ..Default::default() };
+        let matches = group(
+            &lookup,
+            vec![
+                plugin_record("Goodreads", "The Dispossessed", "Ursula K. Le Guin", Some("9780061054884")),
+                record(SourceId::Google, "The Dispossessed", "Ursula K. Le Guin", Some("9780061054884")),
+                record(SourceId::OpenLibrary, "The Dispossessed", "Ursula K. Le Guin", None),
+            ],
+        );
+        assert_eq!(matches.len(), 1, "{matches:#?}");
+        assert_eq!(
+            matches[0].records.iter().map(|r| r.source).collect::<Vec<_>>(),
+            [Some(SourceId::OpenLibrary), Some(SourceId::Google), None]
+        );
     }
 
     #[test]
