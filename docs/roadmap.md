@@ -32,7 +32,8 @@ What's done and what's next, in roughly the order it happened. The
 - [x] Edit Books: "Fill from a book" copies one book's values into the fields the others leave empty (not dates, ratings or issue numbers); in a comic, "Same as Artists" fills Inkers, Colorists, Letterers and Cover Artists
 - [x] A comic metadata source: Metron, with your own API token (Settings → Metadata Sources). Find Metadata searches a comic by series and issue (or its Metron id) and offers its comic fields beside the rest: issue, format, volume, the art team, story arcs, characters, teams, age rating
 - [ ] Comic Vine as a second comic source
-- [ ] Keys and logins in the system keychain rather than the settings file
+- [x] Metadata-source keys (Google Books, Metron) in the system keychain rather than the settings file: the macOS Keychain, Windows Credential Manager, the Secret Service on Linux (GNOME Keyring, KWallet), one entry per source under `com.magnitide.app`; keys already in the settings file move over at launch. Without a keychain (a headless or minimal Linux) they stay in the settings file, and Settings says so
+- [ ] The library server's password in the keychain too
 - [x] MOBI/AZW/AZW3 metadata and covers (adding books, device matching); "Surname, Given" authors turned around
 - [ ] PDF metadata reader (drag and drop uses file names for PDFs today)
 - [x] Native EPUB → AZW3 converter (KF8, a port of calibre's writer): Kindles no longer need calibre installed; calibre is a fallback for unusual books

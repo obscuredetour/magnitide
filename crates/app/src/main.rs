@@ -4,6 +4,7 @@ mod commands;
 mod covers;
 mod custom;
 mod devices;
+mod keys;
 mod lookup;
 #[cfg(target_os = "macos")]
 mod menu;
@@ -118,6 +119,13 @@ fn main() {
         .manage(lookup::ReturnedCovers::default())
         .manage(updates::Pending::default())
         .setup(|app| {
+            // The sources' keys: in the keychain, where the settings file's
+            // move on this launch (off the main thread: it may ask the user
+            // to unlock a keyring).
+            let secrets = keys::Secrets::new(lookup::settings_path(app.handle()));
+            tauri::Manager::manage(app, secrets);
+            let handle = app.handle().clone();
+            std::thread::spawn(move || tauri::Manager::state::<keys::Secrets>(&handle).warm());
             devices::watch(app.handle().clone());
             server::start_if_enabled(app.handle());
             tauri::Manager::manage(app, plugins::create(app.handle()));
