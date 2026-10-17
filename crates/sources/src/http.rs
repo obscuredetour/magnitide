@@ -12,10 +12,13 @@ const USER_AGENT: &str =
     concat!("Magnitide/", env!("CARGO_PKG_VERSION"), " (+https://github.com/obscuredetour/magnitide)");
 
 /// The least time between two requests to a host: a second for search APIs,
-/// less for cover images (a results list shows several).
+/// less for cover images (a results list shows several), and three for
+/// Metron, which allows 20 a minute.
 fn gap(host: &str) -> Duration {
-    if host.starts_with("covers.") || host == "books.google.com" {
+    if host.starts_with("covers.") || host == "books.google.com" || host == "static.metron.cloud" {
         Duration::from_millis(150)
+    } else if host == "metron.cloud" {
+        Duration::from_millis(3100)
     } else {
         Duration::from_millis(1000)
     }
@@ -83,8 +86,20 @@ fn throttle(url: &str) {
 }
 
 pub(crate) fn get_json(url: &str, query: &[(&str, &str)]) -> Result<serde_json::Value, Error> {
+    get_json_with(url, query, None)
+}
+
+/// [`get_json`], with an account's API token (`Authorization: Bearer`).
+pub(crate) fn get_json_with(
+    url: &str,
+    query: &[(&str, &str)],
+    token: Option<&str>,
+) -> Result<serde_json::Value, Error> {
     throttle(url);
     let mut req = AGENT.get(url).header("Accept", "application/json");
+    if let Some(token) = token {
+        req = req.header("Authorization", format!("Bearer {}", token.trim()));
+    }
     for (k, v) in query {
         req = req.query(*k, *v);
     }

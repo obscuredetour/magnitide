@@ -6,7 +6,9 @@ import Check from 'lucide-solid/icons/check';
 import {
   api,
   coverUrl,
+  type ComicRecord,
   errorMessage,
+  type FieldValue,
   type MatchKind,
   type MetadataMatch,
   remoteCoverUrl,
@@ -36,6 +38,10 @@ export type Current = {
   descriptionHtml: string | null;
   hasCover: boolean;
   isbn: string | null;
+  /** A comic: searched by series and issue, with its comic fields compared too. */
+  comic: boolean;
+  /** Its comic fields' values, by key ("artists"). */
+  custom: Record<string, FieldValue | null | undefined>;
 };
 
 /** What the user chose to take; the edit form applies it. */
@@ -50,6 +56,8 @@ export type Applied = {
   identifiers?: Record<string, string>;
   descriptionHtml?: string;
   coverUrl?: string;
+  /** Comic fields, by key ("artists"); the form makes them if the library hasn't. */
+  custom?: Record<string, FieldValue>;
 };
 
 /**
@@ -68,7 +76,7 @@ export type Step = {
   onUse(applied: Applied): Promise<string | null>;
 };
 
-const SOURCE_NAME: Record<SourceId, string> = { openLibrary: 'Open Library', google: 'Google Books' };
+const SOURCE_NAME: Record<SourceId, string> = { openLibrary: 'Open Library', google: 'Google Books', metron: 'Metron' };
 /** What to call a record's source: a built-in one, or the calibre plugin it came from. */
 const sourceName = (r: SourceRecord) => r.sourceName || (r.source ? SOURCE_NAME[r.source] : 'Plugin');
 const KIND_LABEL: Record<MatchKind, string> = {
@@ -79,13 +87,18 @@ const KIND_LABEL: Record<MatchKind, string> = {
 
 type Value = string | string[] | Record<string, string> | Series;
 
-/** One row of the comparison. `from` reads a record; `text` is how a value displays and compares. */
+/**
+ * One row of the comparison. `from` reads a record; `text` is how a value
+ * displays and compares. A comic field's row has its `custom` key, and
+ * `toField` turns its value into the field's.
+ */
 type Field = {
-  key: Exclude<keyof Applied, 'coverUrl'>;
+  key: Exclude<keyof Applied, 'coverUrl' | 'custom'> | `custom:${string}`;
   label: string;
   from(r: SourceRecord, c: Current): Value | null;
   current(c: Current): Value | null;
   text(v: Value): string;
+  custom?: { key: string; toField(v: Value): FieldValue };
 };
 
 const list = (v: Value) => (v as string[]).join(', ');
@@ -144,6 +157,50 @@ const FIELDS: Field[] = [
     current: (c) => c.descriptionHtml,
     text: String,
   },
+];
+
+/** A comic field's row: text, a list, or a whole number (Volume). */
+function comicField(
+  key: string,
+  label: string,
+  read: (c: ComicRecord) => string | string[] | number | null,
+  kind: 'text' | 'list' | 'number',
+): Field {
+  const asValue = (v: unknown): Value | null => {
+    if (v === null || v === undefined) return null;
+    if (Array.isArray(v)) return nonEmpty(v.map(String));
+    const t = String(v).trim();
+    return t ? t : null;
+  };
+  return {
+    key: `custom:${key}`,
+    label,
+    from: (r) => (r.comic ? asValue(read(r.comic)) : null),
+    current: (c) => asValue(c.custom[key]),
+    text: kind === 'list' ? list : String,
+    custom: {
+      key,
+      toField: (v) => (kind === 'list' ? (v as string[]) : kind === 'number' ? Number(v) : String(v)),
+    },
+  };
+}
+
+/** A comic source's comic fields (Metron's), shown for a comic. */
+const COMIC_FIELDS: Field[] = [
+  comicField('issue', 'Issue', (c) => c.issue, 'text'),
+  comicField('format', 'Format', (c) => c.format, 'text'),
+  comicField('volume', 'Volume', (c) => c.volume, 'number'),
+  comicField('artists', 'Artists', (c) => c.artists, 'list'),
+  comicField('inkers', 'Inkers', (c) => c.inkers, 'list'),
+  comicField('colorists', 'Colorists', (c) => c.colorists, 'list'),
+  comicField('letterers', 'Letterers', (c) => c.letterers, 'list'),
+  comicField('cover_artists', 'Cover Artists', (c) => c.coverArtists, 'list'),
+  comicField('editors', 'Editors', (c) => c.editors, 'list'),
+  comicField('story_arcs', 'Story Arcs', (c) => c.storyArcs, 'list'),
+  comicField('characters', 'Characters', (c) => c.characters, 'list'),
+  comicField('teams', 'Teams', (c) => c.teams, 'list'),
+  comicField('locations', 'Locations', (c) => c.locations, 'list'),
+  comicField('age_rating', 'Age Rating', (c) => c.ageRating, 'text'),
 ];
 
 const same = (f: Field, a: Value | null, b: Value | null) =>
@@ -227,6 +284,14 @@ export function MatchDialog(props: {
   const [title, setTitle] = createSignal(props.current.title);
   const [author, setAuthor] = createSignal(props.current.authors[0] ?? '');
   const [isbn, setIsbn] = createSignal(props.current.isbn ?? '');
+  // A comic is found by its series and issue number.
+  const [series, setSeries] = createSignal(props.current.series?.name ?? '');
+  const [issue, setIssue] = createSignal(
+    (typeof props.current.custom.issue === 'string' && props.current.custom.issue) ||
+      (props.current.series?.index != null ? String(props.current.series.index) : ''),
+  );
+  // The first search may go straight to the book by its id at a source (Metron's).
+  let firstSearch = true;
   const [searching, setSearching] = createSignal(false);
   const [failed, setFailed] = createSignal<string | null>(null);
   const [result, setResult] = createStore<SearchResult>({ matches: [], errors: [] });
@@ -248,11 +313,17 @@ export function MatchDialog(props: {
     try {
       const ahead = prefetched;
       prefetched = undefined;
+      const identifiers = firstSearch ? props.current.identifiers : {};
+      firstSearch = false;
       const r = await (ahead ??
         api.findMetadata({
           title: title().trim(),
           authors: author().trim() ? [author().trim()] : [],
           isbn: isbn().trim() || null,
+          comic: props.current.comic,
+          series: series().trim() || null,
+          issue: issue().trim() || null,
+          identifiers,
         }));
       setResult(r);
       select(0);
@@ -294,8 +365,11 @@ export function MatchDialog(props: {
     return out;
   };
 
+  // A comic's comic fields follow the book's own, when a source has any.
+  const fields = () =>
+    props.current.comic && match()?.records.some((r) => r.comic) ? [...FIELDS, ...COMIC_FIELDS] : FIELDS;
   const rows = createMemo(() =>
-    FIELDS.map((f) => {
+    fields().map((f) => {
       const opts = options(f);
       const current = f.current(props.current);
       // Descriptions: the longest by default; anything else: the first source's.
@@ -331,7 +405,9 @@ export function MatchDialog(props: {
   const apply = async () => {
     const applied: Applied = {};
     for (const r of rows()) {
-      if (r.on && r.value !== null) (applied as Record<string, Value>)[r.f.key] = r.value;
+      if (!r.on || r.value === null) continue;
+      if (r.f.custom) applied.custom = { ...applied.custom, [r.f.custom.key]: r.f.custom.toField(r.value) };
+      else (applied as Record<string, Value>)[r.f.key] = r.value;
     }
     if (coverOn()) applied.coverUrl = covers()[coverPick()]?.url;
     if (props.step) {
@@ -394,20 +470,42 @@ export function MatchDialog(props: {
                 </span>
               )}
             </Show>
-            <input
-              class={`${input} flex-[3]`}
-              aria-label="Title"
-              placeholder="Title"
-              value={title()}
-              onInput={(e) => setTitle(e.currentTarget.value)}
-            />
-            <input
-              class={`${input} flex-[2]`}
-              aria-label="Author"
-              placeholder="Author"
-              value={author()}
-              onInput={(e) => setAuthor(e.currentTarget.value)}
-            />
+            <Show
+              when={props.current.comic}
+              fallback={
+                <>
+                  <input
+                    class={`${input} flex-[3]`}
+                    aria-label="Title"
+                    placeholder="Title"
+                    value={title()}
+                    onInput={(e) => setTitle(e.currentTarget.value)}
+                  />
+                  <input
+                    class={`${input} flex-[2]`}
+                    aria-label="Author"
+                    placeholder="Author"
+                    value={author()}
+                    onInput={(e) => setAuthor(e.currentTarget.value)}
+                  />
+                </>
+              }
+            >
+              <input
+                class={`${input} flex-[3]`}
+                aria-label="Series"
+                placeholder="Series"
+                value={series()}
+                onInput={(e) => setSeries(e.currentTarget.value)}
+              />
+              <input
+                class={`${input} w-24`}
+                aria-label="Issue"
+                placeholder="Issue"
+                value={issue()}
+                onInput={(e) => setIssue(e.currentTarget.value)}
+              />
+            </Show>
             <input
               class={`${input} w-36`}
               aria-label="ISBN"
@@ -425,7 +523,10 @@ export function MatchDialog(props: {
             <ul class="w-80 flex-none overflow-y-auto border-r border-line p-2" role="listbox" aria-label="Results">
               <Show when={!searching() && !result.matches.length}>
                 <li class="p-4 text-center text-sm text-muted">
-                  {failed() ?? 'No matches. Try fewer words, or the ISBN alone.'}
+                  {failed() ??
+                    (props.current.comic
+                      ? 'No matches. Check the series name and the issue number (or leave the number out).'
+                      : 'No matches. Try fewer words, or the ISBN alone.')}
                 </li>
               </Show>
               <For each={result.matches}>
@@ -487,6 +588,7 @@ export function MatchDialog(props: {
                 <For each={rows()}>
                   {(row) => (
                     <FieldRow
+                      first={row.f.key === 'custom:issue'}
                       label={row.f.label}
                       on={row.on}
                       disabled={row.unchanged}
@@ -499,7 +601,7 @@ export function MatchDialog(props: {
                       found={
                         row.value === null ? (
                           <span class="text-faint">
-                            {row.f.key === 'descriptionHtml' && loadingDetails() ? 'Loading…' : '—'}
+                            {(row.f.key === 'descriptionHtml' || row.f.custom) && loadingDetails() ? 'Loading…' : '—'}
                           </span>
                         ) : (
                           <>
@@ -616,6 +718,8 @@ function Text(props: { value: string; html: boolean }) {
 }
 
 function FieldRow(props: {
+  /** The first comic field: a heading over them. */
+  first?: boolean;
   label: string;
   on: boolean;
   disabled: boolean;
@@ -627,37 +731,42 @@ function FieldRow(props: {
   onPick(i: number): void;
 }) {
   return (
-    <div class="grid grid-cols-[1.25rem_6.5rem_1fr_1fr] items-start gap-x-3 border-b border-line py-2.5 text-sm last:border-b-0">
-      <input
-        type="checkbox"
-        class="mt-0.5 size-4 accent-accent"
-        aria-label={`Use the found ${props.label.toLowerCase()}`}
-        checked={props.on}
-        disabled={props.disabled}
-        onChange={(e) => props.onToggle(e.currentTarget.checked)}
-      />
-      <span class="font-medium text-muted">{props.label}</span>
-      <div
-        class="min-w-0"
-        classList={{ 'opacity-50 line-through decoration-faint': props.on && props.current !== null }}
-      >
-        {props.current ?? <span class="text-faint">—</span>}
+    <>
+      <Show when={props.first}>
+        <div class="mt-3 mb-1 text-[11px] font-semibold tracking-[.06em] text-muted uppercase">Comic</div>
+      </Show>
+      <div class="grid grid-cols-[1.25rem_6.5rem_1fr_1fr] items-start gap-x-3 border-b border-line py-2.5 text-sm last:border-b-0">
+        <input
+          type="checkbox"
+          class="mt-0.5 size-4 accent-accent"
+          aria-label={`Use the found ${props.label.toLowerCase()}`}
+          checked={props.on}
+          disabled={props.disabled}
+          onChange={(e) => props.onToggle(e.currentTarget.checked)}
+        />
+        <span class="font-medium text-muted">{props.label}</span>
+        <div
+          class="min-w-0"
+          classList={{ 'opacity-50 line-through decoration-faint': props.on && props.current !== null }}
+        >
+          {props.current ?? <span class="text-faint">—</span>}
+        </div>
+        <div class="min-w-0" classList={{ 'opacity-60': !props.on }}>
+          <Show when={props.sources}>
+            {(s) => (
+              <Select
+                class="mb-1 h-6 pl-1.5 text-[11px]"
+                aria-label={`Source for ${props.label.toLowerCase()}`}
+                value={props.pick}
+                onChange={(e) => props.onPick(Number(e.currentTarget.value))}
+              >
+                <For each={s()}>{(name, i) => <option value={i()}>{name}</option>}</For>
+              </Select>
+            )}
+          </Show>
+          <div>{props.found}</div>
+        </div>
       </div>
-      <div class="min-w-0" classList={{ 'opacity-60': !props.on }}>
-        <Show when={props.sources}>
-          {(s) => (
-            <Select
-              class="mb-1 h-6 pl-1.5 text-[11px]"
-              aria-label={`Source for ${props.label.toLowerCase()}`}
-              value={props.pick}
-              onChange={(e) => props.onPick(Number(e.currentTarget.value))}
-            >
-              <For each={s()}>{(name, i) => <option value={i()}>{name}</option>}</For>
-            </Select>
-          )}
-        </Show>
-        <div>{props.found}</div>
-      </div>
-    </div>
+    </>
   );
 }

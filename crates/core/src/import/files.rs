@@ -10,13 +10,16 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use magnitide_catalog::{CustomValue, Datatype};
 use rusqlite::{OptionalExtension, params};
 use serde::Serialize;
 
 use super::store::{Cover, add_formats, store_book};
+use crate::custom::{CustomField, FieldValue};
 use crate::error::Result;
 use crate::hooks::{ImportHooks, ImportOutcome, MetadataPlugins, NoHooks};
 use crate::library::{BookId, Library, NewBook};
+use crate::metadata::comic::ComicDetails;
 use crate::metadata::{self, filename::book_stem};
 use crate::{html, names};
 
@@ -182,6 +185,9 @@ pub fn add_files_filtered(
     }
 
     let total = groups.len();
+    let mut comic_fields = None;
+    let convert_cbr = lib.convert_cbr_on_add()?;
+    let mut work = None;
     for (done, files) in groups.into_values().enumerate() {
         // Plugins first (calibre's on_import), on each file; a plugin may
         // hand back a rewritten file, possibly with another extension.
@@ -203,11 +209,15 @@ pub fn add_files_filtered(
                 }
             })
             .collect();
+        // CBR comics repacked as CBZ on the way in, when the library asks for that.
+        let files =
+            if convert_cbr { cbr_as_cbz(files, &mut work, &mut temporary, &mut report.warnings) } else { files };
         let (format, path) = metadata_source(&files);
         let meta = metadata::read_with(path, format, plugins);
         let title = meta.title.clone().unwrap_or_else(|| book_stem(path));
         progress(AddProgress { done, total, title: &title });
 
+        // A comic's authors are its writers (ComicInfo's Writer); its artists keep their own field.
         let authors: Vec<String> =
             meta.authors.iter().map(|a| a.name.trim().to_owned()).filter(|a| !a.is_empty()).collect();
         // The same book (title and first author) already here: add only the
@@ -238,6 +248,7 @@ pub fn add_files_filtered(
             title: title.clone(),
             authors,
             series: meta.series.clone(),
+            series_end: meta.comic.as_ref().and_then(|c| c.issue_end),
             publisher: meta.publisher.clone(),
             published: meta.published,
             description_html: meta.description.as_deref().map(html::sanitize).filter(|d| !d.trim().is_empty()),
@@ -254,7 +265,20 @@ pub fn add_files_filtered(
             ..Default::default()
         };
 
-        match store_book(lib, &new, &files, meta.cover.as_deref().map(Cover::Bytes), |_, _| Ok(())) {
+        // A comic's own fields (issue, artists, …), made the first time one is added.
+        let custom = match meta.comic.as_deref() {
+            Some(comic) => match comic_custom(lib, comic, &mut comic_fields) {
+                Ok(values) => values,
+                Err(e) => {
+                    report.failed.push(format!("{}: {e}", path.display()));
+                    remove_temporary(&temporary);
+                    continue;
+                }
+            },
+            None => Vec::new(),
+        };
+        let cover = meta.cover.as_deref().map(Cover::Bytes);
+        match store_book(lib, &new, &files, cover, |tx, id| crate::custom::write_custom(tx, id, &custom)) {
             Ok(stored) => {
                 report.added.push(stored.id);
                 report.files += stored.files;
@@ -312,6 +336,77 @@ fn collect(
         }
         _ => skipped.push(format!("{} couldn't be read", path.display())),
     }
+}
+
+/// A comic's values for the library's comic fields, ready to write. The fields
+/// are looked up (and made, if need be) once per add, in `fields`.
+fn comic_custom(
+    lib: &mut Library,
+    comic: &ComicDetails,
+    fields: &mut Option<Vec<CustomField>>,
+) -> Result<Vec<(i64, Datatype, Option<CustomValue>)>> {
+    if fields.is_none() {
+        *fields = Some(lib.ensure_comic_fields()?);
+    }
+    let fields = fields.as_deref().unwrap_or_default();
+    let values = crate::comics::comic_values(comic)
+        .into_iter()
+        .filter(|(key, value)| {
+            let Some(field) = fields.iter().find(|f| &f.key == key) else { return false };
+            match value {
+                // A Format whose choice was taken out of the field is left unset.
+                Some(FieldValue::Text(t)) if !field.choices.is_empty() => {
+                    field.choices.iter().any(|c| c.eq_ignore_ascii_case(t))
+                }
+                Some(_) => true,
+                None => false,
+            }
+        })
+        .collect();
+    lib.clean_custom(&values)
+}
+
+/// A book's CBR as a CBZ (written in `work`, and listed in `temporary` to be
+/// removed once stored), unless it has a CBZ already. One that can't be
+/// converted (a RAR with no tool to read it) is kept as a CBR, with a warning.
+fn cbr_as_cbz(
+    files: Vec<(String, PathBuf)>,
+    work: &mut Option<crate::convert::TempDir>,
+    temporary: &mut Vec<PathBuf>,
+    warnings: &mut Vec<String>,
+) -> Vec<(String, PathBuf)> {
+    if files.iter().any(|(f, _)| f == "CBZ") {
+        return files;
+    }
+    files
+        .into_iter()
+        .map(|(format, path)| {
+            if format != "CBR" {
+                return (format, path);
+            }
+            let dir = match work {
+                Some(dir) => dir,
+                None => match crate::convert::TempDir::new() {
+                    Ok(dir) => work.insert(dir),
+                    Err(e) => {
+                        warnings.push(format!("{}: kept as CBR: {e}", path.display()));
+                        return (format, path);
+                    }
+                },
+            };
+            let dest = dir.0.join(format!("{}-{}.cbz", temporary.len(), book_stem(&path)));
+            match crate::convert::cbz::convert(&path, &dest) {
+                Ok(()) => {
+                    temporary.push(dest.clone());
+                    ("CBZ".to_owned(), dest)
+                }
+                Err(e) => {
+                    warnings.push(format!("{}: kept as CBR, couldn't make it a CBZ: {e}", path.display()));
+                    (format, path)
+                }
+            }
+        })
+        .collect()
 }
 
 /// Files a plugin made while adding a book, no longer needed.
@@ -437,6 +532,95 @@ mod tests {
         mixed_folder(&drop2);
         let report = add_files(&mut all, &[drop2], |_| {}).unwrap();
         assert_eq!(report.added.len(), 5);
+    }
+
+    #[test]
+    fn a_comic_gets_its_own_fields_made_and_filled() {
+        use crate::custom::{FieldKind, FieldValue, NewField};
+        use crate::metadata::comic::tests::{COMIC_INFO, make_cbz};
+
+        let (_tmp, mut lib, drop) = setup();
+        // A field of the user's own called "volume", of another kind: kept, and not written to.
+        lib.add_custom_field(&NewField {
+            name: "Volume".into(),
+            key: "volume".into(),
+            kind: Some(FieldKind::Text),
+            multiple: false,
+            choices: vec![],
+        })
+        .unwrap();
+        make_cbz(&drop.join("saga1.cbz"), &[("1.jpg", &png()), ("ComicInfo.xml", COMIC_INFO.as_bytes())], None);
+        let tpb = "<ComicInfo><Title>Saga, Volume One</Title><Series>Saga TPB</Series><Number>1-6</Number>\
+                   <Format>TPB</Format></ComicInfo>";
+        make_cbz(&drop.join("saga-tpb.cbz"), &[("1.jpg", &png()), ("ComicInfo.xml", tpb.as_bytes())], None);
+
+        let report = add_files(&mut lib, &[drop], |_| {}).unwrap();
+        assert_eq!((report.added.len(), report.covers), (2, 2), "{report:?}");
+
+        let fields = lib.custom_fields().unwrap();
+        let comic_keys: Vec<&str> =
+            fields.iter().filter(|f| f.group.as_deref() == Some("comic")).map(|f| f.key.as_str()).collect();
+        assert!(comic_keys.contains(&"comic") && comic_keys.contains(&"artists"), "{comic_keys:?}");
+        assert!(!comic_keys.contains(&"volume"), "the user's own field isn't taken over");
+
+        let books: Vec<_> = report.added.iter().map(|id| (*id, lib.book(*id).unwrap())).collect();
+        let (issue, saga) = books.iter().find(|(_, b)| b.title == "Saga #1").unwrap();
+        assert_eq!(saga.authors, ["Brian K. Vaughan"], "the writer; the artist is in Artists");
+        let values = lib.custom_edit_values(*issue).unwrap();
+        assert_eq!(values["comic"], Some(FieldValue::Bool(true)));
+        assert_eq!(values["issue"], Some(FieldValue::Text("1".into())));
+        assert_eq!(values["artists"], Some(FieldValue::List(vec!["Fiona Staples".into()])));
+        assert_eq!(values["characters"], Some(FieldValue::List(vec!["Alana".into(), "Marko".into(), "Hazel".into()])));
+        assert_eq!(values["volume"], None, "not written into the user's text field");
+        assert_eq!(values["right_to_left"], None);
+
+        let (collected_id, collected) = books.iter().find(|(_, b)| b.title == "Saga, Volume One").unwrap();
+        assert_eq!(lib.custom_edit_values(*collected_id).unwrap()["format"], Some(FieldValue::Text("TPB".into())));
+        assert_eq!(values["format"], None, "Saga #1's file names no format");
+        assert_eq!(
+            (collected.series.clone(), collected.series_end),
+            (Some(("Saga TPB".into(), 1.0)), Some(6.0)),
+            "an omnibus of issues 1–6"
+        );
+    }
+
+    #[test]
+    fn cbrs_become_cbzs_when_the_library_asks() {
+        use crate::metadata::comic::tests::{COMIC_INFO, make_cbz};
+
+        let (_tmp, mut lib, drop) = setup();
+        assert!(!lib.convert_cbr_on_add().unwrap(), "off by default");
+        // A CBR that's a ZIP needs no tool; it's added as it is when the setting is off…
+        make_cbz(&drop.join("saga1.cbr"), &[("1.jpg", &png()), ("ComicInfo.xml", COMIC_INFO.as_bytes())], None);
+        let report = add_files(&mut lib, std::slice::from_ref(&drop), |_| {}).unwrap();
+        assert_eq!(report.formats, [(report.added[0], "CBR".to_owned())]);
+
+        // …and as a CBZ when it's on (the dropped file untouched).
+        let (_tmp2, mut lib2, drop2) = setup();
+        lib2.set_convert_cbr_on_add(true).unwrap();
+        make_cbz(&drop2.join("saga1.cbr"), &[("1.jpg", &png()), ("ComicInfo.xml", COMIC_INFO.as_bytes())], None);
+        let report = add_files(&mut lib2, std::slice::from_ref(&drop2), |_| {}).unwrap();
+        assert_eq!(report.formats, [(report.added[0], "CBZ".to_owned())], "{report:?}");
+        assert_eq!(report.covers, 1);
+        assert_eq!(lib2.book(report.added[0]).unwrap().title, "Saga #1");
+        assert!(drop2.join("saga1.cbr").is_file());
+    }
+
+    #[test]
+    fn a_format_the_field_no_longer_offers_is_left_unset() {
+        use crate::custom::FieldValue;
+        use crate::metadata::comic::tests::make_cbz;
+
+        let (_tmp, mut lib, drop) = setup();
+        lib.ensure_comic_fields().unwrap();
+        let format = lib.custom_fields().unwrap().into_iter().find(|f| f.key == "format").unwrap();
+        lib.update_custom_field(format.id, "Format", Some(&["Issue".to_owned()])).unwrap();
+        let xml = "<ComicInfo><Series>Saga</Series><Number>1-6</Number><Format>TPB</Format></ComicInfo>";
+        make_cbz(&drop.join("tpb.cbz"), &[("ComicInfo.xml", xml.as_bytes())], None);
+        let report = add_files(&mut lib, &[drop], |_| {}).unwrap();
+        assert_eq!(report.added.len(), 1, "{report:?}");
+        let values = lib.custom_edit_values(report.added[0]).unwrap();
+        assert_eq!((values["format"].clone(), values["issue"].clone()), (None, Some(FieldValue::Text("1-6".into()))));
     }
 
     #[test]

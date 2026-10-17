@@ -78,6 +78,9 @@ import type { SourceRecord } from './bindings/SourceRecord';
 import type { SourceStatus } from './bindings/SourceStatus';
 import type { AddReport } from './bindings/AddReport';
 import type { DropScan } from './bindings/DropScan';
+import type { ComicRecord } from './bindings/ComicRecord';
+import type { OpenedComic } from './bindings/OpenedComic';
+import type { ReadingState } from './bindings/ReadingState';
 import type { BookRow } from './bindings/BookRow';
 import type { AuthorSort } from './bindings/AuthorSort';
 import type { BookEdit } from './bindings/BookEdit';
@@ -116,6 +119,9 @@ export type {
   NewField,
   AddReport,
   DropScan,
+  ComicRecord,
+  OpenedComic,
+  ReadingState,
   ApplyReport,
   InstalledPlugin,
   NativePlugin,
@@ -218,6 +224,13 @@ export const api = {
     invoke<CustomField>('update_custom_field', { id, name, choices }),
   /** Delete a field and every book's value for it. */
   deleteCustomField: (id: number) => invoke<void>('delete_custom_field', { id }),
+  /** Make the comic fields (issue, volume, artists, …) if the library hasn't got them. */
+  ensureComicFields: () => invoke<CustomField[]>('ensure_comic_fields'),
+  /** Whether CBR comics added to the open library are repacked as CBZ. */
+  convertCbrOnAdd: () => invoke<boolean>('convert_cbr_on_add'),
+  setConvertCbrOnAdd: (on: boolean) => invoke<void>('set_convert_cbr_on_add', { on }),
+  /** The program that reads RAR archives (most CBRs) here: "bsdtar", "7-Zip" or "unrar"; null if none. */
+  rarTool: () => invoke<string | null>('rar_tool'),
 
   bookDetails: (id: number) => invoke<BookDetails>('book_details', { id }),
 
@@ -275,6 +288,14 @@ export const api = {
   addBooks: (paths: string[], options: { skipDocuments?: boolean; exclude?: string[] } = {}) =>
     invoke<AddReport>('add_books', { paths, ...options }),
 
+  /** Open a book's comic (CBZ, else CB7, else CBR) in the viewer; a RAR or 7z is unpacked first. */
+  openComic: (id: number) => invoke<OpenedComic>('open_comic', { id }),
+  /** Close the viewer's comic. */
+  closeComic: () => invoke<void>('close_comic'),
+  /** The reader is at `page` of `pages`: the book's being read, or at the last page, read. */
+  saveReadingProgress: (id: number, page: number, pages: number) =>
+    invoke<ReadingState | null>('save_reading_progress', { id, page, pages }),
+
   /** What adding these files and folders would find, before anything is copied. */
   scanDrop: (paths: string[]) => invoke<DropScan>('scan_drop', { paths }),
 
@@ -300,6 +321,8 @@ export const api = {
 
   /** What these books have in common, for the bulk editor. */
   bulkValues: (ids: number[]) => invoke<BulkValues>('bulk_values', { ids }),
+  /** What "Fill from a book" would set: `source`'s values wherever the others lack them. Saves nothing. */
+  bulkFill: (ids: number[], source: number) => invoke<BulkEdit>('bulk_fill', { ids, source }),
 
   /** Apply one change to several books, in this order (series numbering). Progress via onBulkProgress. */
   bulkEdit: (ids: number[], change: BulkEdit) => invoke<BulkReport>('bulk_edit', { ids, change }),
@@ -346,13 +369,13 @@ export const api = {
   /** Whether a book's files hold its current metadata; null for calibre libraries. */
   fileMetadataStatus: (id: number) => invoke<FileMetadataStatus | null>('file_metadata_status', { id }),
 
-  /** Write a book's metadata and cover into its EPUB files (only those that differ). */
+  /** Write a book's metadata into its EPUB (with the cover) and CBZ (as ComicInfo.xml) files, only those that differ. */
   writeMetadataToFiles: (id: number) => invoke<WriteReport>('write_metadata_to_files', { id }),
 
   /** How many books "Write metadata to files" would rewrite (changes nothing). */
   writebackPreview: () => invoke<WritebackPreview>('writeback_preview'),
 
-  /** Write every book's metadata into its EPUB files that differ from the library. */
+  /** Write every book's metadata into its EPUB and CBZ files that differ from the library. */
   writeAllMetadata: () => invoke<WriteReport>('write_all_metadata'),
 
   /** Metadata sources and whether each will be asked. */
@@ -619,6 +642,14 @@ export function coverChanged(id: number): void {
 }
 
 /** URL for the Rust `cover://` protocol (its form differs per platform). Reactive. */
+let pageBase: string | undefined;
+
+/** Page `n` (from 0) of the comic open in the viewer; `opening` tells one opening from another. */
+export function pageUrl(id: number, n: number, opening: number): string {
+  pageBase ??= convertFileSrc('', 'page');
+  return `${pageBase}${id}/${n}?o=${opening}`;
+}
+
 export function coverUrl(size: CoverSize, id: number): string {
   coverBase ??= convertFileSrc('', 'cover');
   const v = coverVersions().get(id);

@@ -3,11 +3,12 @@ import SquareLibrary from 'lucide-solid/icons/square-library';
 import X from 'lucide-solid/icons/x';
 import Pencil from 'lucide-solid/icons/pencil';
 
-import { api, type BookDetails, errorMessage, fileManagerName, type MatchedBy } from '../api';
+import { api, type BookDetails, type CustomDetail, errorMessage, fileManagerName, type MatchedBy } from '../api';
 import { openEditor } from '../editor';
 import { DETAILS_WIDTH, detailsWidth, setDetailsWidth } from '../view';
 import { editRevision, library, openBook, search, setSelectedId } from '../library';
-import { formatCustom } from '../fields';
+import { byComicOrder, COMIC_GROUP, COMIC_KEY, customFields, formatCustom, isComicFormat } from '../fields';
+import { readComic } from '../viewer';
 import { identifierOrder } from '../identifiers';
 import { languageName } from '../languages';
 import { toast } from '../toast';
@@ -245,18 +246,30 @@ function Details(props: { book: BookDetails }) {
                 )}
               </For>
             </p>
+            <Show when={credits(b().authors, b().custom)}>
+              {(c) => (
+                <p class="text-xs text-muted">
+                  <Show when={c().writers.length}>
+                    Written by <Names names={c().writers} field="author" />
+                    {' · '}
+                  </Show>
+                  Art by <Names names={c().art} field="#artists" />
+                </p>
+              )}
+            </Show>
             <Show when={b().series.length}>
               <div class="text-muted">
                 <For each={b().series}>
                   {(s) => (
                     <p>
-                      {s.omnibus ? 'Books' : 'Book'} {s.number} of{' '}
+                      {placeIn(b().custom, s.omnibus).noun} {s.number} of{' '}
                       <button
                         class="cursor-pointer text-link hover:underline"
                         onClick={() => searchFor('series', s.name)}
                       >
                         {s.name}
                       </button>
+                      <Show when={placeIn(b().custom, s.omnibus).note}>{(note) => <> · {note()}</>}</Show>
                     </p>
                   )}
                 </For>
@@ -345,7 +358,7 @@ function Details(props: { book: BookDetails }) {
           </section>
         </Show>
 
-        {/* Files: formats, devices, and whether the EPUB's own metadata is out of date. */}
+        {/* Files: formats, devices, and whether the files' own metadata (EPUB, CBZ) is out of date. */}
         <Show when={b().formats.length || devices().length || fileStatus() === 'outdated'}>
           <section class={`${section} space-y-3!`}>
             <Show when={b().formats.length}>
@@ -390,14 +403,19 @@ function Details(props: { book: BookDetails }) {
                 </div>
               </div>
             </Show>
-            {/* Actions on the files: send to each device it isn't on (the first is the
-              panel's main action), and convert. */}
-            <Show when={b().formats.length && (notOn().length || editable())}>
+            {/* Actions on the files: read a comic (the panel's main action then), send to
+              each device it isn't on (else the first is), and convert. */}
+            <Show when={b().formats.length && (readable(b()) || notOn().length || editable())}>
               <div class="flex flex-wrap gap-2">
+                <Show when={readable(b())}>
+                  <button class={primaryButton} onClick={() => readComic(b().id)}>
+                    Read
+                  </button>
+                </Show>
                 <For each={notOn()}>
                   {(d, i) => (
                     <button
-                      class={i() === 0 ? primaryButton : secondaryButton}
+                      class={i() === 0 && !readable(b()) ? primaryButton : secondaryButton}
                       onClick={() => void sendToDevice(d, [b().id])}
                     >
                       Send to {d.name}
@@ -441,11 +459,11 @@ function Details(props: { book: BookDetails }) {
             </Show>
             <Show when={fileStatus() === 'outdated'}>
               <p class="rounded-control border border-line bg-bg/50 p-2 text-xs text-muted">
-                The EPUB’s built-in metadata differs from the library.{' '}
+                The book file’s built-in metadata differs from the library.{' '}
                 <button
                   class="cursor-pointer text-link hover:underline disabled:opacity-60"
                   disabled={writing()}
-                  title="Write the library’s metadata and cover into the EPUB, for e-readers and other apps"
+                  title="Write the library’s metadata into the book’s EPUB (with its cover) or CBZ (as ComicInfo.xml), for e-readers and other apps"
                   onClick={async () => {
                     setWriting(true);
                     await writeBookFiles(b().id);
@@ -459,30 +477,21 @@ function Details(props: { book: BookDetails }) {
           </section>
         </Show>
 
-        <Show when={b().custom.length}>
+        {/* A comic's fields under their own heading; the field marking it as one goes without saying. */}
+        <Show when={b().custom.filter((c) => inComicGroup(c.key) && c.key !== COMIC_KEY).length}>
+          <section class={section}>
+            <h3 class={sectionLabel}>Comic</h3>
+            <CustomValues
+              items={b()
+                .custom.filter((c) => inComicGroup(c.key) && c.key !== COMIC_KEY)
+                .sort((x, y) => byComicOrder(x.key, y.key))}
+            />
+          </section>
+        </Show>
+        <Show when={b().custom.filter((c) => !inComicGroup(c.key)).length}>
           <section class={section}>
             <h3 class={sectionLabel}>Custom fields</h3>
-            <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
-              <For each={b().custom}>
-                {(c) => (
-                  <>
-                    <dt class="text-muted">{c.name}</dt>
-                    <Switch fallback={<dd class="[overflow-wrap:anywhere]">{formatCustom(c.kind, c.value)}</dd>}>
-                      <Match when={c.kind === 'rating'}>
-                        <dd class="tracking-[1px] text-star" title={`${Number(c.value) / 2} of 5`}>
-                          {'★'.repeat(Math.floor(Number(c.value) / 2))}
-                          {Number(c.value) % 2 ? '½' : ''}
-                        </dd>
-                      </Match>
-                      <Match when={c.kind === 'longText'}>
-                        {/* Sanitized in Rust, like the description. */}
-                        <dd class="comments-html font-serif" innerHTML={c.value} />
-                      </Match>
-                    </Switch>
-                  </>
-                )}
-              </For>
-            </dl>
+            <CustomValues items={b().custom.filter((c) => !inComicGroup(c.key))} />
           </section>
         </Show>
 
@@ -514,5 +523,108 @@ function Details(props: { book: BookDetails }) {
         <p class="mt-1 text-[11px] [overflow-wrap:anywhere] text-faint">{b().folder}</p>
       </div>
     </div>
+  );
+}
+
+/**
+ * What a book's number in its series counts, by its comic Format: "Issue 17",
+ * "Volume 3", "Annual 1", "Book 1" (plural for an omnibus range); "Book" for a
+ * book that isn't a comic. A collected edition's range is the issues it
+ * collects, with its format as a note: "Issues 13–18 of Saga · TPB".
+ */
+function placeIn(custom: CustomDetail[], range: boolean): { noun: string; note?: string } {
+  if (!comic(custom)) return { noun: range ? 'Books' : 'Book' };
+  const format = custom.find((c) => c.key === 'format' && inComicGroup(c.key))?.value;
+  const noun = (one: string, many: string) => (range ? many : one);
+  switch (format) {
+    case 'Annual':
+      return { noun: noun('Annual', 'Annuals') };
+    case 'Special':
+      return { noun: noun('Special', 'Specials') };
+    case 'One-Shot':
+    case 'Graphic Novel':
+      return { noun: noun('Book', 'Books') };
+    case 'TPB':
+    case 'Hardcover':
+    case 'Omnibus':
+      return range ? { noun: 'Issues', note: format } : { noun: 'Volume' };
+    case 'Manga Volume':
+      return { noun: noun('Volume', 'Volumes') };
+    default:
+      return { noun: noun('Issue', 'Issues') };
+  }
+}
+
+/** Whether the viewer can read the book: it has a CBZ, CB7 or CBR. */
+const readable = (b: BookDetails) => b.formats.some((f) => isComicFormat(f.format));
+
+/** Whether a book is a comic: marked as one, or with comic fields filled. */
+const comic = (custom: CustomDetail[]) =>
+  custom.some((c) => inComicGroup(c.key) && (c.key !== COMIC_KEY || c.value === 'true'));
+
+/**
+ * Who wrote a comic and who drew it, for the line under its authors: the art
+ * team (artists, inkers) and the authors who aren't in it. None for a book that
+ * isn't a comic, or a comic with no art credits.
+ */
+function credits(authors: string[], custom: CustomDetail[]): { writers: string[]; art: string[] } | null {
+  if (!comic(custom)) return null;
+  const names = (key: string) =>
+    custom
+      .find((c) => c.key === key && inComicGroup(key))
+      ?.value.split(', ')
+      .filter(Boolean) ?? [];
+  const art: string[] = [];
+  for (const name of [...names('artists'), ...names('inkers')]) {
+    if (!art.some((a) => a.toLowerCase() === name.toLowerCase())) art.push(name);
+  }
+  if (!art.length) return null;
+  const writers = authors.filter((a) => !art.some((n) => n.toLowerCase() === a.toLowerCase()));
+  return { writers, art };
+}
+
+/** Names joined with "&", each a search for books with it in `field`. */
+function Names(props: { names: string[]; field: string }) {
+  return (
+    <For each={props.names}>
+      {(name, i) => (
+        <>
+          {i() > 0 && ' & '}
+          <button class="cursor-pointer hover:text-link hover:underline" onClick={() => searchFor(props.field, name)}>
+            {name}
+          </button>
+        </>
+      )}
+    </For>
+  );
+}
+
+/** Whether a field is one of the comic fields. */
+const inComicGroup = (key: string) => customFields().some((f) => f.key === key && f.group === COMIC_GROUP);
+
+/** Custom fields' values, as name–value rows. */
+function CustomValues(props: { items: CustomDetail[] }) {
+  return (
+    <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
+      <For each={props.items}>
+        {(c) => (
+          <>
+            <dt class="text-muted">{c.name}</dt>
+            <Switch fallback={<dd class="[overflow-wrap:anywhere]">{formatCustom(c.kind, c.value)}</dd>}>
+              <Match when={c.kind === 'rating'}>
+                <dd class="tracking-[1px] text-star" title={`${Number(c.value) / 2} of 5`}>
+                  {'★'.repeat(Math.floor(Number(c.value) / 2))}
+                  {Number(c.value) % 2 ? '½' : ''}
+                </dd>
+              </Match>
+              <Match when={c.kind === 'longText'}>
+                {/* Sanitized in Rust, like the description. */}
+                <dd class="comments-html font-serif" innerHTML={c.value} />
+              </Match>
+            </Switch>
+          </>
+        )}
+      </For>
+    </dl>
   );
 }

@@ -84,6 +84,7 @@ fn parse_volumes(v: &Value) -> Vec<SourceRecord> {
                 series: None,
                 series_index: None,
                 has_details: false,
+                comic: None,
             })
         })
         .collect()

@@ -1,4 +1,5 @@
-import { createResource, createSignal, For, Show } from 'solid-js';
+import { createResource, For, Show } from 'solid-js';
+import { createStore } from 'solid-js/store';
 
 import {
   api,
@@ -15,6 +16,8 @@ const SOURCE_NOTES: Record<SourceId, string> = {
   openLibrary: 'Free and open, run by the Internet Archive. No account needed.',
   google:
     'Needs your own free API key: in the Google Cloud console, enable the Books API, then create an API key under Credentials.',
+  metron:
+    'Comics: issues by series and number, with credits, story arcs and characters. Needs the API token of your free metron.cloud account; only comics are looked up there.',
 };
 
 export function SourceSettings() {
@@ -33,25 +36,32 @@ export function SourceSettings() {
   );
   const pluginSources = () => (plugins() ?? []).filter((p) => p.kind === 'metadataSource');
   const nativeSources = () => (native() ?? []).filter((p) => p.manifest.kind === 'metadata-source');
-  const [keyDraft, setKeyDraft] = createSignal('');
+  // What's typed for each source's key, until saved.
+  const [drafts, setDrafts] = createStore<Partial<Record<SourceId, string>>>({});
+  const keyDraft = (s: SourceStatus) => drafts[s.id] ?? '';
+  const canSave = (s: SourceStatus) => keyDraft(s).trim() !== '';
 
   const update = async (s: SourceStatus, enabled: boolean, apiKey: string | null = null) => {
     try {
       mutate(await api.setMetadataSource(s.id, enabled, apiKey));
       if (apiKey !== null) {
-        setKeyDraft('');
+        setDrafts(s.id, undefined);
         toast(apiKey ? 'API key saved' : 'API key removed');
       }
     } catch (err) {
       toast(errorMessage(err), { error: true });
     }
   };
+  const save = (s: SourceStatus) => void update(s, s.enabled, keyDraft(s));
 
   return (
     <>
       <Heading title="Metadata Sources">
         <p>“Find Metadata…” in the edit window asks these sources for a book’s details and cover.</p>
-        <p>Nothing is sent until you search, and then only what you searched for: title, author, ISBN.</p>
+        <p>
+          Nothing is sent until you search, and then only what you searched for: title, author, ISBN, or a comic’s
+          series and issue.
+        </p>
       </Heading>
       <Group title="Built in">
         <For each={sources()}>
@@ -80,15 +90,11 @@ export function SourceSettings() {
                     aria-label={`${s.name} API key`}
                     placeholder={s.hasKey ? 'Key saved · enter a new one to replace it' : 'API key'}
                     class="h-7 min-w-0 flex-1 rounded-control border border-line bg-field px-2 text-xs outline-none focus:border-focus"
-                    value={keyDraft()}
-                    onInput={(e) => setKeyDraft(e.currentTarget.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && keyDraft().trim() && void update(s, s.enabled, keyDraft())}
+                    value={keyDraft(s)}
+                    onInput={(e) => setDrafts(s.id, e.currentTarget.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && canSave(s) && save(s)}
                   />
-                  <button
-                    class={button}
-                    disabled={!keyDraft().trim()}
-                    onClick={() => void update(s, s.enabled, keyDraft())}
-                  >
+                  <button class={button} disabled={!canSave(s)} onClick={() => save(s)}>
                     Save
                   </button>
                   <Show when={s.hasKey}>

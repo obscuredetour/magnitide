@@ -23,6 +23,16 @@ What's done and what's next, in roughly the order it happened. The
 - [x] Library safety: single-writer lock (`.magnitide.lock`), warning for libraries on network shares
 - [x] Drag and drop (and "Add Books…") to add books: EPUB metadata and covers, file-name fallback, formats grouped, duplicates skipped
 - [x] Big or mixed drops asked about first: a folder of more than 50 books, documents (TXT, HTML, RTF, DOCX, ODT; skippable), or a calibre library inside, which can be imported with its tags, series, ratings and custom columns instead of file by file
+- [x] Comic metadata: ComicInfo.xml (or ComicBookInfo) and covers from CBZ, CB7 and CBR; comic fields (issue, format, volume, artists, inkers, colorists, letterers, cover artists, editors, story arcs, characters, teams, age rating, right-to-left) shown when a book is marked Comic, ticked for comic files; authors are the writers (ComicInfo's Writer), and the list and grid show a comic's artists after them, with "Written by … · Art by …" in its details; "1-6" issue ranges become omnibus ranges; the format (Issue, TPB, Annual, Manga Volume, …) words a comic's place in its series: "Issue 17 of Saga", "Volume 3 of …", "Issues 13–18 of Saga · TPB"
+- [x] Comics in RAR archives (CBRs that aren't ZIPs), read with bsdtar, 7-Zip or unrar if one is installed (the UnRAR source can't be built into a GPL program)
+- [x] CBR and CB7 → CBZ, losslessly (the same pages, repacked), in Convert and, as a library setting, when adding
+- [x] Write ComicInfo.xml back into CBZ files (with EPUB write-back: on save, per book, or every file), keeping the file's own elements (Pages, Notes, Web, …) and its pages untouched
+- [x] A comic viewer: Read (or double-click) opens CBZ, CB7 and CBR comics over the library, pages served from the archive (a RAR or 7z unpacked once); one page or two (automatic in a wide window, the cover and wide spreads alone), fit to page, width or height, right to left for manga, full screen; it resumes where you left off and marks the comic Reading, then Read at the last page
+- [x] A comic's title that's just "Series #Number" (as readers make it) follows the series and number in the editor, and so does an Issue that's just the number
+- [x] Edit Books: "Fill from a book" copies one book's values into the fields the others leave empty (not dates, ratings or issue numbers); in a comic, "Same as Artists" fills Inkers, Colorists, Letterers and Cover Artists
+- [x] A comic metadata source: Metron, with your own API token (Settings → Metadata Sources). Find Metadata searches a comic by series and issue (or its Metron id) and offers its comic fields beside the rest: issue, format, volume, the art team, story arcs, characters, teams, age rating
+- [ ] Comic Vine as a second comic source
+- [ ] Keys and logins in the system keychain rather than the settings file
 - [x] MOBI/AZW/AZW3 metadata and covers (adding books, device matching); "Surname, Given" authors turned around
 - [ ] PDF metadata reader (drag and drop uses file names for PDFs today)
 - [x] Native EPUB → AZW3 converter (KF8, a port of calibre's writer): Kindles no longer need calibre installed; calibre is a fallback for unusual books

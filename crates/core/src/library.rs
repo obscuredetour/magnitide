@@ -51,6 +51,8 @@ pub struct NewBook {
     pub author_sorts: BTreeMap<String, String>,
     /// Name and index.
     pub series: Option<(String, f64)>,
+    /// Where an omnibus's range ends (the index is where it starts).
+    pub series_end: Option<f64>,
     pub publisher: Option<String>,
     pub published: Option<NaiveDate>,
     /// Must already be sanitized.
@@ -220,8 +222,8 @@ impl Library {
         // The folder name needs the id, so insert with a unique placeholder first.
         tx.prepare_cached(
             "INSERT INTO books (uuid, title, title_sort, path, series_id, series_index, publisher_id, published,
-                                description_html, added_at, modified_at)
-             VALUES (?1, ?2, ?3, ?1, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                                description_html, added_at, modified_at, series_end)
+             VALUES (?1, ?2, ?3, ?1, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         )?
         .execute(params![
             uuid,
@@ -234,6 +236,7 @@ impl Library {
             book.description_html,
             added,
             now,
+            book.series.as_ref().and(book.series_end).filter(|e| book.series.as_ref().is_some_and(|(_, i)| e > i)),
         ])?;
         let id = tx.last_insert_rowid();
         let path = paths::book_dir(authors[0], title, id);
@@ -427,7 +430,18 @@ mod tests {
         assert!(matches!(err, Error::LibraryInUse(_)), "{err}");
         assert!(err.to_string().contains("already open"), "{err}");
         drop(lib);
-        Library::open(dir.path()).unwrap();
+        // Closed, it opens again. A process another test starts at that moment
+        // briefly shares our open files (between its fork and exec), the lock's
+        // too, so allow it a moment to let go.
+        let mut reopened = Library::open(dir.path());
+        for _ in 0..50 {
+            if !matches!(reopened, Err(Error::LibraryInUse(_))) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            reopened = Library::open(dir.path());
+        }
+        reopened.unwrap();
     }
 
     #[test]

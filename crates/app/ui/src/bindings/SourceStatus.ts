@@ -10,6 +10,10 @@ export type SourceStatus = { id: SourceId, name: string,
  */
 enabled: boolean, needsKey: boolean, hasKey: boolean, 
 /**
+ * A comic source, asked for comics only.
+ */
+comics: boolean, 
+/**
  * Will be asked: enabled, and keyed if it needs one.
  */
 active: boolean, };

@@ -70,8 +70,13 @@ fn run(args: &[String]) -> Result<(), String> {
         }
         ("identify", [title, rest @ ..]) => {
             let lookup = match title.strip_prefix("isbn:") {
-                Some(isbn) => Lookup { title: String::new(), authors: rest.to_vec(), isbn: Some(isbn.to_owned()) },
-                None => Lookup { title: title.clone(), authors: rest.to_vec(), isbn: None },
+                Some(isbn) => Lookup {
+                    title: String::new(),
+                    authors: rest.to_vec(),
+                    isbn: Some(isbn.to_owned()),
+                    ..Default::default()
+                },
+                None => Lookup { title: title.clone(), authors: rest.to_vec(), isbn: None, ..Default::default() },
             };
             for (name, answer) in plugins.identify(&lookup) {
                 match answer {

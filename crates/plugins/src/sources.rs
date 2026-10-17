@@ -88,6 +88,7 @@ fn to_record(plugin: &str, v: &Value) -> SourceRecord {
         series: text("series"),
         series_index: v.get("seriesIndex").and_then(Value::as_f64),
         has_details: false,
+        comic: None,
     }
 }
 
@@ -246,6 +247,7 @@ mod tests {
             title: " Dune ".into(),
             authors: vec!["Frank Herbert".into(), " ".into()],
             isbn: Some("978".into()),
+            ..Default::default()
         });
         assert_eq!(p["title"], "Dune");
         assert_eq!(p["authors"], json!(["Frank Herbert"]));

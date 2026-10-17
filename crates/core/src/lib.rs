@@ -2,8 +2,10 @@
 //! (soon) the import pipeline. No UI or Tauri code lives here, so the
 //! desktop app and the planned server share it. See docs/architecture.md.
 
+pub mod archive;
 pub mod bulk;
 pub mod catalog;
+pub mod comics;
 pub mod convert;
 pub mod custom;
 pub mod db;
@@ -23,6 +25,7 @@ pub mod lock;
 pub mod merge;
 pub mod metadata;
 pub mod names;
+pub mod pages;
 pub mod paths;
 pub mod shelves;
 pub mod tidy;

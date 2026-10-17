@@ -95,6 +95,7 @@ fn parse_search(v: &Value) -> Vec<SourceRecord> {
                 series: None,
                 series_index: None,
                 has_details: true,
+                comic: None,
             })
         })
         .collect()
@@ -173,7 +174,12 @@ mod tests {
     #[test]
     #[ignore = "uses the network"]
     fn live_search() {
-        let lookup = Lookup { title: "The Dispossessed".into(), authors: vec!["Le Guin".into()], isbn: None };
+        let lookup = Lookup {
+            title: "The Dispossessed".into(),
+            authors: vec!["Le Guin".into()],
+            isbn: None,
+            ..Default::default()
+        };
         let records = search(&lookup).unwrap();
         assert!(records.iter().any(|r| r.title == "The Dispossessed"), "{records:#?}");
         let full = details(&records[0]).unwrap();

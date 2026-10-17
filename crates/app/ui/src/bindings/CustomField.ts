@@ -16,4 +16,9 @@ multiple: boolean,
 /**
  * Choice only: the allowed values, in order.
  */
-choices: Array<string>, };
+choices: Array<string>, 
+/**
+ * Fields that belong together, shown together: "comic" for a comic's
+ * (see [`crate::comics`]). None for a field of the user's own.
+ */
+group: string | null, };

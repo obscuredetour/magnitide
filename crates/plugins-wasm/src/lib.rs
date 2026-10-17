@@ -1462,6 +1462,7 @@ fn to_record(r: types::BookRecord, source_name: &str) -> SourceRecord {
         series: r.series.filter(|s| !s.trim().is_empty()),
         series_index: r.series_index.filter(|i| i.is_finite()),
         has_details: false,
+        comic: None,
     }
 }
 
@@ -1478,6 +1479,7 @@ fn from_wit_metadata(m: types::BookMetadata) -> BookMetadata {
         tags: m.tags,
         cover: m.cover.filter(|c| !c.is_empty()),
         uuids: m.uuids.into_iter().map(|u| u.to_lowercase()).collect(),
+        comic: None,
     }
 }
 

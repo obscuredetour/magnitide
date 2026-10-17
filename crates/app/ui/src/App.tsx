@@ -50,6 +50,8 @@ import { drag, dragJustEnded, startBookDrag } from './bookDrag';
 import { addToShelf, newShelfFor, refreshShelves, shelves } from './shelves';
 import { initPlugins } from './plugins';
 import { Sidebar } from './components/Sidebar';
+import { ComicViewer } from './components/ComicViewer';
+import { openOrRead, reading } from './viewer';
 
 export function App() {
   let view: ViewHandle | undefined;
@@ -265,7 +267,7 @@ export function App() {
                     emptyMark={!query().trim()}
                     onSelect={click}
                     onContextMenu={contextMenu}
-                    onOpen={(id) => void openBook(id)}
+                    onOpen={openOrRead}
                   />
                 }
               >
@@ -278,7 +280,7 @@ export function App() {
                   emptyMark={!query().trim()}
                   onSelect={click}
                   onContextMenu={contextMenu}
-                  onOpen={(id) => void openBook(id)}
+                  onOpen={openOrRead}
                 />
               </Show>
               <Show when={detailsOpen() && selectedId()}>
@@ -304,6 +306,9 @@ export function App() {
       </Show>
       <Show when={settingsOpen()}>
         <SettingsDialog section={settingsSection()} onClose={() => setSettingsOpen(false)} />
+      </Show>
+      <Show when={reading()} keyed>
+        {(id) => <ComicViewer id={id} />}
       </Show>
       <BookMenuHost />
       <LookupHost />

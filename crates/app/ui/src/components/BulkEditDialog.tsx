@@ -7,7 +7,8 @@ import { items, refresh, setEditRevision } from '../library';
 import { startJob } from '../jobs';
 import { plural, writeOnSave } from '../writeback';
 import { Autocomplete } from './Autocomplete';
-import { customFields } from '../fields';
+import { Select } from './Select';
+import { COMIC_KEY, comicFields, comicMarker, customFields, isComicFormat, ownFields } from '../fields';
 import { CustomFieldInput, customFieldHint } from './CustomFieldInput';
 import { primaryButton, secondaryButton, smallButton } from '../buttons';
 import { keys } from '../keys';
@@ -79,6 +80,24 @@ export function BulkEditDialog(props: { ids: number[] }) {
   /** Custom fields changed, by key: a value to set on every book, or null to clear it on all. */
   const [customDraft, setCustomDraft] = createStore<Record<string, FieldValue | null>>({});
   const sharedCustom = (key: string) => values()?.custom[key];
+  // The comic fields show when any of these books is a comic, or they're being marked as comics.
+  const showComic = () => {
+    if (!comicMarker()) return false;
+    const draft = customDraft[COMIC_KEY];
+    if (draft !== undefined) return draft === true;
+    const shared = sharedCustom(COMIC_KEY);
+    if (shared?.mixed || shared?.value === true) return true;
+    return props.ids.some((id) =>
+      items()
+        .find((b) => b.id === id)
+        ?.formats.some(isComicFormat),
+    );
+  };
+  const bulkFields = () => [
+    ...ownFields(),
+    ...(comicMarker() ? [comicMarker()!] : []),
+    ...(showComic() ? comicFields() : []),
+  ];
   const setCustom = (key: string, value: FieldValue | null) => {
     const shared = sharedCustom(key);
     // As for the other fields: emptying a mixed field keeps each book's;
@@ -92,6 +111,43 @@ export function BulkEditDialog(props: { ids: number[] }) {
   const [seriesStart, setSeriesStart] = createSignal(1);
   const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
+  /** What "Fill from a book" last did, to say so. */
+  const [filled, setFilled] = createSignal<string | null>(null);
+
+  /** Give the others what `source` has wherever they lack it; each field it fills can be reverted. */
+  const fillFrom = async (source: number) => {
+    setError(null);
+    try {
+      const f = await api.bulkFill(props.ids, source);
+      const names: string[] = [];
+      const fill = (key: keyof Draft, value: string, name: string) => {
+        setDraft(key, value as never);
+        names.push(name);
+      };
+      if (f.authors) fill('authors', f.authors.join(' & '), 'authors');
+      if (f.publisher) fill('publisher', f.publisher, 'publisher');
+      if (f.languages) fill('languages', f.languages.join(', '), 'languages');
+      if (f.series) fill('series', f.series, 'series');
+      // Tags every book has already needn't be added.
+      const tags = f.addTags.filter((t) => !values()?.tags.some((c) => c.books === n && c.name === t));
+      if (tags.length) {
+        setAddTags(tags.join(', '));
+        names.push('tags');
+      }
+      for (const [key, value] of Object.entries(f.custom)) {
+        setCustomDraft(key, value ?? null);
+        names.push(customFields().find((c) => c.key === key)?.name ?? key);
+      }
+      const title = items().find((b) => b.id === source)?.title ?? 'that book';
+      setFilled(
+        names.length
+          ? `Filled ${names.join(', ')} from “${title}”. Revert any you don’t want, then save.`
+          : `The others have everything “${title}” could fill already.`,
+      );
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  };
 
   onMount(() => dialog.showModal());
 
@@ -216,6 +272,32 @@ export function BulkEditDialog(props: { ids: number[] }) {
               <p class="mb-3 text-xs text-muted">
                 Fields show what these books share. Only what you change is saved, to every one of them.
               </p>
+              <Row
+                label="Fill from a book"
+                changed={false}
+                onRevert={() => {}}
+                hint={
+                  filled() ??
+                  'Copies its values into fields the others leave empty, such as publisher, series and a comic’s art team. Not dates, ratings or issue numbers.'
+                }
+              >
+                <Select
+                  class={input}
+                  wide
+                  value=""
+                  aria-label="Fill from a book"
+                  onChange={(e) => {
+                    const id = Number(e.currentTarget.value);
+                    e.currentTarget.value = '';
+                    if (id) void fillFrom(id);
+                  }}
+                >
+                  <option value="">Choose a book…</option>
+                  <For each={props.ids}>
+                    {(id) => <option value={id}>{items().find((b) => b.id === id)?.title ?? `Book ${id}`}</option>}
+                  </For>
+                </Select>
+              </Row>
               <Row
                 label="Authors"
                 changed={draft.authors !== undefined}
@@ -413,7 +495,7 @@ export function BulkEditDialog(props: { ids: number[] }) {
                   </div>
                 </Row>
               </Show>
-              <For each={customFields()}>
+              <For each={bulkFields()}>
                 {(f) => {
                   const changed = () => f.key in customDraft;
                   const shared = () => sharedCustom(f.key);

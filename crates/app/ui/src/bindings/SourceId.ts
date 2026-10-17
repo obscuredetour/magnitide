@@ -3,4 +3,4 @@
 /**
  * A metadata source.
  */
-export type SourceId = "openLibrary" | "google";
+export type SourceId = "openLibrary" | "google" | "metron";

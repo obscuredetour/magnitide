@@ -169,6 +169,7 @@ fn import_book(
         title_sort: book.sort.clone(),
         authors: book.authors.clone(),
         series: book.series.clone().map(|s| (s, book.series_index)),
+        series_end: book.series_end,
         publisher: book.publisher.clone(),
         published: book.pubdate.map(|d| d.date_naive()),
         description_html: book.comments.as_deref().map(html::sanitize),

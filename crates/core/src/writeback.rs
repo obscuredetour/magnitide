@@ -1,6 +1,7 @@
 //! "Write metadata to files": copy a book's metadata and cover from the
 //! library into its files, so e-readers and other apps see the same thing.
-//! EPUB (and KEPUB) only for now; other formats are reported as skipped.
+//! EPUB (and KEPUB), and CBZ as ComicInfo.xml (its cover is its first page,
+//! so that isn't written); other formats are reported as skipped.
 //!
 //! Files are only rewritten when they differ from the library, because a
 //! rewrite changes the file's fingerprint (which some reading-progress sync,
@@ -16,10 +17,11 @@ use crate::edit::dir_for;
 use crate::error::{Error, Result};
 use crate::hooks::{MetadataPlugins, NoHooks};
 use crate::library::{BookId, Library, now};
-use crate::metadata::{Author, BookMetadata, epub, epub_write};
+use crate::metadata::comic::ComicDetails;
+use crate::metadata::{Author, BookMetadata, comic_write, epub, epub_write};
 
 /// Formats whose metadata Magnitide can write.
-const WRITABLE: &[&str] = &["EPUB", "KEPUB"];
+const WRITABLE: &[&str] = &["EPUB", "KEPUB", "CBZ"];
 
 #[derive(Debug, Default, Clone, Serialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
@@ -73,6 +75,8 @@ struct Target {
 struct Wanted {
     meta: BookMetadata,
     title_sort: String,
+    /// What a CBZ's ComicInfo.xml gets beyond `meta`.
+    comic: ComicDetails,
 }
 
 impl Library {
@@ -174,6 +178,8 @@ impl Library {
             let title = wanted.meta.title.as_deref().unwrap_or_default();
             let written = if t.plugin {
                 write_through_plugin(&t.path, &t.format, &wanted.meta, plugins)
+            } else if t.format == "CBZ" {
+                comic_write::write(&t.path, &wanted.meta, &wanted.comic)
             } else {
                 epub_write::write(&t.path, &wanted.meta, Some(&wanted.title_sort)).map_err(|e| e.to_string())
             };
@@ -205,6 +211,8 @@ impl Library {
                 return Ok(t.fresh);
             }
             plugins.read(&t.path, &t.format).is_ok_and(|file| same_metadata(&file, &wanted.meta))
+        } else if t.format == "CBZ" {
+            comic_write::is_current(&t.path, &wanted.meta, &wanted.comic)
         } else {
             epub::read(&t.path).is_some_and(|file| same_metadata(&file, &wanted.meta))
         };
@@ -281,7 +289,9 @@ impl Library {
             Some(name) => Some(read_cover(&dir_for(&self.root, &b.path).join(name))?),
             None => None,
         };
+        let comic = ComicDetails { issue_end: b.series_end, ..self.comic_details(id)? };
         Ok(Wanted {
+            comic,
             title_sort: b.title_sort,
             meta: BookMetadata {
                 title: Some(b.title),
@@ -295,6 +305,7 @@ impl Library {
                 tags: b.tags,
                 cover,
                 uuids: Vec::new(),
+                comic: None,
             },
         })
     }
@@ -402,6 +413,37 @@ mod tests {
         assert_eq!(lib.writeback_preview().unwrap(), WritebackPreview::default());
         let again = lib.write_all_metadata(|_, _| {}).unwrap();
         assert_eq!((again.written, again.up_to_date), (0, 1));
+    }
+
+    #[test]
+    fn writes_a_comics_edits_into_its_cbz() {
+        use crate::custom::FieldValue;
+        use crate::metadata::comic::tests::{COMIC_INFO, make_cbz};
+
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("saga1.cbz");
+        make_cbz(&src, &[("01.jpg", b"page"), ("ComicInfo.xml", COMIC_INFO.as_bytes())], None);
+        let mut lib = Library::create(tmp.path().join("lib"), "Test").unwrap();
+        let id = add_files(&mut lib, &[src], |_| {}).unwrap().added[0];
+        // Just added from its ComicInfo.xml: it already says what the library says.
+        assert_eq!(lib.file_metadata_status(id).unwrap(), FileMetadataStatus::Current);
+
+        let mut edit = lib.book_edit(id).unwrap();
+        edit.custom.insert("inkers".into(), Some(FieldValue::List(vec!["Fiona Staples".into()])));
+        edit.custom.insert("format".into(), Some(FieldValue::Text("Issue".into())));
+        edit.publisher = Some("Image Comics".into());
+        lib.update_book(id, &edit).unwrap();
+        assert_eq!(lib.file_metadata_status(id).unwrap(), FileMetadataStatus::Outdated);
+
+        let report = lib.write_metadata_to_files(id).unwrap();
+        assert_eq!((report.written, report.skipped), (1, 0), "{:?}", report.failed);
+        let path = epub_path(&lib, id);
+        let back = crate::metadata::comic::read(&path).unwrap();
+        assert_eq!(back.publisher.as_deref(), Some("Image Comics"));
+        let comic = back.comic.unwrap();
+        assert_eq!((comic.inkers, comic.format), (vec!["Fiona Staples".to_owned()], Some("Issue")));
+        assert_eq!(comic.characters, ["Alana", "Marko", "Hazel"], "the rest as it was");
+        assert_eq!(lib.file_metadata_status(id).unwrap(), FileMetadataStatus::Current);
     }
 
     #[test]

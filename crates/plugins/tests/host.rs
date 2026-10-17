@@ -105,7 +105,12 @@ fn metadata_source_end_to_end() {
     plugins.set_enabled(&installed.name, true).unwrap();
 
     // A lookup: the plugin's record, converted.
-    let lookup = Lookup { title: "Project Hail Mary".into(), authors: vec!["Andy Weir".into()], isbn: None };
+    let lookup = Lookup {
+        title: "Project Hail Mary".into(),
+        authors: vec!["Andy Weir".into()],
+        isbn: None,
+        ..Default::default()
+    };
     let answers = plugins.identify(&lookup);
     assert_eq!(answers.len(), 1);
     let (name, records) = &answers[0];

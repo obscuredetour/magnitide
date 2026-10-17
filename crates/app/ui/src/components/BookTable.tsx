@@ -21,7 +21,7 @@ import Ellipsis from 'lucide-solid/icons/ellipsis';
 import type { BookRow, SortKey } from '../api';
 import { onDevice } from '../devices';
 import { sort, sortDir, sortField, toggleFieldSort, toggleSort } from '../library';
-import { customFields, formatCustom, isNumeric } from '../fields';
+import { credited, customFields, formatCustom, isNumeric } from '../fields';
 import type { CustomField } from '../api';
 import {
   columnOrder,
@@ -113,6 +113,8 @@ const columns: ColumnDef<typeof features, BookRow, any>[] = [
     size: 200,
     meta: { sortKey: 'author', label: 'Author' } satisfies Meta,
     header: 'Author',
+    // A comic's artists after its writers; sorting stays by the authors.
+    cell: (info) => credited(info.row.original),
   }),
   col.accessor('series', {
     size: 200,

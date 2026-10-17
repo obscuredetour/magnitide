@@ -3,7 +3,7 @@
 
 import { createSignal } from 'solid-js';
 
-import { api, type CustomField, type FieldKind, type SortDir } from './api';
+import { api, type BookRow, type CustomField, type FieldKind, type SortDir } from './api';
 
 const [customFields, setCustomFields] = createSignal<CustomField[]>([]);
 export { customFields };
@@ -15,6 +15,71 @@ export async function loadCustomFields(): Promise<void> {
   } catch {
     setCustomFields([]);
   }
+}
+
+/** The comic fields' group, and the field in it that marks a book as a comic. Mirrors core's `comics`. */
+export const COMIC_GROUP = 'comic';
+export const COMIC_KEY = 'comic';
+
+/** The fields of the user's own (not in a group). */
+export const ownFields = () => customFields().filter((f) => !f.group);
+/** The comic fields in the order they're shown, whatever order a library made them in. Mirrors core's `COMIC_FIELDS`. */
+const COMIC_ORDER = [
+  COMIC_KEY,
+  'issue',
+  'format',
+  'volume',
+  'artists',
+  'inkers',
+  'colorists',
+  'letterers',
+  'cover_artists',
+  'editors',
+  'story_arcs',
+  'characters',
+  'teams',
+  'locations',
+  'age_rating',
+  'right_to_left',
+];
+/** Sort by `COMIC_ORDER`; keys it doesn't know go last. */
+export const byComicOrder = (a: string, b: string) => {
+  const rank = (k: string) => (COMIC_ORDER.indexOf(k) + COMIC_ORDER.length + 1) % (COMIC_ORDER.length + 1);
+  return rank(a) - rank(b);
+};
+/** The comic fields shown for a comic, without the field that marks it as one. */
+export const comicFields = () =>
+  customFields()
+    .filter((f) => f.group === COMIC_GROUP && f.key !== COMIC_KEY)
+    .sort((a, b) => byComicOrder(a.key, b.key));
+/** The field that marks a book as a comic, once the library has it. */
+export const comicMarker = () => customFields().find((f) => f.group === COMIC_GROUP && f.key === COMIC_KEY);
+
+/** Comic archive formats: a book in one is taken for a comic until said otherwise. */
+export const isComicFormat = (format: string) => ['CBZ', 'CBR', 'CB7'].includes(format.toUpperCase());
+
+/**
+ * Who a book is by, as the list and grid show it: its authors, and for a comic
+ * its artists after them ("Brian K. Vaughan & Fiona Staples"), each once. Only
+ * shown that way: the authors stay the writers, the artists their own field.
+ */
+export function credited(row: BookRow): string {
+  const marked = row.custom[COMIC_KEY];
+  const comic = marked === 'true' || (marked === undefined && row.formats.some(isComicFormat));
+  const artists = comic && customFields().some((f) => f.key === 'artists' && f.group === COMIC_GROUP);
+  if (!artists || !row.custom.artists) return row.authors;
+  const names = row.authors ? row.authors.split(' & ') : [];
+  for (const name of row.custom.artists.split(', ')) {
+    if (name && !names.some((n) => n.toLowerCase() === name.toLowerCase())) names.push(name);
+  }
+  return names.join(' & ');
+}
+
+/** Make the comic fields if the library hasn't got them, and load them. */
+export async function ensureComicFields(): Promise<void> {
+  if (comicMarker()) return;
+  await api.ensureComicFields();
+  await loadCustomFields();
 }
 
 export const FIELD_KINDS: Record<FieldKind, string> = {

@@ -33,6 +33,8 @@ pub struct SourceStatus {
     enabled: bool,
     needs_key: bool,
     has_key: bool,
+    /// A comic source, asked for comics only.
+    comics: bool,
     /// Will be asked: enabled, and keyed if it needs one.
     active: bool,
 }
@@ -67,6 +69,7 @@ fn statuses(s: &Settings) -> Vec<SourceStatus> {
             enabled: !s.disabled.contains(&id),
             needs_key: id.needs_key(),
             has_key: s.key(id).is_some(),
+            comics: id.comics(),
             active: s.enabled(id),
         })
         .collect()
@@ -94,6 +97,7 @@ pub async fn set_metadata_source(
         let key = Some(key.trim().to_owned()).filter(|k| !k.is_empty());
         match id {
             SourceId::Google => s.google_key = key,
+            SourceId::Metron => s.metron_key = key,
             SourceId::OpenLibrary => {}
         }
     }
@@ -103,6 +107,12 @@ pub async fn set_metadata_source(
     }
     let json = serde_json::to_vec_pretty(&s).map_err(|e| e.to_string())?;
     fs::write(&path, json).map_err(|e| e.to_string())?;
+    // API keys: for this user's eyes only.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+    }
     Ok(statuses(&s))
 }
 
@@ -139,13 +149,39 @@ pub async fn find_metadata(app: AppHandle, lookup: Lookup) -> CmdResult<SearchRe
     for m in &mut result.matches {
         m.records.iter_mut().for_each(clean);
     }
+    // A plugin's covers can be anywhere: the ones its search returned may be
+    // downloaded (see `cached_cover`), and only those.
+    let returned = result.matches.iter().flat_map(|m| &m.records).filter(|r| r.source.is_none());
+    app.state::<ReturnedCovers>().remember(returned.filter_map(|r| r.cover_url.clone()));
     Ok(result)
 }
 
-/// The rest of a record (Open Library's description), sanitized.
+/// Cover addresses plugin searches returned: the only ones outside the
+/// built-in sources' hosts the app downloads. Kept for the session, and not
+/// too many of them.
+#[derive(Default)]
+pub struct ReturnedCovers(std::sync::Mutex<std::collections::HashSet<String>>);
+
+impl ReturnedCovers {
+    fn remember(&self, urls: impl Iterator<Item = String>) {
+        let mut set = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if set.len() > 5000 {
+            set.clear();
+        }
+        set.extend(urls.filter(|u| !is_plugin_cover(u)));
+    }
+
+    fn contains(&self, url: &str) -> bool {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).contains(url)
+    }
+}
+
+/// The rest of a record (Open Library's description, a Metron issue's
+/// credits and the rest), sanitized.
 #[tauri::command]
-pub async fn metadata_details(record: SourceRecord) -> CmdResult<SourceRecord> {
-    let mut full = tauri::async_runtime::spawn_blocking(move || magnitide_sources::details(&record))
+pub async fn metadata_details(app: AppHandle, record: SourceRecord) -> CmdResult<SourceRecord> {
+    let settings = load_settings(&app);
+    let mut full = tauri::async_runtime::spawn_blocking(move || magnitide_sources::details(&record, &settings))
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?;
@@ -155,6 +191,11 @@ pub async fn metadata_details(record: SourceRecord) -> CmdResult<SourceRecord> {
 
 fn clean(r: &mut SourceRecord) {
     r.description_html = r.description_html.as_deref().map(sanitize).filter(|d| !d.trim().is_empty());
+    // A comic source's kind of publication ("Ongoing Series") as a Format choice ("Issue").
+    if let Some(comic) = &mut r.comic {
+        comic.format =
+            comic.format.as_deref().and_then(magnitide_core::metadata::comic::comic_format).map(str::to_owned);
+    }
 }
 
 /// Download a source's cover into the cache so the UI can show it.
@@ -202,6 +243,9 @@ fn cached_cover(app: &AppHandle, dir: &std::path::Path, url: &str) -> CmdResult<
     }
     let bytes = if is_plugin_cover(url) {
         app.state::<Plugins>().cover(url).map_err(|e| format!("Couldn't get the cover: {e}"))?
+    } else if !magnitide_sources::is_cover_url(url) && app.state::<ReturnedCovers>().contains(url) {
+        // A Magnitide plugin's cover, from wherever its search said it is.
+        magnitide_sources::download_returned_cover(url).map_err(|e| format!("Couldn't download the cover: {e}"))?
     } else {
         magnitide_sources::download_cover(url).map_err(|e| format!("Couldn't download the cover: {e}"))?
     };

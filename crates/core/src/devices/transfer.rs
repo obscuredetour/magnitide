@@ -277,6 +277,7 @@ fn metadata_for(book: &Book, library_root: &Path) -> BookMetadata {
         tags: book.tags.clone(),
         cover,
         uuids: book.uuid.clone().into_iter().collect(),
+        comic: None,
     }
 }
 

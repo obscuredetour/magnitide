@@ -1,13 +1,32 @@
-import { createResource, createSignal, For, Index, type JSX, onMount, type ParentProps, Show } from 'solid-js';
+import {
+  createEffect,
+  createResource,
+  createSignal,
+  For,
+  Index,
+  type JSX,
+  on,
+  onMount,
+  type ParentProps,
+  Show,
+} from 'solid-js';
 import { createStore, unwrap } from 'solid-js/store';
 import ChevronRight from 'lucide-solid/icons/chevron-right';
 import X from 'lucide-solid/icons/x';
 
-import { api, type AuthorSort, type BookEdit, type BookRow } from '../api';
+import { api, type AuthorSort, type BookEdit, type BookRow, type CustomField, errorMessage } from '../api';
 import { Autocomplete } from './Autocomplete';
 import { changeCover, closeEditor, type Editing, saveEdit } from '../editor';
 import { items } from '../library';
-import { customFields } from '../fields';
+import {
+  COMIC_GROUP,
+  COMIC_KEY,
+  comicFields,
+  comicMarker,
+  ensureComicFields,
+  isComicFormat,
+  ownFields,
+} from '../fields';
 import { identifierOrder } from '../identifiers';
 import { CustomFieldInput, customFieldHint } from './CustomFieldInput';
 import { Cover } from './Cover';
@@ -170,16 +189,96 @@ export function EditDialog(props: { editing: Editing }) {
     }
     if (a.descriptionHtml !== undefined) description.innerHTML = a.descriptionHtml;
     if (a.coverUrl) void changeCover(id, { url: a.coverUrl });
+    // A comic source's comic fields: made first if the library hasn't them yet.
+    const custom = a.custom;
+    if (custom && Object.keys(custom).length) {
+      void ensureComicFields()
+        .then(() => {
+          setForm('custom', COMIC_KEY, true);
+          for (const [key, value] of Object.entries(custom)) setForm('custom', key, value);
+        })
+        .catch((err) => setError(errorMessage(err)));
+    }
   };
   // Existing names for autocomplete; the form works without them.
   const [names] = createResource(() => api.nameLists().catch(() => null));
+
+  // A comic: marked as one (#comic), or in a comic format and not marked otherwise.
+  // Ticked, the comic fields show (issue, volume, artists, …).
+  const comicFormat = row()?.formats.some(isComicFormat) ?? false;
+  const isComic = () => {
+    const marked = form.custom[COMIC_KEY];
+    return marked === true || (marked == null && comicFormat);
+  };
+  // A comic's title that's just "Series #Number" (what a reader makes when the file
+  // has none) follows the series and number, like title sort follows the title,
+  // until it's written as something of its own ("Chapter Seventeen").
+  const madeUpTitle = () => {
+    const series = form.series?.trim();
+    if (!series) return null;
+    const issue = form.custom.issue;
+    const number =
+      typeof issue === 'string' && issue.trim()
+        ? issue.trim()
+        : form.seriesEnd != null
+          ? `${form.seriesIndex}-${form.seriesEnd}`
+          : `${form.seriesIndex}`;
+    return `${series} #${number}`;
+  };
+  const titleFollows = () => isComic() && madeUpTitle() !== null && form.title.trim() === madeUpTitle();
+  // Its Issue, while it's just the number in series ("17", not "17.MU" or "Annual 1"),
+  // follows that number too, and with it the title.
+  createEffect(
+    on(
+      () => form.seriesIndex,
+      (now, before) => {
+        const issue = form.custom.issue;
+        if (before !== undefined && now !== before && typeof issue === 'string' && issue.trim() === `${before}`) {
+          setForm('custom', 'issue', `${now}`);
+        }
+      },
+    ),
+  );
+  // Not deferred: a deferred `on` skips its first run without noting the value,
+  // so the first change would arrive with no "before" to compare.
+  createEffect(
+    on(madeUpTitle, (now, before) => {
+      if (now && before && now !== before && isComic() && form.title.trim() === before) {
+        setForm('title', now);
+        if (!sortTouched()) setForm('titleSort', '');
+      }
+    }),
+  );
+
+  const setComic = async (on: boolean) => {
+    try {
+      await ensureComicFields();
+    } catch (err) {
+      setError(errorMessage(err));
+      return;
+    }
+    setForm('custom', COMIC_KEY, on);
+  };
 
   // To tell whether anything changed before stepping to another book.
   let initial = '';
   onMount(() => {
     description.innerHTML = form.descriptionHtml ?? '';
+    // A comic added before comics had fields of their own: mark it as one, without that
+    // counting as a change (Save keeps it).
+    const unmarked = comicFormat && form.custom[COMIC_KEY] == null;
+    if (unmarked && comicMarker()) setForm('custom', COMIC_KEY, true);
     initial = JSON.stringify(build());
     dialog.showModal();
+    if (unmarked && !comicMarker()) {
+      void ensureComicFields()
+        .then(() => {
+          setForm('custom', COMIC_KEY, true);
+          const was = JSON.parse(initial) as BookEdit;
+          initial = JSON.stringify({ ...was, custom: { ...was.custom, [COMIC_KEY]: true } });
+        })
+        .catch(() => {});
+    }
   });
 
   // Stepping through several books (Edit One by One).
@@ -212,6 +311,38 @@ export function EditDialog(props: { editing: Editing }) {
   };
 
   const stars = () => (form.rating ? Math.round(form.rating / 2) : 0);
+
+  // The rest of a comic's art team is often its artist: one click copies Artists in.
+  const fromArtists = (f: CustomField) =>
+    f.group === COMIC_GROUP && ['inkers', 'colorists', 'letterers', 'cover_artists'].includes(f.key);
+  const customField = (f: CustomField) => (
+    <div classList={{ 'col-span-2': f.kind === 'longText' || f.kind === 'series' }}>
+      <Field label={f.name} hint={customFieldHint(f)} for={`custom-${f.key}`}>
+        <CustomFieldInput
+          field={f}
+          inputClass={input}
+          value={form.custom[f.key] ?? null}
+          onChange={(v) => setForm('custom', f.key, v)}
+        />
+      </Field>
+      <Show
+        when={
+          fromArtists(f) &&
+          form.custom.artists != null &&
+          JSON.stringify(form.custom.artists) !== JSON.stringify(form.custom[f.key] ?? null)
+        }
+      >
+        <button
+          type="button"
+          class="-mt-1 cursor-pointer text-[11px] text-link hover:underline"
+          title="Copy the Artists into this field"
+          onClick={() => setForm('custom', f.key, structuredClone(unwrap(form.custom.artists!)))}
+        >
+          Same as Artists
+        </button>
+      </Show>
+    </div>
+  );
 
   return (
     <dialog
@@ -276,7 +407,13 @@ export function EditDialog(props: { editing: Editing }) {
             {/* Fields */}
             <div class="col-start-2 row-start-1 grid min-w-0 grid-cols-2 content-start gap-x-4 gap-y-3.5">
               <div class="col-span-2">
-                <Field label="Title" for="edit-title">
+                <Field
+                  label="Title"
+                  for="edit-title"
+                  hint={
+                    titleFollows() ? 'Follows the series and number until you give it a title of its own.' : undefined
+                  }
+                >
                   <input
                     id="edit-title"
                     class={input}
@@ -617,24 +754,24 @@ export function EditDialog(props: { editing: Editing }) {
                   </div>
                 </Show>
               </div>
-              <Show when={customFields().length}>
+              <label class="col-span-2 mt-2 flex cursor-pointer items-center gap-2 border-t border-line pt-3">
+                <input
+                  type="checkbox"
+                  class="accent-accent"
+                  checked={isComic()}
+                  onChange={(e) => void setComic(e.currentTarget.checked)}
+                />
+                <span class="text-xs font-semibold tracking-[.06em] text-muted uppercase">Comic</span>
+                <span class="text-[11px] text-faint">Issue, volume, artists, story arcs, characters and teams</span>
+              </label>
+              <Show when={isComic()}>
+                <For each={comicFields()}>{customField}</For>
+              </Show>
+              <Show when={ownFields().length}>
                 <h3 class="col-span-2 mt-2 border-t border-line pt-3 text-xs font-semibold tracking-[.06em] text-muted uppercase">
                   Custom fields
                 </h3>
-                <For each={customFields()}>
-                  {(f) => (
-                    <div classList={{ 'col-span-2': f.kind === 'longText' || f.kind === 'series' }}>
-                      <Field label={f.name} hint={customFieldHint(f)} for={`custom-${f.key}`}>
-                        <CustomFieldInput
-                          field={f}
-                          inputClass={input}
-                          value={form.custom[f.key] ?? null}
-                          onChange={(v) => setForm('custom', f.key, v)}
-                        />
-                      </Field>
-                    </div>
-                  )}
-                </For>
+                <For each={ownFields()}>{customField}</For>
               </Show>
             </div>
 
@@ -713,6 +850,8 @@ export function EditDialog(props: { editing: Editing }) {
             descriptionHtml: description.textContent?.trim() ? description.innerHTML : null,
             hasCover: row()?.hasCover ?? false,
             isbn: splitIds(identifiers()).isbn ?? null,
+            comic: isComic(),
+            custom: { ...unwrap(form.custom) },
           }}
           onApply={applyFound}
           onClose={() => setMatching(false)}

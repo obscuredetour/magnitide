@@ -7,6 +7,7 @@ import { seriesBadges } from '../view';
 import { Cover } from './Cover';
 import { EmptyNote } from './Mark';
 import { Icon } from './Icon';
+import { credited } from '../fields';
 
 // Layout constants (CSS px).
 const PAD = 28;
@@ -176,7 +177,7 @@ export function CoverGrid(props: Props) {
                 '--cover-h': `${metrics().tileW * 1.5}px`,
                 transform: position(),
               }}
-              title={[item.title, item.authors, item.series && `${item.series} #${item.seriesIndex}`]
+              title={[item.title, credited(item), item.series && `${item.series} #${item.seriesIndex}`]
                 .filter(Boolean)
                 .join('\n')}
               onClick={(e) => props.onSelect(item.id, e)}
@@ -225,7 +226,7 @@ export function CoverGrid(props: Props) {
                 </div>
               </div>
               <p class="truncate text-[12.5px] font-semibold">{item.title}</p>
-              <p class="-mt-1.5 truncate text-xs text-muted">{item.authors}</p>
+              <p class="-mt-1.5 truncate text-xs text-muted">{credited(item)}</p>
             </div>
           );
         }}

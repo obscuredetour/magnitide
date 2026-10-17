@@ -9,6 +9,8 @@ import type { DeviceInfo } from '../api';
 import { editBooks, openEditor } from '../editor';
 import { findMetadataFor } from '../lookup';
 import { items, library, openBook, setDetailsOpen } from '../library';
+import { isComicFormat } from '../fields';
+import { readComic } from '../viewer';
 import { toast } from '../toast';
 import {
   convertBooks,
@@ -62,6 +64,9 @@ function BookMenu(props: { request: Request; onClose(): void }) {
       <Show when={one()}>
         {(b) => (
           <>
+            <Show when={b().formats.some(isComicFormat)}>
+              <MenuItem onSelect={() => readComic(b().id)}>Read</MenuItem>
+            </Show>
             <MenuItem shortcut={keys('mod+O')} disabled={!b().formats.length} onSelect={() => void openBook(b().id)}>
               Open
             </MenuItem>

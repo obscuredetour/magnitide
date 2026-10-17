@@ -6,6 +6,7 @@ import { createEffect, createResource, createRoot, createSignal, Show } from 'so
 
 import { api, type BookEdit, coverChanged, errorMessage, type SearchResult } from './api';
 import { type Applied, type Current, MatchDialog } from './components/MatchDialog';
+import { COMIC_KEY, ensureComicFields, isComicFormat } from './fields';
 import { items, library, refresh, setEditRevision } from './library';
 import { recordJob } from './jobs';
 import { toast } from './toast';
@@ -41,8 +42,26 @@ function load(id: number): Promise<Loaded> {
         descriptionHtml: edit.descriptionHtml,
         hasCover: items().find((b) => b.id === id)?.hasCover ?? false,
         isbn: edit.identifiers.isbn ?? null,
+        // Marked as a comic, or in a comic format and not marked otherwise (as the editor has it).
+        comic:
+          edit.custom[COMIC_KEY] === true ||
+          (edit.custom[COMIC_KEY] == null &&
+            (items()
+              .find((b) => b.id === id)
+              ?.formats.some(isComicFormat) ??
+              false)),
+        custom: edit.custom,
       };
-      const result = api.findMetadata({ title: edit.title, authors: edit.authors.slice(0, 1), isbn: current.isbn });
+      const issue = edit.custom.issue;
+      const result = api.findMetadata({
+        title: edit.title,
+        authors: edit.authors.slice(0, 1),
+        isbn: current.isbn,
+        comic: current.comic,
+        series: edit.series,
+        issue: typeof issue === 'string' && issue ? issue : edit.series ? String(edit.seriesIndex) : null,
+        identifiers: edit.identifiers,
+      });
       result.catch(() => {}); // reported when the dialog awaits it
       return { id, edit, current, result };
     })();
@@ -121,6 +140,11 @@ async function save(book: Loaded, a: Applied): Promise<void> {
   if (a.tags) edit.tags = a.tags;
   if (a.identifiers) edit.identifiers = a.identifiers;
   if (a.descriptionHtml !== undefined) edit.descriptionHtml = a.descriptionHtml;
+  // A comic source's comic fields: made first if the library hasn't them yet.
+  if (a.custom && Object.keys(a.custom).length) {
+    await ensureComicFields();
+    edit.custom = { ...edit.custom, [COMIC_KEY]: true, ...a.custom };
+  }
   const fieldsChanged = Object.keys(a).some((k) => k !== 'coverUrl');
   if (fieldsChanged) {
     await api.saveBookEdit(book.id, edit);

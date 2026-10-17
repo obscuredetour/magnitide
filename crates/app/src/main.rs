@@ -8,6 +8,7 @@ mod lookup;
 #[cfg(target_os = "macos")]
 mod menu;
 mod plugins;
+mod reader;
 mod server;
 mod themes;
 mod updates;
@@ -113,6 +114,8 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(covers::allow_on_http())
         .manage(AppState::default())
+        .manage(reader::Reader::default())
+        .manage(lookup::ReturnedCovers::default())
         .manage(updates::Pending::default())
         .setup(|app| {
             devices::watch(app.handle().clone());
@@ -126,7 +129,16 @@ fn main() {
             let path = request.uri().path().to_owned();
             tauri::async_runtime::spawn_blocking(move || responder.respond(covers::respond(&app, &path)));
         })
+        // The comic open in the viewer, a page at a time (see reader.rs).
+        .register_asynchronous_uri_scheme_protocol("page", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            let path = request.uri().path().to_owned();
+            tauri::async_runtime::spawn_blocking(move || responder.respond(reader::respond(&app, &path)));
+        })
         .invoke_handler(tauri::generate_handler![
+            reader::open_comic,
+            reader::close_comic,
+            reader::save_reading_progress,
             commands::open_library,
             commands::close_library,
             commands::create_library,
@@ -138,6 +150,10 @@ fn main() {
             custom::add_custom_field,
             custom::update_custom_field,
             custom::delete_custom_field,
+            custom::ensure_comic_fields,
+            custom::convert_cbr_on_add,
+            custom::set_convert_cbr_on_add,
+            custom::rar_tool,
             commands::book_rows,
             commands::book_details,
             commands::open_book,
@@ -153,6 +169,7 @@ fn main() {
             commands::book_edit,
             commands::author_sorts,
             commands::bulk_values,
+            commands::bulk_fill,
             commands::bulk_edit,
             commands::save_book_edit,
             commands::set_cover_from_file,
