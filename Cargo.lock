@@ -492,7 +492,7 @@ dependencies = [
 
 [[package]]
 name = "calibre-compat"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2852,7 +2852,7 @@ dependencies = [
 
 [[package]]
 name = "magnitide"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "ammonia",
  "anyhow",
@@ -2883,7 +2883,7 @@ dependencies = [
 
 [[package]]
 name = "magnitide-catalog"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2896,7 +2896,7 @@ dependencies = [
 
 [[package]]
 name = "magnitide-core"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "ammonia",
  "calibre-compat",
@@ -2923,14 +2923,14 @@ dependencies = [
 
 [[package]]
 name = "magnitide-plugin-sdk"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "wit-bindgen 0.62.0",
 ]
 
 [[package]]
 name = "magnitide-plugins"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "base64 0.22.1",
  "calibre-compat",
@@ -2954,7 +2954,7 @@ dependencies = [
 
 [[package]]
 name = "magnitide-plugins-wasm"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "magnitide-catalog",
  "magnitide-core",
@@ -2972,7 +2972,7 @@ dependencies = [
 
 [[package]]
 name = "magnitide-server"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -2992,7 +2992,7 @@ dependencies = [
 
 [[package]]
 name = "magnitide-sources"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "chrono",
  "magnitide-catalog",
