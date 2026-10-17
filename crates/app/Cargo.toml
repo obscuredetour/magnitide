@@ -12,6 +12,9 @@ anyhow = "1.0.104"
 calibre-compat = { path = "../calibre-compat" }
 magnitide-catalog = { path = "../catalog", features = ["ts"] }
 chrono = { version = "0.4.45", default-features = false, features = ["std"] }
+# Metadata-source keys in the system keychain (macOS Keychain, Windows Credential
+# Manager, the Secret Service on Linux); see keys.rs.
+keyring = "4.2.0"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
 open = "5"
 serde = { version = "1.0.229", features = ["derive"] }
