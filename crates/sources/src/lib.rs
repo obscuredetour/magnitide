@@ -46,6 +46,17 @@ impl SourceId {
         }
     }
 
+    /// The source's id as a string: its serialized form ("google"), and the
+    /// account name its key is kept under in the system keychain. Stable:
+    /// renaming one would strand saved keys.
+    pub fn id(self) -> &'static str {
+        match self {
+            SourceId::OpenLibrary => "openLibrary",
+            SourceId::Google => "google",
+            SourceId::Metron => "metron",
+        }
+    }
+
     /// A comic source: asked for comics (by series and issue), not for other books.
     pub fn comics(self) -> bool {
         matches!(self, SourceId::Metron)
@@ -190,6 +201,22 @@ impl Settings {
             SourceId::Metron => self.metron_key.as_deref().filter(|k| !k.trim().is_empty()),
             SourceId::OpenLibrary => None,
         }
+    }
+
+    /// Give a source its key (trimmed; blank or None clears it). Nothing
+    /// happens for a source that takes no key.
+    pub fn set_key(&mut self, id: SourceId, key: Option<&str>) {
+        let key = key.map(str::trim).filter(|k| !k.is_empty()).map(str::to_owned);
+        match id {
+            SourceId::Google => self.google_key = key,
+            SourceId::Metron => self.metron_key = key,
+            SourceId::OpenLibrary => {}
+        }
+    }
+
+    /// Every source that has a key, with it.
+    pub fn keys(&self) -> impl Iterator<Item = (SourceId, &str)> {
+        SourceId::ALL.into_iter().filter_map(|id| self.key(id).map(|k| (id, k)))
     }
 
     /// Whether to ask this source for `lookup`: comic sources for comics only,
@@ -445,6 +472,25 @@ mod tests {
         s.disabled.push(SourceId::Metron);
         assert!(!s.enabled(SourceId::Metron));
         assert!(is_cover_url("https://static.metron.cloud/media/issue/2018/11/12/saga-17.jpg"));
+    }
+
+    #[test]
+    fn ids_are_the_serialized_names() {
+        for id in SourceId::ALL {
+            assert_eq!(serde_json::to_value(id).unwrap(), id.id(), "{id:?}");
+        }
+    }
+
+    #[test]
+    fn keys_are_set_trimmed_and_listed() {
+        let mut s = Settings::default();
+        s.set_key(SourceId::Google, Some("  g-key "));
+        s.set_key(SourceId::Metron, Some("   "));
+        s.set_key(SourceId::OpenLibrary, Some("ignored"));
+        assert_eq!(s.keys().collect::<Vec<_>>(), [(SourceId::Google, "g-key")]);
+        s.set_key(SourceId::Metron, Some("m-token"));
+        s.set_key(SourceId::Google, None);
+        assert_eq!(s.keys().collect::<Vec<_>>(), [(SourceId::Metron, "m-token")]);
     }
 
     #[test]

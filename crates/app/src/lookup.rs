@@ -21,6 +21,7 @@ use ts_rs::TS;
 
 use crate::AppState;
 use crate::commands::{CmdResult, sanitize, thumbs_root, write_library};
+use crate::keys::{KeyStorage, Secrets};
 
 /// A source as Settings shows it.
 #[derive(Serialize, TS)]
@@ -37,6 +38,9 @@ pub struct SourceStatus {
     comics: bool,
     /// Will be asked: enabled, and keyed if it needs one.
     active: bool,
+    /// Where its key is kept: the system keychain, or the settings file
+    /// when no keychain is reachable.
+    key_storage: KeyStorage,
 }
 
 /// A cover candidate, downloaded and ready to show at `cover://localhost/remote/<key>`.
@@ -48,19 +52,19 @@ pub struct CoverPreview {
     height: u32,
 }
 
-fn settings_path(app: &AppHandle) -> CmdResult<PathBuf> {
-    Ok(app.path().app_config_dir().map_err(|e| e.to_string())?.join("metadata-sources.json"))
+/// The sources' settings file: which are turned off and, only where no
+/// keychain is reachable, their keys (see keys.rs).
+pub fn settings_path(app: &AppHandle) -> PathBuf {
+    app.path().app_config_dir().unwrap_or_default().join("metadata-sources.json")
 }
 
+/// The settings, with the keys from wherever they're kept. May reach the
+/// keychain: call from a blocking task.
 fn load_settings(app: &AppHandle) -> Settings {
-    settings_path(app)
-        .ok()
-        .and_then(|p| fs::read(p).ok())
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default()
+    app.state::<Secrets>().settings()
 }
 
-fn statuses(s: &Settings) -> Vec<SourceStatus> {
+fn statuses(s: &Settings, key_storage: &KeyStorage) -> Vec<SourceStatus> {
     SourceId::ALL
         .into_iter()
         .map(|id| SourceStatus {
@@ -71,13 +75,19 @@ fn statuses(s: &Settings) -> Vec<SourceStatus> {
             has_key: s.key(id).is_some(),
             comics: id.comics(),
             active: s.enabled(id),
+            key_storage: key_storage.clone(),
         })
         .collect()
 }
 
 #[tauri::command]
 pub async fn metadata_sources(app: AppHandle) -> CmdResult<Vec<SourceStatus>> {
-    Ok(statuses(&load_settings(&app)))
+    tauri::async_runtime::spawn_blocking(move || {
+        let secrets = app.state::<Secrets>();
+        statuses(&secrets.settings(), &secrets.storage())
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// Turn a source on or off; `api_key` replaces its key when given ("" clears it).
@@ -88,46 +98,35 @@ pub async fn set_metadata_source(
     enabled: bool,
     api_key: Option<String>,
 ) -> CmdResult<Vec<SourceStatus>> {
-    let mut s = load_settings(&app);
-    s.disabled.retain(|d| *d != id);
-    if !enabled {
-        s.disabled.push(id);
-    }
-    if let Some(key) = api_key {
-        let key = Some(key.trim().to_owned()).filter(|k| !k.is_empty());
-        match id {
-            SourceId::Google => s.google_key = key,
-            SourceId::Metron => s.metron_key = key,
-            SourceId::OpenLibrary => {}
+    tauri::async_runtime::spawn_blocking(move || {
+        let secrets = app.state::<Secrets>();
+        let mut s = secrets.settings();
+        s.disabled.retain(|d| *d != id);
+        if !enabled {
+            s.disabled.push(id);
         }
-    }
-    let path = settings_path(&app)?;
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    }
-    let json = serde_json::to_vec_pretty(&s).map_err(|e| e.to_string())?;
-    fs::write(&path, json).map_err(|e| e.to_string())?;
-    // API keys: for this user's eyes only.
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
-    }
-    Ok(statuses(&s))
+        if let Some(key) = api_key {
+            secrets.set_key(&mut s, id, &key)?;
+        }
+        secrets.save(&s)?;
+        Ok(statuses(&s, &secrets.storage()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Search every active source at once: the built-in ones, Magnitide's own
 /// plugins and calibre plugins. Descriptions come back sanitized.
 #[tauri::command]
 pub async fn find_metadata(app: AppHandle, lookup: Lookup) -> CmdResult<SearchResult> {
-    let settings = load_settings(&app);
-    let any_plugin = !app.state::<Plugins>().metadata_sources().is_empty()
-        || !app.state::<WasmPlugins>().metadata_sources().is_empty();
-    if !SourceId::ALL.iter().any(|s| settings.enabled(*s)) && !any_plugin {
-        return Err("Every metadata source is turned off. Turn one on in Settings → Metadata Sources.".into());
-    }
     let app2 = app.clone();
     let mut result = tauri::async_runtime::spawn_blocking(move || {
+        let settings = load_settings(&app2);
+        let any_plugin = !app2.state::<Plugins>().metadata_sources().is_empty()
+            || !app2.state::<WasmPlugins>().metadata_sources().is_empty();
+        if !SourceId::ALL.iter().any(|s| settings.enabled(*s)) && !any_plugin {
+            return Err("Every metadata source is turned off. Turn one on in Settings → Metadata Sources.".to_owned());
+        }
         let plugins = app2.state::<Plugins>();
         let native = app2.state::<WasmPlugins>();
         let ((mut records, mut errors), from_plugins, from_native) = std::thread::scope(|scope| {
@@ -142,10 +141,10 @@ pub async fn find_metadata(app: AppHandle, lookup: Lookup) -> CmdResult<SearchRe
                 Err(e) => errors.push(format!("{name}: {e}")),
             }
         }
-        magnitide_sources::rank(&lookup, records, errors)
+        Ok(magnitide_sources::rank(&lookup, records, errors))
     })
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| e.to_string())??;
     for m in &mut result.matches {
         m.records.iter_mut().for_each(clean);
     }
@@ -180,11 +179,13 @@ impl ReturnedCovers {
 /// credits and the rest), sanitized.
 #[tauri::command]
 pub async fn metadata_details(app: AppHandle, record: SourceRecord) -> CmdResult<SourceRecord> {
-    let settings = load_settings(&app);
-    let mut full = tauri::async_runtime::spawn_blocking(move || magnitide_sources::details(&record, &settings))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
+    let mut full = tauri::async_runtime::spawn_blocking(move || {
+        let settings = load_settings(&app);
+        magnitide_sources::details(&record, &settings)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
     clean(&mut full);
     Ok(full)
 }
