@@ -41,7 +41,7 @@ pub fn handle(req: &Request, source: &dyn Source, cache_dir: &Path) -> Reply {
     let page: usize = req.param("page").and_then(|p| p.parse().ok()).unwrap_or(1).max(1);
 
     if let Some(rest) = path.strip_prefix("/download/") {
-        return download(lib, rest, cache_dir);
+        return download(lib, rest, cache_dir, req);
     }
     if let Some(id) = path.strip_prefix("/cover/") {
         return cover(lib, id, None);
@@ -162,8 +162,9 @@ fn groups<'a>(
 }
 
 /// `/download/<id>/<FORMAT>`. A KEPUB the book doesn't have is made from its
-/// EPUB (for Kobos) and kept in the cache.
-fn download(lib: &dyn Served, rest: &str, cache_dir: &Path) -> Reply {
+/// EPUB (for Kobos) and kept in the cache. The library is told the copy's
+/// fingerprint, so a reading position synced from it finds the book.
+fn download(lib: &dyn Served, rest: &str, cache_dir: &Path, req: &Request) -> Reply {
     let Some((id, format)) = rest.split_once('/') else { return html::not_found() };
     let format = format.to_uppercase();
     let Some(book) = id.parse().ok().and_then(|id| lib.catalog().get(id)) else { return html::not_found() };
@@ -181,8 +182,23 @@ fn download(lib: &dyn Served, rest: &str, cache_dir: &Path) -> Reply {
     if !file.is_file() {
         return Reply::new(404, "text/plain; charset=utf-8", "That file is missing from the library.");
     }
+    if let Ok(fp) = magnitide_core::fingerprint::partial_md5(&file) {
+        lib.copy_served(book.id, &format, &fp, reader_name(&req.user_agent));
+    }
     Reply { status: 200, content_type: util::mime(&format).to_owned(), headers: Vec::new(), body: Body::File(file) }
         .header("Content-Disposition", util::attachment(&util::download_name(book, &format)))
+}
+
+/// What a user agent is, in a word: the app's name ("KOReader", "Thorium"),
+/// or "Kobo" for Kobo's own browser.
+fn reader_name(user_agent: &str) -> &str {
+    let first = user_agent.split_whitespace().next().unwrap_or_default();
+    match first.split('/').next().unwrap_or_default() {
+        // Browsers all claim to be Mozilla; Kobo's names its device further on.
+        "Mozilla" | "" if user_agent.contains("Kobo") => "Kobo",
+        "Mozilla" | "" => "a browser",
+        name => name,
+    }
 }
 
 /// A cache folder for this library (ids are only unique within one).

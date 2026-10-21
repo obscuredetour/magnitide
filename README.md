@@ -26,7 +26,8 @@ _**This wouldn't exist without [calibre](https://github.com/kovidgoyal/calibre) 
   best, converted from EPUB to KEPUB or AZW3 natively (calibre is only a fallback), and shelves become collections
   on a Kobo, for Kobo's own app and KOReader alike.
 - **On your network.** An optional library server with an OPDS catalogue for reading apps, a simple page for
-  e-reader browsers, and KOReader progress sync.
+  e-reader browsers, and KOReader progress sync: positions synced from a book sent to a device or downloaded
+  from the server show in the library as how far you are.
 - **Magnitide plugins.** Small, sandboxed WebAssembly components (`.mgp` files, added in Settings → Plugins) that
   can do only what their package declares. Four kinds: metadata sources in Find Metadata, import hooks on files being
   added, metadata readers and writers for formats, and library tools in the book menu that work on the selected books,

@@ -7,7 +7,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use magnitide_catalog::Catalog;
+use magnitide_catalog::{BookId, Catalog};
+use magnitide_core::positions::Via;
 use magnitide_server::{Config, Served, Server, Source};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
@@ -94,6 +95,20 @@ impl Served for Loaded {
     fn catalog(&self) -> &Catalog {
         &self.catalog
     }
+    fn copy_served(&self, book: BookId, format: &str, fingerprint: &str, by: &str) {
+        // A calibre library is only read; its positions can't be kept.
+        let Some(native) = &self.native else { return };
+        let noted = native.lock().unwrap_or_else(|e| e.into_inner()).note_copy(
+            book,
+            format,
+            fingerprint,
+            Via::Server,
+            Some(by),
+        );
+        if let Err(e) = noted {
+            eprintln!("noting the copy of book {book} downloaded by {by}: {e}");
+        }
+    }
 }
 
 /// Serves whatever library the app has open at the time of each request.
@@ -102,6 +117,9 @@ struct Open(AppHandle);
 impl Source for Open {
     fn current(&self) -> Option<Arc<dyn Served>> {
         self.0.state::<AppState>().current().map(|l| l as Arc<dyn Served>)
+    }
+    fn position_synced(&self, _user: &str, position: &magnitide_server::kosync::Position) {
+        crate::reading::position_synced(&self.0, position);
     }
 }
 
@@ -135,8 +153,8 @@ fn apply(app: &AppHandle, s: &Settings) {
             return;
         }
     };
-    // Reading positions from KOReader's progress sync: the app's, not any library's.
-    let sync_db = app.path().app_data_dir().ok().map(|d| d.join("reading-positions.sqlite"));
+    // Reading positions from KOReader's progress sync: the app's, not any library's (see reading.rs).
+    let sync_db = crate::reading::store_path(app);
     let config = Config { port: s.port, password: s.password.clone(), cache_dir, sync_db };
     match Server::start(config, Arc::new(Open(app.clone()))) {
         Ok(started) => server.server = Some(started),

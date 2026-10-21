@@ -22,8 +22,8 @@ use crate::convert::{Converter, TempDir};
 use crate::import::store::add_formats;
 use crate::import::{AddReport, add_files};
 use crate::metadata::{Author, BookMetadata, epub_write};
-use crate::paths;
-use crate::{BookId, Library, Result};
+use crate::positions::Via;
+use crate::{BookId, Library, Result, fingerprint, paths};
 
 /// What a device reads, best first. Kindles don't take EPUB over USB.
 pub fn readable(kind: DeviceKind) -> &'static [&'static str] {
@@ -191,11 +191,20 @@ pub fn send(
             })
         };
         match result {
-            Ok((bytes, warning)) => {
+            Ok((dest, bytes, warning)) => {
                 report.sent += 1;
                 report.converted += usize::from(plan.format != plan.source.format);
                 report.bytes += bytes;
                 report.warnings.extend(warning);
+                // The copy's fingerprint, so a reading position synced from it finds the book.
+                if let Some(lib) = origin.keep_in
+                    && let Ok(fp) = fingerprint::partial_md5(&dest)
+                {
+                    let mut lib = lib.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Err(e) = lib.note_copy(plan.book.id, &plan.format, &fp, Via::Device, Some(&device.name)) {
+                        eprintln!("noting the copy of “{title}” sent to {}: {e}", device.name);
+                    }
+                }
             }
             Err(e) => report.failed.push(format!("“{title}”: {e}")),
         }
@@ -204,7 +213,8 @@ pub fn send(
     report
 }
 
-/// Copy one book file (`src`, in `format`) to the device.
+/// Copy one book file (`src`, in `format`) to the device: where it went, its
+/// size, and a warning if its metadata couldn't be written into it.
 fn send_one(
     kind: DeviceKind,
     book: &Book,
@@ -212,7 +222,7 @@ fn send_one(
     src: &Path,
     library_root: &Path,
     base: &Path,
-) -> Result<(u64, Option<String>), String> {
+) -> Result<(PathBuf, u64, Option<String>), String> {
     let author = book.authors.first().map_or("Unknown", String::as_str);
     let dir = base.join(paths::sanitize(author, 64));
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -241,7 +251,7 @@ fn send_one(
         }
         let bytes = fs::metadata(&part).map_err(|e| e.to_string())?.len();
         fs::rename(&part, &dest).map_err(|e| e.to_string())?;
-        Ok((bytes, warning))
+        Ok((dest.clone(), bytes, warning))
     })();
     if result.is_err() {
         let _ = fs::remove_file(&part);
@@ -546,7 +556,12 @@ mod tests {
         assert_eq!((r.sent, r.converted, r.kept), (1, 1, 1), "{r:?}");
         let t = || "The Dispossessed".to_owned();
         assert_eq!(steps, [(0, t(), Some("KEPUB".into())), (0, t(), None), (1, String::new(), None)]);
-        assert!(kobo_root.join("Ursula K. Le Guin/The Dispossessed - Ursula K. Le Guin.kepub.epub").is_file());
+        let sent = kobo_root.join("Ursula K. Le Guin/The Dispossessed - Ursula K. Le Guin.kepub.epub");
+        assert!(sent.is_file());
+        // The copy's fingerprint is on record (the library's own file has another),
+        // so a reading position synced from the device finds the book.
+        let fp = fingerprint::partial_md5(&sent).unwrap();
+        assert_eq!(lib.lock().unwrap().fingerprints().unwrap().get(&fp), Some(&id));
 
         // The library has the KEPUB now, so the next device gets it as is.
         let cat = lib.lock().unwrap().load_catalog().unwrap();

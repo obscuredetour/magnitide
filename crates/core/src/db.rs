@@ -14,6 +14,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/0002_file_metadata_written.sql"),
     include_str!("migrations/0003_omnibus_series.sql"),
     include_str!("migrations/0004_shelves.sql"),
+    include_str!("migrations/0005_reading_positions.sql"),
 ];
 
 /// The schema version this build creates and understands.

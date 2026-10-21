@@ -24,7 +24,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use base64::Engine;
-use magnitide_catalog::Catalog;
+use magnitide_catalog::{BookId, Catalog};
 
 pub use addresses::{Addresses, lan_addresses};
 pub use routes::handle;
@@ -35,12 +35,18 @@ pub trait Served: Send + Sync {
     fn name(&self) -> &str;
     fn root(&self) -> &Path;
     fn catalog(&self) -> &Catalog;
+    /// A copy of a book's file was downloaded: its KOReader fingerprint
+    /// (`magnitide_core::fingerprint`) and what fetched it ("KOReader",
+    /// "Kobo"), so a reading position synced from that copy finds the book.
+    fn copy_served(&self, _book: BookId, _format: &str, _fingerprint: &str, _by: &str) {}
 }
 
 /// Where the library comes from: asked on every request, so the app can
 /// switch libraries while serving.
 pub trait Source: Send + Sync + 'static {
     fn current(&self) -> Option<Arc<dyn Served>>;
+    /// A reader synced a position (see kosync). `user` is its sync user name.
+    fn position_synced(&self, _user: &str, _position: &kosync::Position) {}
 }
 
 #[derive(Debug, Clone)]
@@ -224,7 +230,11 @@ fn respond(mut request: tiny_http::Request, config: &Config, source: &dyn Source
             key: key.as_deref(),
             body: &body,
         };
-        kosync::handle(&req, sync, config.password.as_deref())
+        let (reply, synced) = kosync::handle_noting(&req, sync, config.password.as_deref());
+        if let Some(s) = synced {
+            source.position_synced(&s.user, &s.position);
+        }
+        reply
     } else if !matches!(request.method(), tiny_http::Method::Get | tiny_http::Method::Head) {
         Reply::new(405, "text/plain; charset=utf-8", "This catalogue is read-only.").header("Allow", "GET, HEAD")
     } else if !authorized(config.password.as_deref(), header("Authorization").as_deref()) {

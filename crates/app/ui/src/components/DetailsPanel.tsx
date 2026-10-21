@@ -13,6 +13,7 @@ import { identifierOrder } from '../identifiers';
 import { languageName } from '../languages';
 import { toast } from '../toast';
 import { devices, onDevice } from '../devices';
+import { percent, progressOf, readingOf, readingWhere } from '../reading';
 import { addFromDevice, removeFormat, removeFromDevice, sendToDevice } from '../transfer';
 import { writeBookFiles } from '../writeback';
 import { ConvertMenu } from './ConvertMenu';
@@ -426,6 +427,36 @@ function Details(props: { book: BookDetails }) {
                   <ConvertMenu ids={[b().id]} buttonClass={secondaryButton} />
                 </Show>
               </div>
+            </Show>
+            {/* How far you are: from the app's reader, or an e-reader syncing through the library server. */}
+            <Show when={readingOf().get(b().id)}>
+              {(r) => (
+                <p class="flex items-center gap-2 text-xs text-muted">
+                  <span
+                    class="font-medium whitespace-nowrap"
+                    classList={{ 'text-success': r().status === 'read', 'text-fg': r().status === 'reading' }}
+                  >
+                    {r().status === 'read' ? 'Read' : 'Reading'}
+                  </span>
+                  <Show when={progressOf(r())}>
+                    {(p) => (
+                      <>
+                        <span
+                          class="h-1.5 w-20 flex-none overflow-hidden rounded-full bg-line"
+                          role="progressbar"
+                          aria-valuenow={Math.round(p() * 100)}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                        >
+                          <span class="block h-full rounded-full bg-accent" style={{ width: percent(p()) }} />
+                        </span>
+                        <span class="tabular-nums">{percent(p())}</span>
+                      </>
+                    )}
+                  </Show>
+                  <span class="min-w-0 truncate">{readingWhere(r())}</span>
+                </p>
+              )}
             </Show>
             <Show when={onDevices().length}>
               <div class="space-y-1 text-xs">

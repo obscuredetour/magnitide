@@ -98,6 +98,9 @@ pub async fn open_library(app: AppHandle, state: State<'_, AppState>, path: Opti
             .map_err(|e| e.to_string())?;
     }
     state.replace(loaded);
+    // Positions readers synced while this library wasn't open find their books now.
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || crate::reading::catch_up(&handle));
     Ok(info)
 }
 
