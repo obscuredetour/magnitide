@@ -107,11 +107,19 @@ export function isNumeric(kind: FieldKind): boolean {
 const dateFormat = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 
 /**
- * A value as Rust sends it (`BookRow.custom`) for display: dates in the
- * user's locale, yes/no, "Name #2" for series. Ratings are drawn as stars
- * by the caller; long text is HTML.
+ * A comic's Volume is a label, not an amount: often the year the run
+ * began ("2003"), never "2,003".
  */
-export function formatCustom(kind: FieldKind, raw: string | undefined): string {
+const isComicVolume = (key: string | undefined) =>
+  key === 'volume' && customFields().some((f) => f.key === key && f.group === COMIC_GROUP);
+
+/**
+ * A value as Rust sends it (`BookRow.custom`) for display: dates in the
+ * user's locale, yes/no, "Name #2" for series, whole numbers grouped
+ * ("1,200" pages) except a comic's volume. Ratings are drawn as stars by
+ * the caller; long text is HTML.
+ */
+export function formatCustom(kind: FieldKind, raw: string | undefined, key?: string): string {
   if (raw === undefined || raw === '') return '';
   switch (kind) {
     case 'bool':
@@ -123,7 +131,7 @@ export function formatCustom(kind: FieldKind, raw: string | undefined): string {
       return m ? `${m[1]} #${m[2]}` : raw;
     }
     case 'integer':
-      return Number(raw).toLocaleString();
+      return isComicVolume(key) ? String(Number(raw)) : Number(raw).toLocaleString();
     default:
       return raw;
   }
