@@ -40,6 +40,9 @@ export function SourceSettings() {
   const [drafts, setDrafts] = createStore<Partial<Record<SourceId, string>>>({});
   const keyDraft = (s: SourceStatus) => drafts[s.id] ?? '';
   const canSave = (s: SourceStatus) => keyDraft(s).trim() !== '';
+  // Where keys are kept is the same for every source: the system keychain,
+  // or the settings file when no keychain is reachable.
+  const keyStorage = () => sources()?.find((s) => s.needsKey)?.keyStorage;
 
   const update = async (s: SourceStatus, enabled: boolean, apiKey: string | null = null) => {
     try {
@@ -63,7 +66,24 @@ export function SourceSettings() {
           series and issue.
         </p>
       </Heading>
-      <Group title="Built in">
+      <Group
+        title="Built in"
+        description={
+          <Show when={keyStorage()}>
+            {(storage) => (
+              <>
+                <p>Keys are kept in {storage().place}.</p>
+                <Show when={storage().fallback}>
+                  <p class="text-danger">
+                    {storage().fallback} They stay in the settings file, readable only by you, until a keychain (GNOME
+                    Keyring, KWallet or another Secret Service) is running when Magnitide starts.
+                  </p>
+                </Show>
+              </>
+            )}
+          </Show>
+        }
+      >
         <For each={sources()}>
           {(s) => (
             <>
@@ -88,7 +108,9 @@ export function SourceSettings() {
                     autocomplete="off"
                     spellcheck={false}
                     aria-label={`${s.name} API key`}
-                    placeholder={s.hasKey ? 'Key saved · enter a new one to replace it' : 'API key'}
+                    placeholder={
+                      s.hasKey ? `Key saved in ${s.keyStorage.place} · enter a new one to replace it` : 'API key'
+                    }
                     class="h-7 min-w-0 flex-1 rounded-control border border-line bg-field px-2 text-xs outline-none focus:border-focus"
                     value={keyDraft(s)}
                     onInput={(e) => setDrafts(s.id, e.currentTarget.value)}
