@@ -88,9 +88,18 @@ export function ServerSettings() {
               <Row
                 label="Password"
                 description={
-                  s().hasPassword
-                    ? 'Browsers and apps ask for it (any user name works).'
-                    : 'Without one, anyone on your network can browse and download your books.'
+                  <>
+                    {s().hasPassword
+                      ? 'Browsers and apps ask for it (any user name works). '
+                      : 'Without one, anyone on your network can browse and download your books. '}
+                    Kept in {s().passwordStorage.place}.
+                    <Show when={s().passwordStorage.fallback}>
+                      <span class="mt-1 block text-danger">
+                        {s().passwordStorage.fallback} It stays in the settings file, readable only by you, until a
+                        keychain is running when Magnitide starts.
+                      </span>
+                    </Show>
+                  </>
                 }
               >
                 <input

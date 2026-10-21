@@ -61,7 +61,7 @@ pub fn settings_path(app: &AppHandle) -> PathBuf {
 /// The settings, with the keys from wherever they're kept. May reach the
 /// keychain: call from a blocking task.
 fn load_settings(app: &AppHandle) -> Settings {
-    app.state::<Secrets>().settings()
+    app.state::<Secrets>().load(&settings_path(app))
 }
 
 fn statuses(s: &Settings, key_storage: &KeyStorage) -> Vec<SourceStatus> {
@@ -84,7 +84,7 @@ fn statuses(s: &Settings, key_storage: &KeyStorage) -> Vec<SourceStatus> {
 pub async fn metadata_sources(app: AppHandle) -> CmdResult<Vec<SourceStatus>> {
     tauri::async_runtime::spawn_blocking(move || {
         let secrets = app.state::<Secrets>();
-        statuses(&secrets.settings(), &secrets.storage())
+        statuses(&secrets.load(&settings_path(&app)), &secrets.storage())
     })
     .await
     .map_err(|e| e.to_string())
@@ -100,15 +100,16 @@ pub async fn set_metadata_source(
 ) -> CmdResult<Vec<SourceStatus>> {
     tauri::async_runtime::spawn_blocking(move || {
         let secrets = app.state::<Secrets>();
-        let mut s = secrets.settings();
+        let path = settings_path(&app);
+        let mut s: Settings = secrets.load(&path);
         s.disabled.retain(|d| *d != id);
         if !enabled {
             s.disabled.push(id);
         }
         if let Some(key) = api_key {
-            secrets.set_key(&mut s, id, &key)?;
+            secrets.set_secret(&mut s, id.id(), &key)?;
         }
-        secrets.save(&s)?;
+        secrets.save(&path, &s)?;
         Ok(statuses(&s, &secrets.storage()))
     })
     .await
