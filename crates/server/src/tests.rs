@@ -2,15 +2,19 @@ use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use magnitide_catalog::{Book, Catalog, Format};
+use magnitide_catalog::{Book, BookId, Catalog, Format};
 
 use super::*;
+
+/// Copies the library was told were downloaded: book, format, fingerprint, by whom.
+type Copies = Arc<Mutex<Vec<(BookId, String, String, String)>>>;
 
 struct Lib {
     root: PathBuf,
     catalog: Catalog,
+    copies: Copies,
 }
 
 impl Served for Lib {
@@ -23,13 +27,24 @@ impl Served for Lib {
     fn catalog(&self) -> &Catalog {
         &self.catalog
     }
+    fn copy_served(&self, book: BookId, format: &str, fingerprint: &str, by: &str) {
+        self.copies.lock().unwrap().push((book, format.to_owned(), fingerprint.to_owned(), by.to_owned()));
+    }
 }
 
-struct Fixed(Option<Arc<dyn Served>>);
+#[derive(Default)]
+struct Fixed {
+    lib: Option<Arc<dyn Served>>,
+    /// Positions the source was told were synced.
+    synced: Arc<Mutex<Vec<kosync::Synced>>>,
+}
 
 impl Source for Fixed {
     fn current(&self) -> Option<Arc<dyn Served>> {
-        self.0.clone()
+        self.lib.clone()
+    }
+    fn position_synced(&self, user: &str, position: &kosync::Position) {
+        self.synced.lock().unwrap().push(kosync::Synced { user: user.to_owned(), position: position.clone() });
     }
 }
 
@@ -116,8 +131,17 @@ fn fixture() -> (tempfile::TempDir, Arc<dyn Source>) {
         std::fs::write(path, b"%PDF").unwrap();
         books.push(b);
     }
-    let lib = Lib { root, catalog: Catalog::new(None, vec![], books, vec![]) };
-    (dir, Arc::new(Fixed(Some(Arc::new(lib)))))
+    let lib = Lib { root, catalog: Catalog::new(None, vec![], books, vec![]), copies: Copies::default() };
+    (dir, Arc::new(Fixed { lib: Some(Arc::new(lib)), synced: Default::default() }))
+}
+
+/// [`fixture`], with what the library and source are told: downloaded copies and synced positions.
+fn fixture_told() -> (tempfile::TempDir, Arc<Fixed>, Copies) {
+    let (dir, source) = fixture();
+    let lib = source.current().unwrap();
+    let copies = Copies::default();
+    let told = Lib { root: lib.root().to_path_buf(), catalog: lib.catalog().clone(), copies: copies.clone() };
+    (dir, Arc::new(Fixed { lib: Some(Arc::new(told)), synced: Default::default() }), copies)
 }
 
 fn get(source: &Arc<dyn Source>, cache: &Path, target: &str) -> Reply {
@@ -195,6 +219,62 @@ fn kobo_gets_kepub() {
 }
 
 #[test]
+fn downloads_and_synced_positions_reach_the_library() {
+    use magnitide_core::fingerprint::partial_md5;
+    use md5::{Digest, Md5};
+    let (dir, source, copies) = fixture_told();
+    let cache = dir.path().join("cache");
+    let lib = source.current().unwrap();
+    let dune = lib.catalog().get(1).unwrap();
+    let epub = dune.format_path(lib.root(), &dune.formats[0]);
+
+    // Each download tells the library the copy's fingerprint and who fetched it.
+    let koreader = Request::new("/download/1/EPUB", "KOReader/2025.04 (Kobo Libra 2)");
+    assert_eq!(handle(&koreader, source.as_ref(), &cache).status, 200);
+    let kobo = Request::new("/download/1/KEPUB", "Mozilla/5.0 (Linux; U; Android 2.0) (Kobo Touch 0377/4.38.23171)");
+    let reply = handle(&kobo, source.as_ref(), &cache);
+    let Body::File(kepub) = &reply.body else { panic!("a file") };
+    let missing = Request::new("/download/99/PDF", "KOReader/2025.04");
+    assert_eq!(handle(&missing, source.as_ref(), &cache).status, 404, "no such book, nothing told");
+    let told = copies.lock().unwrap().clone();
+    assert_eq!(
+        told,
+        vec![
+            (1, "EPUB".to_owned(), partial_md5(&epub).unwrap(), "KOReader".to_owned()),
+            (1, "KEPUB".to_owned(), partial_md5(kepub).unwrap(), "Kobo".to_owned()),
+        ]
+    );
+    assert_ne!(told[0].2, told[1].2, "the converted copy has a fingerprint of its own");
+
+    // A synced position is passed on with its user name, once it's saved.
+    let config = Config { port: 0, password: None, cache_dir: cache, sync_db: Some(dir.path().join("sync.sqlite")) };
+    let server = Server::start(config, source.clone()).unwrap();
+    let port = server.port();
+    let key: String = Md5::digest(b"x").iter().map(|b| format!("{b:02x}")).collect();
+    let auth = format!("x-auth-user: jamie\r\nx-auth-key: {key}\r\n");
+    let body = format!(
+        r#"{{"document":"{}","progress":"12","percentage":0.42,"device":"Kobo Libra 2","device_id":"D1"}}"#,
+        told[1].2
+    );
+    let put = http(
+        port,
+        &format!(
+            "PUT /syncs/progress HTTP/1.0\r\n{auth}Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        ),
+    );
+    assert!(put.contains(" 200 "), "{put}");
+    let bad = http(port, &format!("PUT /syncs/progress HTTP/1.0\r\n{auth}Content-Length: 4\r\n\r\nnope"));
+    assert!(bad.contains(" 403 "), "{bad}");
+    server.stop();
+    let synced = source.synced.lock().unwrap();
+    assert_eq!(synced.len(), 1, "only the saved one");
+    assert_eq!(synced[0].user, "jamie");
+    assert_eq!((synced[0].position.document.as_str(), synced[0].position.percentage), (told[1].2.as_str(), 0.42));
+    assert_eq!(synced[0].position.device, "Kobo Libra 2");
+}
+
+#[test]
 fn covers_and_thumbnails() {
     let (dir, source) = fixture();
     let cache = dir.path().join("cache");
@@ -250,7 +330,7 @@ fn opds_feeds() {
 
 #[test]
 fn no_library() {
-    let source: Arc<dyn Source> = Arc::new(Fixed(None));
+    let source: Arc<dyn Source> = Arc::new(Fixed::default());
     assert_eq!(get(&source, Path::new("/nonexistent"), "/").status, 503);
 }
 

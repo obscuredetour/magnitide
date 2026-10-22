@@ -3,6 +3,7 @@ import Check from 'lucide-solid/icons/check';
 
 import type { BookRow } from '../api';
 import { onDevice } from '../devices';
+import { percent, progressOf, readingOf } from '../reading';
 import { seriesBadges } from '../view';
 import { Cover } from './Cover';
 import { EmptyNote } from './Mark';
@@ -198,6 +199,14 @@ export function CoverGrid(props: Props) {
                     size="thumb"
                     fit="contain"
                   />
+                  {/* How far through a book being read, along the cover's foot. */}
+                  <Show when={progressOf(readingOf().get(item.id))}>
+                    {(p) => (
+                      <span class="absolute inset-x-0 bottom-0 h-[3px] bg-black/30" title={`${percent(p())} read`}>
+                        <span class="block h-full bg-accent" style={{ width: percent(p()) }} />
+                      </span>
+                    )}
+                  </Show>
                   <Show when={onDevice().get(item.id)}>
                     {(where) => (
                       <span

@@ -176,7 +176,8 @@ export function ServerSettings() {
                             <span class="font-mono break-all select-all">{url().replace(/\/$/, '')}</span>. Then Log in
                             with any user name and{' '}
                             {s().hasPassword ? 'the password above' : 'any password (set one above to keep others out)'}
-                            . Each user name has its own reading positions.
+                            . Each user name has its own reading positions. A position in a book sent to a device or
+                            downloaded from here shows in the library as how far you are.
                           </dd>
                         </div>
                       </dl>

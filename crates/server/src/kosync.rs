@@ -66,6 +66,13 @@ pub struct Position {
     pub timestamp: i64,
 }
 
+/// A position just saved, for whoever serves the library to act on.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Synced {
+    pub user: String,
+    pub position: Position,
+}
+
 /// A stored position with what KOReader said about the book (if it sends
 /// metadata), for showing in the app.
 #[derive(Debug, Clone, PartialEq)]
@@ -95,6 +102,9 @@ impl SyncStore {
     }
 
     fn with(conn: Connection) -> Result<Self, String> {
+        // The app reads positions through a connection of its own while the
+        // server writes them.
+        conn.busy_timeout(std::time::Duration::from_secs(5)).map_err(|e| e.to_string())?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS progress (
                 username TEXT NOT NULL,
@@ -251,6 +261,22 @@ fn text(v: &Value, field: &str, max: usize) -> Option<String> {
 
 /// Handle a kosync request. `store` is None while sync is off.
 pub fn handle(req: &SyncRequest, store: Option<&SyncStore>, password: Option<&str>) -> Reply {
+    handle_noting(req, store, password).0
+}
+
+/// [`handle`], also saying which position a request saved, if it did.
+pub fn handle_noting(req: &SyncRequest, store: Option<&SyncStore>, password: Option<&str>) -> (Reply, Option<Synced>) {
+    let mut synced = None;
+    let reply = handle_inner(req, store, password, &mut synced);
+    (reply, synced)
+}
+
+fn handle_inner(
+    req: &SyncRequest,
+    store: Option<&SyncStore>,
+    password: Option<&str>,
+    synced: &mut Option<Synced>,
+) -> Reply {
     let path = collapse(req.path);
     let Some(store) = store else {
         return error(404, 1000, "Progress sync isn't turned on in Magnitide.");
@@ -305,8 +331,13 @@ pub fn handle(req: &SyncRequest, store: Option<&SyncStore>, password: Option<&st
             };
             let meta: Metadata =
                 body.get("metadata").and_then(|m| serde_json::from_value(m.clone()).ok()).unwrap_or_default();
-            match store.put(req.user.unwrap_or_default(), &position, &meta) {
-                Ok(()) => reply(200, json!({ "document": position.document, "timestamp": position.timestamp })),
+            let user = req.user.unwrap_or_default();
+            match store.put(user, &position, &meta) {
+                Ok(()) => {
+                    let r = reply(200, json!({ "document": position.document, "timestamp": position.timestamp }));
+                    *synced = Some(Synced { user: user.to_owned(), position });
+                    r
+                }
                 Err(e) => error(500, 1001, &format!("Couldn't save the position: {e}")),
             }
         }

@@ -133,32 +133,50 @@ pub struct ReadingState {
     /// "unread", "reading" or "read".
     pub status: String,
     pub progress: Option<f64>,
+    /// When the position was last moved (RFC 3339).
+    pub last_read_at: Option<String>,
+    /// The e-reader a synced position came from ("Kobo Libra 2"); None for
+    /// this app's own reader.
+    pub device: Option<String>,
 }
 
 impl Library {
     pub fn reading_state(&self, id: BookId) -> Result<ReadingState> {
-        let row: Option<(String, Option<f64>)> = self
+        let row: Option<ReadingState> = self
             .conn
             .query_row(
-                "SELECT status, progress FROM user_books WHERE user_id = ? AND book_id = ?",
+                "SELECT status, progress, last_read_at, device FROM user_books WHERE user_id = ? AND book_id = ?",
                 params![LOCAL_USER, id],
-                |r| Ok((r.get(0)?, r.get(1)?)),
+                |r| {
+                    Ok(ReadingState {
+                        status: r.get(0)?,
+                        progress: r.get(1)?,
+                        last_read_at: r.get(2)?,
+                        device: r.get(3)?,
+                    })
+                },
             )
             .optional()?;
-        let (status, progress) = row.unwrap_or_else(|| ("unread".into(), None));
-        Ok(ReadingState { status, progress })
+        Ok(row.unwrap_or_else(|| ReadingState {
+            status: "unread".into(),
+            progress: None,
+            last_read_at: None,
+            device: None,
+        }))
     }
 
-    /// Record how far through the book you are (0–1): it's being read, or at
-    /// the end, read. A book already read stays read when it's reopened.
+    /// Record how far through the book you are (0–1) in this app's reader:
+    /// it's being read, or at the end, read. A book already read stays read
+    /// when it's reopened.
     pub fn set_reading_progress(&mut self, id: BookId, progress: f64) -> Result<ReadingState> {
         let progress = progress.clamp(0.0, 1.0);
         let finished = progress >= 1.0;
         self.conn.execute(
-            "INSERT INTO user_books (user_id, book_id, status, progress, last_read_at) VALUES (?1, ?2, ?3, ?4, ?5)
+            "INSERT INTO user_books (user_id, book_id, status, progress, last_read_at, device)
+             VALUES (?1, ?2, ?3, ?4, ?5, NULL)
              ON CONFLICT (user_id, book_id) DO UPDATE SET
                status = CASE WHEN ?3 = 'read' OR status = 'read' THEN 'read' ELSE 'reading' END,
-               progress = ?4, last_read_at = ?5",
+               progress = ?4, last_read_at = ?5, device = NULL",
             params![LOCAL_USER, id, if finished { "read" } else { "reading" }, progress, now()],
         )?;
         self.reading_state(id)
@@ -211,7 +229,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let mut lib = Library::create(tmp.path().join("lib"), "Test").unwrap();
         let id = lib.add_book(&crate::library::NewBook { title: "Saga #1".into(), ..Default::default() }).unwrap();
-        assert_eq!(lib.reading_state(id).unwrap(), ReadingState { status: "unread".into(), progress: None });
+        assert_eq!(
+            lib.reading_state(id).unwrap(),
+            ReadingState { status: "unread".into(), progress: None, last_read_at: None, device: None }
+        );
         assert_eq!(lib.set_reading_progress(id, 0.25).unwrap().status, "reading");
         let done = lib.set_reading_progress(id, 1.0).unwrap();
         assert_eq!((done.status.as_str(), done.progress), ("read", Some(1.0)));

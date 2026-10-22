@@ -7,4 +7,13 @@ export type ReadingState = {
 /**
  * "unread", "reading" or "read".
  */
-status: string, progress: number | null, };
+status: string, progress: number | null, 
+/**
+ * When the position was last moved (RFC 3339).
+ */
+lastReadAt: string | null, 
+/**
+ * The e-reader a synced position came from ("Kobo Libra 2"); None for
+ * this app's own reader.
+ */
+device: string | null, };

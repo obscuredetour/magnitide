@@ -10,6 +10,7 @@ mod lookup;
 mod menu;
 mod plugins;
 mod reader;
+mod reading;
 mod server;
 mod themes;
 mod updates;
@@ -153,6 +154,7 @@ fn main() {
             reader::open_comic,
             reader::close_comic,
             reader::save_reading_progress,
+            reading::reading_states,
             commands::open_library,
             commands::close_library,
             commands::create_library,

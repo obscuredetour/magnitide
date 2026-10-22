@@ -27,6 +27,7 @@ pub mod metadata;
 pub mod names;
 pub mod pages;
 pub mod paths;
+pub mod positions;
 pub mod shelves;
 pub mod tidy;
 pub mod values;

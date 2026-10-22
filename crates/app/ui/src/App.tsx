@@ -20,6 +20,7 @@ import { QuestionHost } from './question';
 import { ConfirmHost } from './confirm';
 import { TopBar } from './components/TopBar';
 import { selectedInOrder, shownItems, watchDevices } from './devices';
+import { watchReading } from './reading';
 import {
   detailsOpen,
   items,
@@ -231,6 +232,7 @@ export function App() {
     void openInitialLibrary();
     scheduleUpdateChecks();
     watchDevices();
+    watchReading();
     initPlugins();
     void loadThemeAddons().catch(() => {}); // the cached copy already applies
   });

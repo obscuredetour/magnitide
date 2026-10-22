@@ -194,6 +194,20 @@ one thing it writes is KOReader reading positions, in their own database.
   `reading-positions.sqlite` in the app's data folder, never in a library,
   keyed by user name and KOReader's document fingerprint
   (`core::fingerprint::partial_md5`, checked against KOReader's own value).
+- **Positions reach the library** (`core::positions`): the library keeps
+  the fingerprints a book can be known by: its own files' (taken when first
+  needed, again when a file's mtime changes, in `files.fingerprint`) and
+  those of copies that left it (`file_copies`): a copy sent to a device has
+  metadata written in, a download made for a Kobo is a fresh KEPUB, so each
+  differs from the library file's. The `server` crate reports each download
+  (`Served::copy_served`) and each saved position (`Source::position_synced`)
+  to whoever serves the library; the app matches the position at once, and
+  every stored position again when a library opens. A match moves the local
+  user's `user_books` row on (status, progress, `last_read_at`, `device`)
+  only when the position is newer than the last one the library saw, so the
+  app's own comic reader and several readers don't fight; at 100% the book
+  is read. The UI holds reading states beside the catalog (like device
+  matches), not in `Book`, so the 25 places that build one are untouched.
 - tiny_http with four worker threads. The address shown comes from the
   network adapters, skipping VPN tunnels and virtual adapters (point-to-point,
   /32, or tunnel-like names): with a VPN up, the default route's address is
@@ -210,8 +224,9 @@ In order of value for effort:
    catalogue and e-reader page, which the desktop app already serves.
 2. **Accounts**: authentication, per-user state, rate limiting. TLS is
    expected from a reverse proxy; the docs will show how.
-3. **KOReader progress sync**: the protocol is done (the desktop app serves
-   it); a server adds real accounts and per-user libraries.
+3. **KOReader progress sync**: the protocol and the matching of positions to
+   books are done (the desktop app serves it); a server adds real accounts
+   and per-user libraries.
 4. **Kobo sync** (the feature many Calibre-Web users rely on).
 5. calibre's wireless-device protocol, so KOReader's "Calibre" plugin can
    connect.
@@ -334,3 +349,4 @@ a library file directly.
 | 2026-10-10 | The calibre plugin host Magnitide provides is named Estuary, Magnitide's compatibility layer (as Proton is Valve's): "Magnitide's runtime" read as something every plugin needs, Magnitide's own included, which run in the WebAssembly sandbox. The name runs through the code too: the module (`estuary.rs`), the host choice (`estuary`), the folders (`<app local data>/plugin-hosts/estuary/<N>/`, `target/estuary/`, `scripts/estuary/`), the variables (`MAGNITIDE_ESTUARY`) and the releases (`estuary-v<N>`, from version 3). Estuary gets its own folder beside the downloaded calibre, which installing or removing it no longer deletes.                                                                                                                       |
 | 2026-10-11 | Magnitide updates itself with Tauri's updater, from the latest GitHub release's `latest.json`: signed installers (a key of the release workflow's), checked at launch and daily unless turned off, installed only when asked. Only copies its own installers put there take part: a `.deb` or `.rpm` only while dpkg or rpm owns the program, since Tauri marks the binary with its bundle and the AUR's magnitide-bin repackages the `.deb`; package managers and source builds update their own copies.                                                                                                                                                                                                                                                                  |
 | 2026-10-17 | Metadata-source keys live in the system keychain (macOS Keychain, Windows Credential Manager, the Secret Service on Linux) through the `keyring` crate: one entry per source under `com.magnitide.app`, read once at launch and cached; a key still in the settings file moves over then and the file is rewritten without it. Where no keychain is reachable (a headless or minimal Linux) the keys stay in the owner-only settings file and Settings says so; a `KeyStore` trait with a fake behind it keeps the migration tests off the real keychain. The library server's password goes the same way (`server-password`): any settings file with secrets registers with `Secrets`, which reads its accounts at launch, moves the file's own into the keychain, and strips them when the file is saved. |
+| 2026-10-21 | Synced reading positions are matched to books by fingerprint: the library records its files' KOReader fingerprints (`files.fingerprint`, by mtime) and those of every copy it hands out (`file_copies`: sent to a device with metadata written in, or downloaded from the server, where a Kobo's KEPUB is a fresh file), since a position names only the file the reader opened. The `server` crate reports downloads and saved positions through its `Served`/`Source` traits; the app matches at once and again when a library opens, moving `user_books` on only for a newer position. Reading states travel beside the catalog in the UI, not in `Book`. |

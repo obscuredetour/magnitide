@@ -20,6 +20,7 @@ import Ellipsis from 'lucide-solid/icons/ellipsis';
 
 import type { BookRow, SortKey } from '../api';
 import { onDevice } from '../devices';
+import { percent, progressOf, readingOf, readingWhere } from '../reading';
 import { sort, sortDir, sortField, toggleFieldSort, toggleSort } from '../library';
 import { credited, customFields, formatCustom, isNumeric } from '../fields';
 import type { CustomField } from '../api';
@@ -107,6 +108,13 @@ const columns: ColumnDef<typeof features, BookRow, any>[] = [
     meta: { label: 'On Device' } satisfies Meta,
     header: 'On Device',
     cell: (info) => <DeviceCheck id={info.row.original.id} />,
+  }),
+  col.display({
+    id: 'reading',
+    size: 96,
+    meta: { label: 'Progress' } satisfies Meta,
+    header: 'Progress',
+    cell: (info) => <ReadingCell id={info.row.original.id} />,
   }),
   col.accessor('authors', {
     id: 'author',
@@ -222,6 +230,39 @@ function DeviceCheck(props: { id: number }) {
           aria-label="On device"
         >
           <Icon of={Check} />
+        </span>
+      )}
+    </Show>
+  );
+}
+
+/** How far through the book: a bar and the percentage, or "Read". */
+function ReadingCell(props: { id: number }) {
+  const state = () => readingOf().get(props.id);
+  return (
+    <Show when={state()}>
+      {(r) => (
+        <span class="flex items-center gap-1.5" title={readingWhere(r())}>
+          <Show
+            when={progressOf(r())}
+            fallback={
+              <Show when={r().status === 'read'}>
+                <span class="flex items-center gap-1 text-success">
+                  <Icon of={Check} />
+                  Read
+                </span>
+              </Show>
+            }
+          >
+            {(p) => (
+              <>
+                <span class="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-line">
+                  <span class="block h-full rounded-full bg-accent" style={{ width: percent(p()) }} />
+                </span>
+                <span class="w-8 flex-none text-right tabular-nums">{percent(p())}</span>
+              </>
+            )}
+          </Show>
         </span>
       )}
     </Show>

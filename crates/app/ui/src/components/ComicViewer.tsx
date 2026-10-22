@@ -11,6 +11,7 @@ import Square from 'lucide-solid/icons/square';
 import X from 'lucide-solid/icons/x';
 
 import { api, errorMessage, type OpenedComic, pageUrl } from '../api';
+import { noteReading } from '../reading';
 import { storage } from '../storage';
 import { closeViewer } from '../viewer';
 import { Icon } from './Icon';
@@ -78,7 +79,12 @@ export function ComicViewer(props: { id: number }) {
   const save = () => {
     clearTimeout(saveTimer);
     const c = comic();
-    if (c) void api.saveReadingProgress(c.id, last(), c.pages).catch(() => {});
+    if (c) {
+      void api
+        .saveReadingProgress(c.id, last(), c.pages)
+        .then((s) => s && noteReading({ id: c.id, ...s }))
+        .catch(() => {});
+    }
   };
   createEffect(
     on(page, () => {

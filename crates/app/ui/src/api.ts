@@ -81,6 +81,7 @@ import type { DropScan } from './bindings/DropScan';
 import type { ComicRecord } from './bindings/ComicRecord';
 import type { OpenedComic } from './bindings/OpenedComic';
 import type { ReadingState } from './bindings/ReadingState';
+import type { BookReading } from './bindings/BookReading';
 import type { BookRow } from './bindings/BookRow';
 import type { AuthorSort } from './bindings/AuthorSort';
 import type { BookEdit } from './bindings/BookEdit';
@@ -122,6 +123,7 @@ export type {
   ComicRecord,
   OpenedComic,
   ReadingState,
+  BookReading,
   ApplyReport,
   InstalledPlugin,
   NativePlugin,
@@ -295,6 +297,8 @@ export const api = {
   /** The reader is at `page` of `pages`: the book's being read, or at the last page, read. */
   saveReadingProgress: (id: number, page: number, pages: number) =>
     invoke<ReadingState | null>('save_reading_progress', { id, page, pages }),
+  /** The reading state of every book that has one (the app's reader, synced e-reader positions). */
+  readingStates: () => invoke<BookReading[]>('reading_states'),
 
   /** What adding these files and folders would find, before anything is copied. */
   scanDrop: (paths: string[]) => invoke<DropScan>('scan_drop', { paths }),
@@ -756,6 +760,11 @@ export function onZoomMenu(handler: (action: 'in' | 'out' | 'reset') => void): P
 /** An e-reader was connected or disconnected (or rescanned). Matches `DEVICES_CHANGED_EVENT` in devices.rs. */
 export function onDevicesChanged(handler: () => void): Promise<UnlistenFn> {
   return listen('devices-changed', handler);
+}
+
+/** A reader synced positions that moved these books on. Matches `READING_CHANGED_EVENT` in reading.rs. */
+export function onReadingChanged(handler: (moved: BookReading[]) => void): Promise<UnlistenFn> {
+  return listen<BookReading[]>('reading-changed', (e) => handler(e.payload));
 }
 
 /** Saving several books. Event name matches `BULK_PROGRESS_EVENT` in commands.rs. */
