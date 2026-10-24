@@ -11,6 +11,8 @@ pub struct Addresses {
     pub lan: Vec<IpAddr>,
     /// A VPN or other tunnel is up, which may block connections from the LAN.
     pub tunnel: bool,
+    /// The first private address's network ("192.168.1.0/24"), for a firewall rule letting it in.
+    pub network: Option<String>,
 }
 
 pub fn lan_addresses() -> Addresses {
@@ -67,6 +69,10 @@ fn choose<'a>(interfaces: impl Iterator<Item = (&'a str, Ipv4Addr, u8, bool)>) -
         if is_virtual(name, prefixlen, p2p) {
             out.tunnel = true;
         } else if ip.is_private() {
+            if out.network.is_none() {
+                let mask = u32::MAX.checked_shl(32 - u32::from(prefixlen)).unwrap_or(0);
+                out.network = Some(format!("{}/{prefixlen}", Ipv4Addr::from(u32::from(ip) & mask)));
+            }
             out.lan.push(IpAddr::V4(ip));
         } else {
             public.push(IpAddr::V4(ip));
@@ -98,7 +104,10 @@ mod tests {
             ]
             .into_iter(),
         );
-        assert_eq!(got, Addresses { lan: vec![IpAddr::V4(ip("10.69.1.58"))], tunnel: true });
+        assert_eq!(
+            got,
+            Addresses { lan: vec![IpAddr::V4(ip("10.69.1.58"))], tunnel: true, network: Some("10.69.1.0/24".into()) }
+        );
 
         // Windows adapter names; private addresses before public ones.
         let got = choose(
@@ -111,5 +120,6 @@ mod tests {
         );
         assert_eq!(got.lan, [IpAddr::V4(ip("192.168.1.20")), IpAddr::V4(ip("203.0.113.9"))]);
         assert!(got.tunnel);
+        assert_eq!(got.network.as_deref(), Some("192.168.1.0/24"));
     }
 }

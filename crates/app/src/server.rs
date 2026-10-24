@@ -55,6 +55,15 @@ impl Default for Settings {
     }
 }
 
+/// A firewall that may block the server, and the command that opens its port.
+#[derive(Serialize, TS)]
+#[ts(export)]
+pub struct Firewall {
+    /// "ufw" or "firewalld".
+    name: String,
+    command: String,
+}
+
 /// What Settings shows.
 #[derive(Serialize, TS)]
 #[ts(export)]
@@ -75,6 +84,8 @@ pub struct ServerStatus {
     qr_svg: Option<String>,
     /// A VPN is up; it may block devices on the LAN from connecting.
     vpn: bool,
+    /// A firewall (Linux's ufw or firewalld) is on and may not let devices in.
+    firewall: Option<Firewall>,
     /// Why it isn't running although enabled (port taken, no network…).
     error: Option<String>,
 }
@@ -206,6 +217,10 @@ fn status(app: &AppHandle) -> ServerStatus {
         url,
         other_urls,
         vpn: found.tunnel,
+        firewall: running
+            .then(|| magnitide_server::firewall_hint(port, found.network.as_deref()))
+            .flatten()
+            .map(|f| Firewall { name: f.name.to_owned(), command: f.command }),
         error,
     }
 }

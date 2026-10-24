@@ -212,6 +212,13 @@ one thing it writes is KOReader reading positions, in their own database.
   network adapters, skipping VPN tunnels and virtual adapters (point-to-point,
   /32, or tunnel-like names): with a VPN up, the default route's address is
   the tunnel's, which devices on the Wi-Fi can't reach.
+- On Linux, Settings also says when a firewall may be dropping devices'
+  connections, which they only see as a timeout (`firewall_hint`): ufw
+  that's on without a rule accepting the port (its rule files, read without
+  root), or firewalld that doesn't answer yes to `--query-port`. It gives the
+  command that opens the port, to the first LAN address's network for ufw.
+  Rules it can't read count as not allowing it; the hint is worded "if
+  devices can't connect".
 
 ## Server mode (planned)
 
