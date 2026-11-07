@@ -37,10 +37,10 @@ export function ServerSettings() {
     }
   };
 
-  const copy = (text: string) =>
+  const copy = (text: string, what: 'Address' | 'Command' = 'Address') =>
     navigator.clipboard.writeText(text).then(
-      () => toast('Address copied'),
-      () => toast("Couldn't copy the address", { error: true }),
+      () => toast(`${what} copied`),
+      () => toast(`Couldn't copy the ${what.toLowerCase()}`, { error: true }),
     );
 
   return (
@@ -186,7 +186,7 @@ export function ServerSettings() {
                 </Group>
               )}
             </Show>
-            <Show when={s().running && (mac || s().vpn)}>
+            <Show when={s().running && (mac || s().vpn || s().firewall)}>
               <Callout icon={TriangleAlert} title="If devices can’t connect" tone="warning">
                 <Show when={mac}>
                   <p>If macOS asks whether Magnitide may accept incoming connections, allow it.</p>
@@ -196,6 +196,24 @@ export function ServerSettings() {
                     A VPN is on: allow local network (LAN) connections in its settings, or turn it off while you
                     download.
                   </p>
+                </Show>
+                <Show when={s().firewall}>
+                  {(f) => (
+                    <>
+                      <p>
+                        This computer’s firewall ({f().name}) is on and doesn’t seem to let devices reach port{' '}
+                        {s().port}, so they time out. Allow it in a terminal:
+                      </p>
+                      <div class="flex items-center gap-2">
+                        <code class="min-w-0 flex-1 rounded-inset bg-bg/60 px-2 py-1 font-mono text-[11.5px] break-all text-fg select-all">
+                          {f().command}
+                        </code>
+                        <button class={button} onClick={() => void copy(f().command, 'Command')}>
+                          Copy
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </Show>
               </Callout>
             </Show>

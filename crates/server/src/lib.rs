@@ -9,6 +9,7 @@
 //! can serve one from disk.
 
 mod addresses;
+mod firewall;
 mod html;
 pub mod kosync;
 mod opds;
@@ -27,6 +28,7 @@ use base64::Engine;
 use magnitide_catalog::{BookId, Catalog};
 
 pub use addresses::{Addresses, lan_addresses};
+pub use firewall::{FirewallHint, firewall_hint};
 pub use routes::handle;
 
 /// A library to serve.
