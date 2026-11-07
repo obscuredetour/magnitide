@@ -66,10 +66,11 @@ jobs:
               - 'scripts/**'
               - 'Cargo.lock'
               - '.github/workflows/checks.yml'
-      - name: System libraries Tauri builds against (and xvfb for the tests that open Qt)
+      # epubcheck: the MOBI → EPUB tests check what they write with it when it's there.
+      - name: System libraries Tauri builds against (xvfb for the tests that open Qt, epubcheck)
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libxdo-dev libssl-dev librsvg2-dev xvfb
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libxdo-dev libssl-dev librsvg2-dev xvfb epubcheck
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt

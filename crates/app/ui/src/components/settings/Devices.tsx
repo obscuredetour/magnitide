@@ -50,7 +50,10 @@ export function DeviceSettings() {
       </Group>
 
       <Group title="Converting">
-        <Row label="Built in" description="EPUB to KEPUB, for Kobo, and EPUB to AZW3, for Kindle." />
+        <Row
+          label="Built in"
+          description="EPUB to KEPUB, for Kobo; EPUB to AZW3, for Kindle; and MOBI, AZW and AZW3 to EPUB."
+        />
         <Row
           label="With calibre"
           description={
@@ -58,7 +61,7 @@ export function DeviceSettings() {
               {(c) =>
                 c().calibre ? (
                   <>
-                    Everything else, from and to MOBI, PDF and more, uses calibre’s converter at{' '}
+                    Everything else, to MOBI, from PDF and more, uses calibre’s converter at{' '}
                     <span class="break-all">{c().calibre}</span>.
                   </>
                 ) : (

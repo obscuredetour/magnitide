@@ -27,7 +27,8 @@ export function ConvertMenu(props: { ids: number[]; buttonClass: string; align?:
       </For>
       <Show when={info() && !info()!.calibre}>
         <p class="px-2.5 pt-1 pb-1.5 text-[11px] text-faint">
-          EPUB → KEPUB and AZW3, and CBR → CBZ, are built in. Install calibre for MOBI, PDF and more.
+          EPUB → KEPUB and AZW3, MOBI and AZW3 → EPUB, and CBR → CBZ are built in. Install calibre for PDF, MOBI output
+          and more.
         </p>
       </Show>
     </Menu>

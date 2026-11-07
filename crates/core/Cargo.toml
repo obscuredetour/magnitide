@@ -16,10 +16,13 @@ calibre-compat = { path = "../calibre-compat" }
 chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"] }
 deunicode = "1.6"
 flate2 = "1.1.10"
+html5ever = "0.40.1"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
 magnitide-catalog = { path = "../catalog" }
+markup5ever_rcdom = "0.40.1"
 md-5 = "0.11.0"
 quick-xml = "0.42"
+regex = "1.13.1"
 reflink-copy = "0.1.30"
 roxmltree = "0.21.1"
 rusqlite = { version = "0.40.2", features = ["bundled"] }

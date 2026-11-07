@@ -261,7 +261,7 @@ pub(super) fn escape_text(s: &str) -> String {
 }
 
 /// Undo escaping in a raw value (for reading hrefs and ids).
-pub(super) fn unescape(raw: &str) -> String {
+pub(crate) fn unescape(raw: &str) -> String {
     if !raw.contains('&') {
         return raw.to_owned();
     }
@@ -299,7 +299,7 @@ pub(super) fn unescape(raw: &str) -> String {
 }
 
 /// The HTML named references books actually use.
-fn html_entity(name: &str) -> Option<u32> {
+pub(crate) fn html_entity(name: &str) -> Option<u32> {
     Some(match name {
         "nbsp" => 160,
         "iexcl" => 161,

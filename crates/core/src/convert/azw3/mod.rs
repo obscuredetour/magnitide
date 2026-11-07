@@ -34,7 +34,7 @@ use crate::metadata::epub::{
 use crate::metadata::{BookMetadata, epub, language_tag};
 
 mod chunker;
-mod dom;
+pub(crate) mod dom;
 mod index;
 pub mod palmdoc;
 mod tbs;

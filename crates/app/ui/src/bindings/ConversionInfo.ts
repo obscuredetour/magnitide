@@ -5,6 +5,6 @@
  */
 export type ConversionInfo = { 
 /**
- * calibre's `ebook-convert`, if installed (needed for everything but EPUB → KEPUB).
+ * calibre's `ebook-convert`, if installed (needed for all but the built-in conversions).
  */
 calibre: string | null, };

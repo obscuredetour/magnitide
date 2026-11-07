@@ -153,7 +153,7 @@ fn is_image(b: &[u8]) -> bool {
 }
 
 /// Windows-1252, the older MOBI text encoding.
-fn cp1252(b: &[u8]) -> String {
+pub(crate) fn cp1252(b: &[u8]) -> String {
     const HIGH: [char; 32] = [
         '€', '\u{81}', '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ', '\u{8d}', 'Ž', '\u{8f}', '\u{90}', '‘',
         '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ', '\u{9d}', 'ž', 'Ÿ',
