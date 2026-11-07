@@ -14,6 +14,15 @@ How a version of Magnitide gets built, signed and published. The
 4. Update the Arch package: `scripts/aur-update.sh <version>`, then push it to the AUR
    ([packaging/aur/README.md](packaging/aur/README.md)).
 
+If a build fails because of the workflow rather than the code (a runner GitHub has retired, say),
+fix the workflow on `main` and rebuild without moving the tag: Actions › Release › Run workflow on
+`main`, with the tag and, optionally, just the builds that failed (`platforms`, e.g.
+`macOS Apple Silicon`). They join the same draft release:
+
+```sh
+gh workflow run release.yml --ref main -f tag=v<version> -f platforms="macOS Apple Silicon"
+```
+
 The macOS builds are signed with a Developer ID and notarized when these repository secrets are
 set (Settings › Secrets and variables › Actions); they need a membership of the Apple Developer
 Program:
