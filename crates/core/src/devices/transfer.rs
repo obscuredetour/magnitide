@@ -484,13 +484,22 @@ mod tests {
         fs::create_dir_all(root.join(".kobo")).unwrap();
         let kobo = detect(&root).unwrap();
         let books: Vec<&Book> = cat.books.iter().collect();
-
-        let r = send(&kobo, &books, read_only(lib.root()), None, Some("EPUB"), &Converter::default(), |_| {});
-        assert_eq!(r.sent, 2, "{r:?}");
-        assert!(root.join("Ursula K. Le Guin/The Dispossessed - Ursula K. Le Guin.epub").is_file(), "EPUB as asked");
-        assert!(root.join("Frank Herbert/Dune - Frank Herbert.pdf").is_file(), "no EPUB: its best other format");
-        // A format the device can't read is ignored.
         let dune: Vec<&Book> = cat.books.iter().filter(|b| b.title == "Dune").collect();
+
+        // Dune's AZW3 isn't a real one: it can't be made into an EPUB.
+        let r = send(&kobo, &books, read_only(lib.root()), None, Some("EPUB"), &Converter::default(), |_| {});
+        assert_eq!(r.sent, 1, "{r:?}");
+        assert!(root.join("Ursula K. Le Guin/The Dispossessed - Ursula K. Le Guin.epub").is_file(), "EPUB as asked");
+        assert!(r.failed.iter().any(|f| f.contains("Dune")), "{r:?}");
+
+        // A real one is converted on the way.
+        let azw3 = dune[0].formats.iter().find(|f| f.format == "AZW3").unwrap();
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test.azw3");
+        fs::copy(fixture, dune[0].format_path(lib.root(), azw3)).unwrap();
+        let r = send(&kobo, &dune, read_only(lib.root()), None, Some("EPUB"), &Converter::default(), |_| {});
+        assert_eq!((r.sent, r.converted), (1, 1), "{r:?}");
+        assert!(root.join("Frank Herbert/Dune - Frank Herbert.epub").is_file(), "EPUB made from the AZW3");
+        // A format the device can't read is ignored.
         assert_eq!(pick_format(kobo.kind, dune[0], lib.root(), Some("AZW3")).unwrap().format, "PDF");
     }
 

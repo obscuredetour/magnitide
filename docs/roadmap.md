@@ -37,7 +37,7 @@ What's done and what's next, in roughly the order it happened. The
 - [x] MOBI/AZW/AZW3 metadata and covers (adding books, device matching); "Surname, Given" authors turned around
 - [ ] PDF metadata reader (drag and drop uses file names for PDFs today)
 - [x] Native EPUB → AZW3 converter (KF8, a port of calibre's writer): Kindles no longer need calibre installed; calibre is a fallback for unusual books
-- [ ] MOBI/AZW3 → EPUB (upgrading old Kindle files)
+- [x] Native MOBI/AZW/AZW3 → EPUB converter (KF8 and MOBI 6, a port of calibre's MOBI reader): old Kindle files become EPUBs (and KEPUBs) without calibre, with the library's metadata; calibre is a fallback, and DRM-protected books are refused
 - [x] Adding a new format of a book already in the library (same title and first author) adds it to that book instead of creating another
 - [x] Metadata editing (⌘E): all built-in fields, rich-text description, cover change/remove; folder and file names follow title and first author (all-or-nothing with the database)
 - [x] Autocomplete for authors, tags, series and publishers in the edit form
@@ -48,7 +48,7 @@ What's done and what's next, in roughly the order it happened. The
 - [x] Metadata lookup from Open Library and Google Books (your own API key) with a field-by-field matching dialog: "Find Metadata…" in the edit window, sources in Settings → Metadata Sources. On request only; ranking is plain string matching
 - [x] E-reader detection (Kobo, Kindle, any calibre-managed USB device): plugged-in devices appear in the top bar, books on them get an "On Device" column, a cover badge and a line in the details panel, and the list can be filtered to books on or not on a device. Matched by calibre's uuid, ISBN, identical file, then title and author; Eject from the device menu
 - [x] File transfer: send selected books to a device (the format it reads best; EPUBs get the library's metadata, cover and id written into the copy), remove them (with KOReader's notes), and add a device's other files to the library
-- [x] Format conversion: "Convert…" in the details panel and selection bar adds the new format to the book. EPUB → KEPUB (Kobo spans, like kepubify) and EPUB → AZW3 are built in; MOBI, PDF and others use calibre's `ebook-convert` when installed (detected, never bundled). Sending converts on the way when a device's default format is missing, or when a Kindle gets an EPUB-only book
+- [x] Format conversion: "Convert…" in the details panel and selection bar adds the new format to the book. EPUB → KEPUB (Kobo spans, like kepubify), EPUB → AZW3 and MOBI/AZW/AZW3 → EPUB are built in; MOBI output, PDF and others use calibre's `ebook-convert` when installed (detected, never bundled). Sending converts on the way when a device's default format is missing, or when a Kindle gets an EPUB-only book
 - [x] Send asks which format when a book has several the device reads; Settings → Devices sets a default per kind of device
 - [ ] Kindle covers: write cover thumbnails on send and restore the ones the Kindle deletes once online (calibre's workaround)
 - [x] Multi-select (⌘-click, Shift-click, ⌘A) with a selection bar; "Merge…" for two records of the same book

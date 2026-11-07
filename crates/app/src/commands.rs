@@ -564,7 +564,7 @@ pub const CONVERT_PROGRESS_EVENT: &str = "convert-progress";
 #[derive(Serialize, TS)]
 #[ts(export)]
 pub struct ConversionInfo {
-    /// calibre's `ebook-convert`, if installed (needed for everything but EPUB → KEPUB).
+    /// calibre's `ebook-convert`, if installed (needed for all but the built-in conversions).
     calibre: Option<String>,
 }
 

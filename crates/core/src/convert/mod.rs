@@ -1,12 +1,12 @@
 //! Converting books between formats.
 //!
-//! EPUB → KEPUB ([`kepub`]), EPUB → AZW3 ([`azw3`]) and CBR or CB7 → CBZ
-//! ([`cbz`], a RAR with a tool on the computer) are done natively.
-//! Everything else goes through calibre's `ebook-convert` command when
-//! calibre is installed (detected, never bundled): MOBI, EPUB from other
-//! formats, and so on. calibre also stands in if a native AZW3 conversion
-//! fails. Conversions read a book file and write a new one; the source is
-//! never changed.
+//! EPUB → KEPUB ([`kepub`]), EPUB → AZW3 ([`azw3`]), MOBI, AZW and AZW3 →
+//! EPUB or KEPUB ([`mobi`]) and CBR or CB7 → CBZ ([`cbz`], a RAR with a tool
+//! on the computer) are done natively. Everything else goes through
+//! calibre's `ebook-convert` command when calibre is installed (detected,
+//! never bundled): MOBI output, EPUB from other formats, and so on. calibre
+//! also stands in if a native AZW3 or EPUB conversion fails. Conversions
+//! read a book file and write a new one; the source is never changed.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -21,6 +21,7 @@ use crate::library::{BookId, Library};
 pub mod azw3;
 pub mod cbz;
 pub mod kepub;
+pub mod mobi;
 
 /// Formats calibre's `ebook-convert` reads (KEPUB as EPUB). KFX isn't one.
 const CALIBRE_INPUTS: &[&str] = &[
@@ -29,6 +30,8 @@ const CALIBRE_INPUTS: &[&str] = &[
 ];
 /// Formats it writes that are worth offering.
 const CALIBRE_OUTPUTS: &[&str] = &["EPUB", "AZW3", "MOBI", "PDF", "DOCX", "FB2", "TXT"];
+/// Kindle formats read natively (the KF8 part when a file has one).
+const KINDLE_INPUTS: &[&str] = &["AZW3", "MOBI", "AZW", "PRC"];
 /// Which of a book's files to convert from, best first (PDF is a last resort:
 /// its layout rarely survives).
 const SOURCE_PREFERENCE: &[&str] = &[
@@ -64,6 +67,7 @@ impl Converter {
         }
         let ok = |from: &str| match (from, to) {
             ("EPUB", "KEPUB") | ("EPUB" | "KEPUB", "AZW3") => true,
+            (f, "EPUB" | "KEPUB") if KINDLE_INPUTS.contains(&f) => true,
             // Repacked natively (a RAR needs a tool, which converting says if it's missing).
             ("CBR" | "CB7", "CBZ") => true,
             // calibre to EPUB, then native.
@@ -85,15 +89,16 @@ impl Converter {
         match (from, to) {
             ("EPUB", "KEPUB") => kepub::convert(src, dest).map(|_| ()).map_err(|e| e.to_string()),
             ("CBR" | "CB7", "CBZ") => cbz::convert(src, dest),
-            ("EPUB" | "KEPUB", "AZW3") => match azw3::convert(src, dest) {
-                Ok(_) => Ok(()),
-                // calibre is more forgiving of unusual books, if it's here.
-                Err(e) if self.calibre.is_some() => {
-                    let _ = std::fs::remove_file(dest);
-                    self.calibre_convert(src, from, dest).map_err(|c| format!("{e}; calibre too: {c}"))
-                }
-                Err(e) => Err(e.to_string()),
-            },
+            ("EPUB" | "KEPUB", "AZW3") => self.or_calibre(src, from, dest, azw3::convert(src, dest).map(|_| ())),
+            (f, "EPUB") if KINDLE_INPUTS.contains(&f) => {
+                self.or_calibre(src, from, dest, mobi::convert(src, dest).map(|_| ()))
+            }
+            (f, "KEPUB") if KINDLE_INPUTS.contains(&f) => {
+                let work = TempDir::new()?;
+                let epub = work.0.join("book.epub");
+                self.convert(src, from, "EPUB", &epub)?;
+                kepub::convert(&epub, dest).map(|_| ()).map_err(|e| e.to_string())
+            }
             (_, "KEPUB") => {
                 let work = TempDir::new()?;
                 let epub = work.0.join("book.epub");
@@ -101,6 +106,25 @@ impl Converter {
                 kepub::convert(&epub, dest).map(|_| ()).map_err(|e| e.to_string())
             }
             _ => self.calibre_convert(src, from, dest),
+        }
+    }
+
+    /// A native conversion's result; if it failed, calibre's try instead
+    /// (it's more forgiving of unusual books), if it's here and could do better.
+    fn or_calibre(
+        &self,
+        src: &Path,
+        from: &str,
+        dest: &Path,
+        native: crate::metadata::epub::Res<()>,
+    ) -> std::result::Result<(), String> {
+        match native {
+            Ok(()) => Ok(()),
+            Err(e) if self.calibre.is_some() && !e.is::<mobi::Unconvertible>() => {
+                let _ = std::fs::remove_file(dest);
+                self.calibre_convert(src, from, dest).map_err(|c| format!("{e}; calibre too: {c}"))
+            }
+            Err(e) => Err(e.to_string()),
         }
     }
 
@@ -242,6 +266,13 @@ impl Library {
         let work = TempDir::new().map_err(Error::Import)?;
         let out = work.0.join(format!("converted.{}", to.to_ascii_lowercase()));
         converter.convert(&src, &from, to, &out).map_err(Error::Import)?;
+        if KINDLE_INPUTS.contains(&from.as_str()) && matches!(to, "EPUB" | "KEPUB") {
+            // The file's own details were Amazon's; the library's are the ones to keep.
+            // If they can't be written, the book still converted.
+            if let Ok((meta, title_sort)) = self.file_metadata(id) {
+                let _ = crate::metadata::epub_write::write(&out, &meta, Some(&title_sort));
+            }
+        }
         add_formats(self, id, &[(to.to_owned(), out)])?;
         Ok(true)
     }
@@ -256,6 +287,37 @@ mod tests {
     }
 
     #[test]
+    fn kindle_books_convert_with_the_librarys_details() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("book.azw3");
+        std::fs::copy(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test.azw3"), &src).unwrap();
+        let mut lib = Library::create(tmp.path().join("lib"), "Test").unwrap();
+        let id = crate::import::add_files(&mut lib, &[src], |_| {}).unwrap().added[0];
+        let mut e = lib.book_edit(id).unwrap();
+        e.title = "The Library's Title".into();
+        e.authors = vec!["Ann Other".into()];
+        e.series = Some("Kindle Classics".into());
+        e.series_index = 2.0;
+        lib.update_book(id, &e).unwrap();
+
+        let native = Converter::with_calibre(None);
+        assert!(lib.convert_book(id, "EPUB", &native).unwrap());
+        let book = lib.book(id).unwrap();
+        let dir = crate::edit::dir_for(lib.root(), &book.path);
+        let epub = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .find(|p| p.extension().is_some_and(|x| x == "epub"))
+            .unwrap();
+        let meta = crate::metadata::epub::read(&epub).unwrap();
+        assert_eq!(meta.title.as_deref(), Some("The Library's Title"));
+        assert_eq!(meta.authors[0].name, "Ann Other");
+        assert_eq!(meta.series, Some(("Kindle Classics".to_owned(), 2.0)));
+        assert!(lib.convert_book(id, "KEPUB", &native).unwrap(), "and on to KEPUB");
+    }
+
+    #[test]
     fn routes_conversions() {
         let native = Converter::with_calibre(None);
         assert_eq!(native.source_for(&s(&["PDF", "EPUB"]), "KEPUB"), Some("EPUB"));
@@ -263,6 +325,14 @@ mod tests {
         assert_eq!(native.source_for(&s(&["EPUB"]), "AZW3"), Some("EPUB"), "built in");
         assert_eq!(native.source_for(&s(&["EPUB"]), "MOBI"), None, "needs calibre");
         assert_eq!(native.targets(&s(&["EPUB"])), ["KEPUB", "AZW3"]);
+        // Kindle books become EPUB (and KEPUB) without calibre; MOBI output still needs it.
+        for kindle in ["AZW3", "MOBI", "AZW", "PRC"] {
+            assert_eq!(native.source_for(&s(&[kindle]), "EPUB"), Some(kindle));
+            assert_eq!(native.targets(&s(&[kindle])), ["KEPUB", "EPUB"], "{kindle}");
+        }
+        assert_eq!(native.source_for(&s(&["MOBI", "AZW3"]), "EPUB"), Some("AZW3"), "KF8 is better");
+        assert_eq!(native.source_for(&s(&["AZW3"]), "MOBI"), None, "needs calibre");
+        assert_eq!(native.source_for(&s(&["KFX"]), "EPUB"), None);
 
         let calibre = Converter::with_calibre(Some("/x/ebook-convert".into()));
         assert_eq!(calibre.source_for(&s(&["PDF", "MOBI"]), "EPUB"), Some("MOBI"), "PDF is a last resort");

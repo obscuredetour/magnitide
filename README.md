@@ -23,8 +23,8 @@ _**This wouldn't exist without [calibre](https://github.com/kovidgoyal/calibre) 
   and CBRs can become CBZs (bsdtar, 7-Zip or unrar reads RAR). Read them in the app: one page or two, right to left
   for manga, picking up where you left off.
 - **E-readers.** Kobo, Kindle and other devices show up when plugged in. Books go over in the format each reads
-  best, converted from EPUB to KEPUB or AZW3 natively (calibre is only a fallback), and shelves become collections
-  on a Kobo, for Kobo's own app and KOReader alike.
+  best, converted from EPUB to KEPUB or AZW3, or from old MOBI and AZW3 files to EPUB, natively (calibre is only a
+  fallback), and shelves become collections on a Kobo, for Kobo's own app and KOReader alike.
 - **On your network.** An optional library server with an OPDS catalogue for reading apps, a simple page for
   e-reader browsers, and KOReader progress sync: positions synced from a book sent to a device or downloaded
   from the server show in the library as how far you are.
@@ -175,9 +175,9 @@ Releasing a version (the tag, the release workflow, macOS signing, the AUR packa
 ## Roadmap
 
 What's done and what's next, item by item: [docs/roadmap.md](docs/roadmap.md). Open as of this version: a PDF
-metadata reader, MOBI/AZW3 → EPUB, Kindle cover thumbnails, MTP devices, Find Duplicates, export to a calibre library,
-reading positions in the app, a headless server with accounts and Kobo sync (and plugins answering by policy there),
-and a public home for the plugin SDK.
+metadata reader, Kindle cover thumbnails, MTP devices, Find Duplicates, export to a calibre library, reading
+positions in the app, a headless server with accounts and Kobo sync (and plugins answering by policy there), and a
+public home for the plugin SDK.
 
 ## Why
 
