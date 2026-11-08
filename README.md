@@ -54,6 +54,23 @@ File-type plugins run when books are added, metadata readers and writers handle 
 
 Magnitide is in active development: the [roadmap](docs/roadmap.md) tracks what's done and what's next.
 
+## Get it
+
+Installers for macOS, Windows and Linux are on [GitHub Releases](https://github.com/obscuredetour/magnitide/releases/latest)
+(and [magnitide.com](https://magnitide.com/#get)). Magnitide updates itself from there.
+
+**Arch Linux:** the `magnitide-bin` package isn't on the AUR yet, because AUR registration is closed for now. Until
+it is, the AppImage from the release is the easy way, and it updates itself like the other downloads. Or build the
+package from this repository (it repackages the release's `.deb`):
+
+```sh
+git clone https://github.com/obscuredetour/magnitide.git
+cd magnitide/packaging/aur/magnitide-bin && makepkg -si
+```
+
+Installed that way, pacman owns Magnitide, so its own updater leaves it alone: `git pull` and `makepkg -si` again
+for a new version.
+
 ## Docs
 
 - [docs/architecture.md](docs/architecture.md): how the pieces fit, and the decisions behind them
