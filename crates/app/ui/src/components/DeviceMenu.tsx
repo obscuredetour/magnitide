@@ -5,7 +5,7 @@ import { api, type DeviceInfo, errorMessage, fileManagerName } from '../api';
 import { deviceFilter, devices, ejectDevice, rescanDevice, setDeviceFilter } from '../devices';
 import { library } from '../library';
 import { shelves } from '../shelves';
-import { chooseFromDevice, newOnDevice, syncDeviceShelves } from '../transfer';
+import { chooseFromDevice, newOnDevice, restoreKindleCovers, syncDeviceShelves } from '../transfer';
 import { toast } from '../toast';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from './Menu';
 import { Icon } from './Icon';
@@ -111,6 +111,14 @@ function DeviceSection(props: { device: DeviceInfo }) {
           onSelect={() => void syncDeviceShelves(d())}
         >
           Sync Shelves
+        </MenuItem>
+      </Show>
+      <Show when={d().kind === 'kindle' && library()}>
+        <MenuItem
+          title="Put back the cover thumbnails a Kindle deletes once it's online, for books from this library (done on connecting too)"
+          onSelect={() => void restoreKindleCovers(d())}
+        >
+          Restore Covers
         </MenuItem>
       </Show>
       <MenuItem onSelect={() => void rescanDevice(d())}>Rescan</MenuItem>

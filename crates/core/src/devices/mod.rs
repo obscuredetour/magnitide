@@ -24,6 +24,7 @@ use crate::import::files::format_of;
 use crate::metadata;
 
 pub mod collections;
+pub mod kindle;
 mod lua;
 pub mod transfer;
 pub mod volumes;
