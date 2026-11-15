@@ -1,7 +1,8 @@
 //! Connected e-readers: a background watcher notices devices being mounted
 //! and unmounted, scans them, and tells the UI (`devices-changed`). Which
 //! library books are on a device is worked out on request, against whatever
-//! library is open, so it follows library switches and edits.
+//! library is open, so it follows library switches and edits. A Kindle that
+//! connects gets back the cover thumbnails it lost for library books.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -91,12 +92,51 @@ fn update(app: &AppHandle) {
     if unchanged {
         return;
     }
+    let mut fresh = Vec::new();
     let scans = found
         .into_iter()
-        .map(|d| current.iter().find(|s| s.device == d).cloned().unwrap_or_else(|| Arc::new(devices::scan(&d))))
+        .map(|d| match current.iter().find(|s| s.device == d) {
+            Some(s) => s.clone(),
+            None => {
+                let s = Arc::new(devices::scan(&d));
+                fresh.push(s.clone());
+                s
+            }
+        })
         .collect();
     state.set_devices(scans);
     let _ = app.emit(DEVICES_CHANGED_EVENT, ());
+    // A Kindle that has been online may have deleted the covers of books it
+    // didn't get from Amazon (calibre's workaround: put them back on connect).
+    for scan in fresh.iter().filter(|s| s.device.kind == DeviceKind::Kindle) {
+        if let Some(lib) = state.current() {
+            let r = restore_covers(scan, &lib);
+            for f in &r.failed {
+                eprintln!("restoring a cover thumbnail on {}: {f}", scan.device.name);
+            }
+        }
+    }
+}
+
+/// Write the cover thumbnails missing from a Kindle, for books from `lib` on it.
+fn restore_covers(scan: &Scan, lib: &crate::Loaded) -> devices::kindle::ThumbnailReport {
+    let matches = devices::match_books(scan, &lib.catalog, &lib.root);
+    devices::kindle::restore_thumbnails(scan, &matches, &lib.catalog, &lib.root)
+}
+
+/// Put back the cover thumbnails missing from a Kindle (it deletes some once
+/// online), for the open library's books on it.
+#[tauri::command]
+pub async fn restore_kindle_covers(
+    state: State<'_, AppState>,
+    id: String,
+) -> CmdResult<devices::kindle::ThumbnailReport> {
+    let scan = state.device(&id)?;
+    if scan.device.kind != DeviceKind::Kindle {
+        return Err("Only a Kindle keeps cover thumbnails.".into());
+    }
+    let lib = state.current().ok_or("No library is open")?;
+    tauri::async_runtime::spawn_blocking(move || restore_covers(&scan, &lib)).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]

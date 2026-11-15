@@ -31,6 +31,8 @@ They are:
   tables).
 - crates/core/src/convert/azw3/: the EPUB to AZW3 converter, ported from
   calibre's KF8 writer (src/calibre/ebooks/mobi/writer8/).
+- crates/core/src/devices/kindle.rs: Kindle cover thumbnails, after
+  calibre's Kindle driver (src/calibre/devices/kindle/driver.py).
 
 calibre/utils/titlecase.py in the compat package derives from calibre's,
 which is by Stuart Colville (after John Gruber's original) with changes by

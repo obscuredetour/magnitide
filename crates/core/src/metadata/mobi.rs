@@ -6,12 +6,17 @@
 //! DRM-protected books still show their details (their text stays
 //! unreadable, as it should).
 
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 use super::{Author, BookMetadata, language_code, parse_date};
 
 /// Files bigger than this aren't read (no book needs it; a broken one might).
 const MAX_FILE: u64 = 256 << 20;
+
+/// Header records bigger than this are cut short when only the header is read.
+const MAX_HEADER: u64 = 1 << 20;
 
 /// EXTH record types worth reading.
 mod exth {
@@ -25,7 +30,9 @@ mod exth {
     pub const ASIN: u32 = 113;
     pub const COVER_OFFSET: u32 = 201;
     pub const THUMB_OFFSET: u32 = 202;
+    pub const CONTENT_TYPE: u32 = 501;
     pub const TITLE: u32 = 503;
+    pub const CDE_KEY: u32 = 504;
     pub const LANGUAGE: u32 = 524;
 }
 
@@ -61,7 +68,6 @@ pub(crate) fn parse(d: &[u8]) -> Option<BookMetadata> {
     if r0.get(16..20)? != b"MOBI" {
         return None;
     }
-    let header_len = u32_at(r0, 20)? as usize;
     let utf8 = u32_at(r0, 28)? == 65001;
     let text = |b: &[u8]| -> String {
         let s = if utf8 { String::from_utf8_lossy(b).into_owned() } else { cp1252(b) };
@@ -71,55 +77,44 @@ pub(crate) fn parse(d: &[u8]) -> Option<BookMetadata> {
     let mut out = BookMetadata::default();
     let mut cover_offset = None;
     let mut thumb_offset = None;
-    // EXTH, when flagged, follows the MOBI header.
-    if u32_at(r0, 128).is_some_and(|f| f & 0x40 != 0) {
-        let e = 16 + header_len;
-        if r0.get(e..e + 4) == Some(b"EXTH") {
-            let n = u32_at(r0, e + 8)?;
-            let mut at = e + 12;
-            for _ in 0..n {
-                let (kind, len) = (u32_at(r0, at)?, u32_at(r0, at + 4)? as usize);
-                let Some(value) = r0.get(at + 8..at + len.max(8)) else { break };
-                at += len.max(8);
-                let v = text(value);
-                match kind {
-                    exth::AUTHOR if !v.is_empty() => {
-                        // Some writers put several in one record: "A & B" or "A; B".
-                        for name in v.split([';', '&']).map(str::trim).filter(|n| !n.is_empty()) {
-                            // Kindle files often store "King, Stephen".
-                            out.authors.push(match crate::names::from_surname_first(name) {
-                                Some((name, sort)) => Author { name, sort: Some(sort) },
-                                None => Author { name: name.to_owned(), sort: None },
-                            });
-                        }
-                    }
-                    exth::PUBLISHER if !v.is_empty() => out.publisher = Some(v),
-                    exth::DESCRIPTION if !v.is_empty() => out.description = Some(v),
-                    exth::ISBN => {
-                        let isbn: String = v.chars().filter(|c| c.is_ascii_digit() || *c == 'X').collect();
-                        if isbn.len() == 10 || isbn.len() == 13 {
-                            out.identifiers.insert("isbn".into(), isbn);
-                        }
-                    }
-                    exth::SUBJECT if !v.is_empty() => out.tags.push(v),
-                    exth::PUBLISHED => out.published = parse_date(&v),
-                    exth::SOURCE => {
-                        if let Some(uuid) = v.strip_prefix("calibre:").filter(|u| is_uuid(u)) {
-                            out.uuids.push(uuid.to_ascii_lowercase());
-                        }
-                    }
-                    // calibre puts its book uuid here when there's no ASIN.
-                    exth::ASIN if is_uuid(&v) => out.uuids.push(v.to_ascii_lowercase()),
-                    exth::ASIN if !v.is_empty() => {
-                        out.identifiers.insert("mobi-asin".into(), v);
-                    }
-                    exth::COVER_OFFSET => cover_offset = u32_at(value, 0),
-                    exth::THUMB_OFFSET => thumb_offset = u32_at(value, 0),
-                    exth::TITLE if !v.is_empty() => out.title = Some(v),
-                    exth::LANGUAGE if !v.is_empty() => out.languages.push(language_code(&v)),
-                    _ => {}
+    for (kind, value) in exth_records(r0) {
+        let v = text(value);
+        match kind {
+            exth::AUTHOR if !v.is_empty() => {
+                // Some writers put several in one record: "A & B" or "A; B".
+                for name in v.split([';', '&']).map(str::trim).filter(|n| !n.is_empty()) {
+                    // Kindle files often store "King, Stephen".
+                    out.authors.push(match crate::names::from_surname_first(name) {
+                        Some((name, sort)) => Author { name, sort: Some(sort) },
+                        None => Author { name: name.to_owned(), sort: None },
+                    });
                 }
             }
+            exth::PUBLISHER if !v.is_empty() => out.publisher = Some(v),
+            exth::DESCRIPTION if !v.is_empty() => out.description = Some(v),
+            exth::ISBN => {
+                let isbn: String = v.chars().filter(|c| c.is_ascii_digit() || *c == 'X').collect();
+                if isbn.len() == 10 || isbn.len() == 13 {
+                    out.identifiers.insert("isbn".into(), isbn);
+                }
+            }
+            exth::SUBJECT if !v.is_empty() => out.tags.push(v),
+            exth::PUBLISHED => out.published = parse_date(&v),
+            exth::SOURCE => {
+                if let Some(uuid) = v.strip_prefix("calibre:").filter(|u| is_uuid(u)) {
+                    out.uuids.push(uuid.to_ascii_lowercase());
+                }
+            }
+            // calibre puts its book uuid here when there's no ASIN.
+            exth::ASIN if is_uuid(&v) => out.uuids.push(v.to_ascii_lowercase()),
+            exth::ASIN if !v.is_empty() => {
+                out.identifiers.insert("mobi-asin".into(), v);
+            }
+            exth::COVER_OFFSET => cover_offset = u32_at(value, 0),
+            exth::THUMB_OFFSET => thumb_offset = u32_at(value, 0),
+            exth::TITLE if !v.is_empty() => out.title = Some(v),
+            exth::LANGUAGE if !v.is_empty() => out.languages.push(language_code(&v)),
+            _ => {}
         }
     }
     if out.title.is_none() {
@@ -142,6 +137,70 @@ pub(crate) fn parse(d: &[u8]) -> Option<BookMetadata> {
             .map(<[u8]>::to_vec);
     }
     Some(out)
+}
+
+/// The EXTH metadata records (type, value) in record 0, when it has them:
+/// flagged in the MOBI header, and following it.
+fn exth_records(r0: &[u8]) -> Vec<(u32, &[u8])> {
+    let mut out = Vec::new();
+    let (Some(header_len), Some(flags)) = (u32_at(r0, 20), u32_at(r0, 128)) else { return out };
+    let e = 16 + header_len as usize;
+    if flags & 0x40 == 0 || r0.get(e..e + 4) != Some(b"EXTH") {
+        return out;
+    }
+    let Some(n) = u32_at(r0, e + 8) else { return out };
+    let mut at = e + 12;
+    for _ in 0..n {
+        let (Some(kind), Some(len)) = (u32_at(r0, at), u32_at(r0, at + 4)) else { break };
+        let len = (len as usize).max(8);
+        let Some(value) = r0.get(at + 8..at + len) else { break };
+        at += len;
+        out.push((kind, value));
+    }
+    out
+}
+
+/// What a Kindle keys a book's cover thumbnail on, as the file itself says:
+/// its ASIN (EXTH 113, else 504) and content type (EXTH 501: `EBOK` for a
+/// book, `PDOC` for a personal document…). Reads only the header record.
+/// None if the file isn't a MOBI/AZW/AZW3, lacks either, or either is more
+/// than letters, digits, '-' and '_' (they end up in a file name).
+pub fn book_key(path: &Path) -> Option<(String, String)> {
+    let mut file = File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    // The PalmDB header and the first two record offsets.
+    let mut head = Vec::new();
+    file.by_ref().take(94).read_to_end(&mut head).ok()?;
+    if head.get(60..68)? != b"BOOKMOBI" {
+        return None;
+    }
+    let start = u64::from(u32_at(&head, 78)?);
+    let end = if u16_at(&head, 76)? > 1 { u64::from(u32_at(&head, 86)?) } else { len };
+    file.seek(SeekFrom::Start(start)).ok()?;
+    let mut r0 = Vec::new();
+    file.take(end.checked_sub(start)?.min(MAX_HEADER)).read_to_end(&mut r0).ok()?;
+    key_of(&r0)
+}
+
+fn key_of(r0: &[u8]) -> Option<(String, String)> {
+    if r0.get(16..20)? != b"MOBI" {
+        return None;
+    }
+    let plain = |v: &[u8]| {
+        let s = std::str::from_utf8(v).ok()?.trim_matches(char::from(0)).trim();
+        let ok = !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+        ok.then(|| s.to_owned())
+    };
+    let (mut asin, mut cde_key, mut cde_type) = (None, None, None);
+    for (kind, value) in exth_records(r0) {
+        match kind {
+            exth::ASIN => asin = plain(value).or(asin),
+            exth::CDE_KEY => cde_key = plain(value).or(cde_key),
+            exth::CONTENT_TYPE => cde_type = plain(value).or(cde_type),
+            _ => {}
+        }
+    }
+    Some((asin.or(cde_key)?, cde_type?))
 }
 
 fn is_uuid(s: &str) -> bool {

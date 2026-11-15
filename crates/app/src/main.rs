@@ -226,6 +226,7 @@ fn main() {
             devices::eject_device,
             devices::send_to_device,
             devices::remove_from_device,
+            devices::restore_kindle_covers,
             devices::import_from_device,
             commands::merge_books,
             commands::conversion_info,
