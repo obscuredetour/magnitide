@@ -4,7 +4,12 @@
 #
 # Run by pushing a tag `v<version>`, where version is [workspace.package]'s in
 # Cargo.toml (and crates/app/ui/package.json's), or by hand
-# (workflow_dispatch) on a tag. The macOS builds are signed with a
+# (workflow_dispatch) with the tag to build. By hand, this file comes from the
+# branch it's run on and the code from the tag, so a release whose build broke
+# on the workflow (a retired runner, say) is rebuilt from main without moving
+# its tag; `platforms` picks some of the builds, and they join the same draft
+# release (tauri-action replaces assets already there and adds to latest.json).
+# The macOS builds are signed with a
 # Developer ID and notarized when these repository secrets are all set
 # (docs/releasing.md says how to make them), and ad-hoc signed when they
 # aren't: Gatekeeper then asks once (Privacy & Security › Open Anyway), and
@@ -27,37 +32,70 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "The tag to build, e.g. v0.10.0"
+        required: true
+      platforms:
+        description: "Only these builds, comma-separated (macOS Apple Silicon, macOS Intel, Windows, Linux); empty for all"
+        required: false
+        default: ""
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
+  # Which builds to run: all of them, or the ones `platforms` names.
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - id: plan
+        env:
+          PLATFORMS: ${{ inputs.platforms }}
+        run: |
+          python3 - <<'EOF' >> "$GITHUB_OUTPUT"
+          import json, os
+          all = [
+              {"name": "macOS Apple Silicon", "os": "macos-15"},
+              {"name": "macOS Intel", "os": "macos-15-intel"},
+              {"name": "Windows", "os": "windows-2022"},
+              # The oldest supported Ubuntu, so the AppImage's glibc and WebKitGTK suit most distributions.
+              {"name": "Linux", "os": "ubuntu-22.04"},
+          ]
+          wanted = {p.strip().lower() for p in os.environ.get("PLATFORMS", "").split(",") if p.strip()}
+          unknown = wanted - {m["name"].lower() for m in all}
+          if unknown:
+              raise SystemExit(f"unknown platforms: {', '.join(sorted(unknown))}")
+          chosen = [m for m in all if not wanted or m["name"].lower() in wanted]
+          print("matrix=" + json.dumps({"include": chosen}))
+          EOF
+
   build:
     name: Build (${{ matrix.name }})
+    needs: plan
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { name: macOS Apple Silicon, os: macos-14 }
-          - { name: macOS Intel, os: macos-15-intel }
-          - { name: Windows, os: windows-2022 }
-          # The oldest supported Ubuntu, so the AppImage's glibc and WebKitGTK suit most distributions.
-          - { name: Linux, os: ubuntu-22.04 }
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
       - name: The tag matches the version
-        if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
           v="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
           ui="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' crates/app/ui/package.json)"
-          test "refs/tags/v$v" = "$GITHUB_REF" || { echo "Cargo.toml's version is $v but the tag is $GITHUB_REF"; exit 1; }
+          test "v$v" = "$TAG" || { echo "Cargo.toml's version is $v but the tag is $TAG"; exit 1; }
           test "$ui" = "$v" || { echo "crates/app/ui/package.json's version is $ui, not $v"; exit 1; }
       # Every runner works out whether this release is notarized, so they all
       # write the same release notes.
@@ -129,7 +167,7 @@ jobs:
           tauriScript: cargo tauri
           # Here rather than in tauri.conf.json, so local builds don't need the key.
           args: --config '{"bundle":{"createUpdaterArtifacts":true}}'
-          tagName: ${{ github.ref_name }}
+          tagName: ${{ env.TAG }}
           releaseName: Magnitide __VERSION__
           releaseBody: |
             Magnitide __VERSION__.

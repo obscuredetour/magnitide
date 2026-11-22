@@ -11,8 +11,18 @@ How a version of Magnitide gets built, signed and published. The
 3. Look the draft over and publish it as the latest release: the site's download buttons read
    GitHub's latest release (Estuary's releases are never marked latest), and so does the in-app
    updater, through the release's `latest.json`. Publishing is what offers it to everyone.
-4. Update the Arch package: `scripts/aur-update.sh <version>`, then push it to the AUR
-   ([packaging/aur/README.md](packaging/aur/README.md)).
+4. Update the Arch package: `scripts/aur-update.sh <version>`, commit it to `main`, then push it to the AUR
+   ([packaging/aur/README.md](packaging/aur/README.md)). Commit it even while the package isn't on the AUR:
+   the README and magnitide.com tell Arch users to build it from `main`.
+
+If a build fails because of the workflow rather than the code (a runner GitHub has retired, say),
+fix the workflow on `main` and rebuild without moving the tag: Actions › Release › Run workflow on
+`main`, with the tag and, optionally, just the builds that failed (`platforms`, e.g.
+`macOS Apple Silicon`). They join the same draft release:
+
+```sh
+gh workflow run release.yml --ref main -f tag=v<version> -f platforms="macOS Apple Silicon"
+```
 
 The macOS builds are signed with a Developer ID and notarized when these repository secrets are
 set (Settings › Secrets and variables › Actions); they need a membership of the Apple Developer

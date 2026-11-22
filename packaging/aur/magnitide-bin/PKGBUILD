@@ -6,8 +6,8 @@
 # for a release.
 
 pkgname=magnitide-bin
-pkgver=0.7.0
-pkgrel=2
+pkgver=0.10.0
+pkgrel=1
 pkgdesc='A fast, modern ebook library manager that starts from the calibre library you already have'
 arch=('x86_64')
 url='https://magnitide.com'
@@ -34,7 +34,7 @@ conflicts=('magnitide')
 # A repackaged binary: stripped as usual, with no separate -debug package.
 options=('!debug')
 source=("https://github.com/obscuredetour/magnitide/releases/download/v${pkgver}/Magnitide_${pkgver}_amd64.deb")
-sha256sums=('c965f3833aa2f09d2fc9ab7e072ea000d954b51955afade7d9a4ffaa12eadf0b')
+sha256sums=('f469e14af4b111fb1e387927314dfa2b4eeb17b8fa83abd22da34fe0146cd70a')
 
 package() {
   bsdtar -xf data.tar.gz -C "${pkgdir}"
