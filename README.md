@@ -191,10 +191,10 @@ Releasing a version (the tag, the release workflow, macOS signing, the AUR packa
 
 ## Roadmap
 
-What's done and what's next, item by item: [docs/roadmap.md](docs/roadmap.md). Open as of this version: a PDF
-metadata reader, MOBI/AZW3 → EPUB, Kindle cover thumbnails, MTP devices, Find Duplicates, export to a calibre library,
-reading positions in the app, a headless server with accounts and Kobo sync (and plugins answering by policy there),
-and a public home for the plugin SDK.
+What's done and what's next, item by item: [docs/roadmap.md](docs/roadmap.md). Open as of this version:
+MOBI/AZW3 → EPUB, Kindle cover thumbnails, MTP devices, Find Duplicates, export to a calibre library, reading positions
+in the app, a headless server with accounts and Kobo sync (and plugins answering by policy there), and a public home for
+the plugin SDK.
 
 ## Why
 
