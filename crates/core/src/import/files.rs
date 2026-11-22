@@ -630,7 +630,8 @@ mod tests {
         let opf = EPUB2_OPF.replace("images/My%20Cover.jpg", "cover.png").replace("image/jpeg", "image/png");
         make_epub(&drop.join("dispossessed.epub"), &opf, Some(("cover.png", &png())));
         fs::write(drop.join("dispossessed.mobi"), "mobi bytes").unwrap();
-        fs::write(drop.join("Leviathan Wakes - James S. A. Corey.pdf"), "pdf bytes").unwrap();
+        let bare_pdf = crate::metadata::pdf::tests::make_pdf(Default::default());
+        fs::write(drop.join("Leviathan Wakes - James S. A. Corey.pdf"), bare_pdf).unwrap();
         fs::write(drop.join("photo.jpg"), "not a book").unwrap();
         fs::create_dir(drop.join(".hidden")).unwrap();
         fs::write(drop.join(".hidden/secret.epub"), "ignored").unwrap();
@@ -655,7 +656,7 @@ mod tests {
         let cover = fs::read(d.cover_path(lib.root()).unwrap()).unwrap();
         assert!(cover.starts_with(&[0xFF, 0xD8, 0xFF]), "PNG cover converted to JPEG");
 
-        // The PDF's metadata came from its file name.
+        // The PDF has no metadata of its own: it came from its file name.
         let l = cat.books.iter().find(|b| b.title == "Leviathan Wakes").unwrap();
         assert_eq!(l.authors, ["James S. A. Corey"]);
         assert!(!l.has_cover);
@@ -721,6 +722,40 @@ mod tests {
         fs::copy(fixtures.join("test.azw3"), drop.join("other name.azw3")).unwrap();
         let r = add_files(&mut lib, &[drop.join("other name.azw3")], |_| {}).unwrap();
         assert_eq!(r.formats_added_to, [b.id]);
+    }
+
+    #[test]
+    fn reads_pdf_metadata_and_covers_and_skips_junk() {
+        use crate::metadata::pdf::tests::{Spec, jpeg_xobject, make_pdf, xmp};
+        let (_tmp, mut lib, drop) = setup();
+        let x = xmp(r#"<dc:title><rdf:Alt><rdf:li xml:lang="x-default">The Dispossessed</rdf:li></rdf:Alt></dc:title>
+            <dc:creator><rdf:Seq><rdf:li>Ursula K. Le Guin</rdf:li></rdf:Seq></dc:creator>
+            <dc:identifier>urn:isbn:9780061054884</dc:identifier>"#);
+        let scan = make_pdf(Spec {
+            info: vec![("Title", "scan0001.tif"), ("Author", "Administrator")],
+            xmp: Some(&x),
+            image: Some((jpeg_xobject(600, 800), 612.0, 792.0)),
+            ..Default::default()
+        });
+        fs::write(drop.join("scan0001.pdf"), scan).unwrap();
+        // Word's export: junk title and a login as author, so the file name wins.
+        let word = make_pdf(Spec {
+            info: vec![("Title", "Microsoft Word - lw_final.docx"), ("Author", "jcorey"), ("Subject", "Space Opera")],
+            ..Default::default()
+        });
+        fs::write(drop.join("Leviathan Wakes - James S. A. Corey.pdf"), word).unwrap();
+
+        let r = add_files(&mut lib, std::slice::from_ref(&drop), |_| {}).unwrap();
+        assert_eq!((r.added.len(), r.covers), (2, 1), "{r:?}");
+        let cat = lib.load_catalog().unwrap();
+        let d = cat.books.iter().find(|b| b.title == "The Dispossessed").unwrap();
+        assert_eq!(d.authors, ["Ursula K. Le Guin"]);
+        assert!(d.has_cover, "page 1's scan");
+        assert_eq!(lib.book(d.id).unwrap().identifiers.get("isbn").map(String::as_str), Some("9780061054884"));
+        let l = cat.books.iter().find(|b| b.title == "Leviathan Wakes").unwrap();
+        assert_eq!(l.authors, ["James S. A. Corey"]);
+        assert_eq!(l.tags, ["Space Opera"]);
+        assert!(!l.has_cover);
     }
 
     #[test]

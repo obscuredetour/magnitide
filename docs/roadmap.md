@@ -35,7 +35,7 @@ What's done and what's next, in roughly the order it happened. The
 - [x] Metadata-source keys (Google Books, Metron) in the system keychain rather than the settings file: the macOS Keychain, Windows Credential Manager, the Secret Service on Linux (GNOME Keyring, KWallet), one entry per source under `com.magnitide.app`; keys already in the settings file move over at launch. Without a keychain (a headless or minimal Linux) they stay in the settings file, and Settings says so
 - [x] The library server's password in the keychain too, moved from its settings file at launch the same way
 - [x] MOBI/AZW/AZW3 metadata and covers (adding books, device matching); "Surname, Given" authors turned around
-- [ ] PDF metadata reader (drag and drop uses file names for PDFs today)
+- [x] PDF metadata: title, authors, keywords as tags, publisher, date and ISBN from the Info dictionary and XMP (XMP first). Junk ("Microsoft Word - draft3.docx", "Untitled", logins and program names as authors) is left to the file name. A scanned book's page 1 image is its cover; other PDFs get none, since pages aren't rendered
 - [x] Native EPUB → AZW3 converter (KF8, a port of calibre's writer): Kindles no longer need calibre installed; calibre is a fallback for unusual books
 - [ ] MOBI/AZW3 → EPUB (upgrading old Kindle files)
 - [x] Adding a new format of a book already in the library (same title and first author) adds it to that book instead of creating another
