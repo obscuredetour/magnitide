@@ -36,6 +36,8 @@ They are:
   from calibre's MOBI reader (src/calibre/ebooks/mobi/reader/, huffcdic.py
   and parts of utils.py); the HUFF/CDIC decoder there credits darkninja and
   igorsk.
+- crates/core/src/devices/kindle.rs: Kindle cover thumbnails, after
+  calibre's Kindle driver (src/calibre/devices/kindle/driver.py).
 
 calibre/utils/titlecase.py in the compat package derives from calibre's,
 which is by Stuart Colville (after John Gruber's original) with changes by

@@ -4,9 +4,11 @@
 //! per author (`documents/` on a Kindle), and, for EPUBs, writes the
 //! library's metadata, cover and book id into the copy (never into the
 //! library's file), so the device shows what the library shows and the copy
-//! is always recognized. A format made on the way is added to the book too
+//! is always recognized. A Kindle also gets the book's cover thumbnail
+//! ([`super::kindle`]). A format made on the way is added to the book too
 //! when the library can be written, so it's only converted once. Removing
-//! deletes the book file and KOReader's `.sdr` folder next to it, nothing else.
+//! deletes the book file, KOReader's `.sdr` folder next to it and a Kindle's
+//! thumbnail of it, nothing else.
 //! Device files can also be copied back: as new books, or as formats their
 //! library book lacks.
 
@@ -202,6 +204,12 @@ pub fn send(
         };
         match result {
             Ok((dest, bytes, warning)) => {
+                if device.kind == DeviceKind::Kindle {
+                    let cover = plan.book.cover_path(library_root);
+                    if let Err(e) = super::kindle::write_thumbnail(&device.root, &dest, cover.as_deref()) {
+                        report.warnings.push(format!("“{title}”: its cover thumbnail couldn't be written ({e})"));
+                    }
+                }
                 report.sent += 1;
                 report.converted += usize::from(plan.format != plan.source.format);
                 report.bytes += bytes;
@@ -309,12 +317,12 @@ pub struct RemoveReport {
     pub failed: Vec<String>,
 }
 
-/// Delete files (paths relative to the device root, as scanned) and their
-/// KOReader `.sdr` folders, then any folders left empty.
+/// Delete files (paths relative to the device root, as scanned), their
+/// KOReader `.sdr` folders and Kindle thumbnails, then any folders left empty.
 pub fn remove(device: &Device, rel_paths: &[String]) -> RemoveReport {
     let mut report = RemoveReport::default();
     for rel in rel_paths {
-        match remove_one(&device.root, rel) {
+        match remove_one(device, rel) {
             Ok(()) => report.removed += 1,
             Err(e) => report.failed.push(format!("{rel}: {e}")),
         }
@@ -322,7 +330,8 @@ pub fn remove(device: &Device, rel_paths: &[String]) -> RemoveReport {
     report
 }
 
-fn remove_one(root: &Path, rel: &str) -> Result<(), String> {
+fn remove_one(device: &Device, rel: &str) -> Result<(), String> {
+    let root = device.root.as_path();
     // Paths come from our own scan, but are checked anyway: plain, relative, inside.
     let rel_path = PathBuf::from(rel);
     if rel.is_empty() || !rel_path.components().all(|c| matches!(c, Component::Normal(_))) {
@@ -332,7 +341,15 @@ fn remove_one(root: &Path, rel: &str) -> Result<(), String> {
     if !path.is_file() {
         return Err("not on the device any more".into());
     }
+    // Named from inside the book, so found before it goes.
+    let thumbnails = match device.kind {
+        DeviceKind::Kindle => super::kindle::thumbnails_of(root, &path),
+        DeviceKind::Kobo | DeviceKind::Generic => Vec::new(),
+    };
     fs::remove_file(&path).map_err(|e| e.to_string())?;
+    for t in thumbnails {
+        let _ = fs::remove_file(t);
+    }
     // KOReader keeps progress and highlights in "<name minus extension>.sdr".
     let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
     if let Some((stem, _)) = name.rsplit_once('.') {

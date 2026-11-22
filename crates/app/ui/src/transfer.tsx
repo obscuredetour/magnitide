@@ -388,6 +388,23 @@ export async function syncDeviceShelves(device: DeviceInfo): Promise<void> {
   }
 }
 
+/** Put back the cover thumbnails a Kindle lost, for this library's books on it. */
+export async function restoreKindleCovers(device: DeviceInfo): Promise<void> {
+  const job = startJob(`Restore covers on ${device.name}`, `Restoring covers on ${device.name}…`);
+  try {
+    const r = await api.restoreKindleCovers(device.id);
+    const done = r.restored
+      ? `Restored ${plural(r.restored, 'cover', 'covers')} on ${device.name}`
+      : `No covers were missing on ${device.name}`;
+    job.finish(done + (r.failed.length ? ` · ${plural(r.failed.length, 'book', 'books')} couldn’t be restored` : ''), {
+      error: r.failed.length > 0 && r.restored === 0,
+      details: r.failed,
+    });
+  } catch (err) {
+    job.finish(errorMessage(err), { error: true });
+  }
+}
+
 /** Remove one format from a book, after asking; its file goes to the Trash. */
 export async function removeFormat(book: { id: number; title: string; formats: readonly unknown[] }, format: string) {
   const last = book.formats.length === 1;

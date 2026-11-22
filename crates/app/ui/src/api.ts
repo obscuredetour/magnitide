@@ -30,6 +30,7 @@ import type { DeviceInfo } from './bindings/DeviceInfo';
 import type { DeviceKind } from './bindings/DeviceKind';
 import type { MatchedBy } from './bindings/MatchedBy';
 import type { CollectionsReport } from './bindings/CollectionsReport';
+import type { ThumbnailReport } from './bindings/ThumbnailReport';
 import type { DeleteReport } from './bindings/DeleteReport';
 import type { SeriesLine } from './bindings/SeriesLine';
 import type { Shelf } from './bindings/Shelf';
@@ -173,6 +174,7 @@ export type {
   ShelfSource,
   ShelvesMade,
   ThemeAddon,
+  ThumbnailReport,
   ThemeAddons,
   MergeOutcome,
   RemoveReport,
@@ -357,6 +359,9 @@ export const api = {
 
   /** Write the library's shelves to a connected Kobo (its own app and KOReader). */
   syncDeviceShelves: (id: string) => invoke<CollectionsReport>('sync_device_shelves', { id }),
+
+  /** Put back the cover thumbnails missing from a Kindle, for the open library's books on it. */
+  restoreKindleCovers: (id: string) => invoke<ThumbnailReport>('restore_kindle_covers', { id }),
 
   /** Delete books; their folders go to the Trash. */
   deleteBooks: (ids: number[]) => invoke<DeleteReport>('delete_books', { ids }),
