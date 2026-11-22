@@ -118,10 +118,16 @@ pub fn send(
     let can_calibre = Converter::with_calibre(Some("ebook-convert".into()));
     let mut plans: Vec<Plan<'_>> = Vec::new();
     for b in books {
-        let present: Vec<String> =
-            b.formats.iter().filter(|f| b.format_path(library_root, f).is_file()).map(|f| f.format.clone()).collect();
+        let files: Vec<(String, PathBuf)> = b
+            .formats
+            .iter()
+            .map(|f| (f.format.clone(), b.format_path(library_root, f)))
+            .filter(|(_, path)| path.is_file())
+            .collect();
+        let present: Vec<String> = files.iter().map(|(f, _)| f.clone()).collect();
         let format_named = |name: &str| b.formats.iter().find(|f| f.format == name);
-        let convert_to = |to: &str, conv: &Converter| conv.source_for(&present, to).and_then(format_named);
+        // A Kindle file that can't be read (DRM) is passed over for another format.
+        let convert_to = |to: &str, conv: &Converter| conv.source_from_files(&files, to).and_then(format_named);
         let wanted = preferred.filter(|p| readable(device.kind).contains(p) && !present.iter().any(|h| h == p));
         let plan = match wanted.and_then(|w| convert_to(w, converter).map(|src| (src, w))) {
             // The preferred format, made from another.
@@ -141,7 +147,7 @@ pub fn send(
                 let have: Vec<&str> = b.formats.iter().map(|f| f.format.as_str()).collect();
                 report.unsupported.push(format!("“{}” ({})", b.title, have.join(", ")));
                 report.needs_calibre |= converter.calibre().is_none()
-                    && readable(device.kind).iter().any(|to| can_calibre.source_for(&present, to).is_some());
+                    && readable(device.kind).iter().any(|to| can_calibre.source_from_files(&files, to).is_some());
             }
         }
     }
@@ -175,7 +181,11 @@ pub fn send(
             progress(Progress { done, total, title, converting: Some(&plan.format) });
             TempDir::new().and_then(|work| {
                 let converted = work.0.join(format!("converted.{}", plan.format.to_ascii_lowercase()));
-                converter.convert(&src, &plan.source.format, &plan.format, &converted)?;
+                // The library's details go in, so the copy kept in the library has them too.
+                let noted = converter.convert_book_file(&src, &plan.source.format, &plan.format, &converted, || {
+                    Some((metadata_for(plan.book, library_root), plan.book.sort.clone()))
+                })?;
+                report.warnings.extend(noted.into_iter().map(|w| format!("“{title}”: {w}")));
                 // Kept even if copying it to the device then fails: the work is done.
                 if let Some(lib) = origin.keep_in {
                     let mut lib = lib.lock().unwrap_or_else(|e| e.into_inner());
@@ -484,14 +494,77 @@ mod tests {
         fs::create_dir_all(root.join(".kobo")).unwrap();
         let kobo = detect(&root).unwrap();
         let books: Vec<&Book> = cat.books.iter().collect();
+        let dune: Vec<&Book> = cat.books.iter().filter(|b| b.title == "Dune").collect();
 
         let r = send(&kobo, &books, read_only(lib.root()), None, Some("EPUB"), &Converter::default(), |_| {});
         assert_eq!(r.sent, 2, "{r:?}");
         assert!(root.join("Ursula K. Le Guin/The Dispossessed - Ursula K. Le Guin.epub").is_file(), "EPUB as asked");
+        // Dune's AZW3 isn't a real one, so no EPUB can be made: its best other format goes.
         assert!(root.join("Frank Herbert/Dune - Frank Herbert.pdf").is_file(), "no EPUB: its best other format");
         // A format the device can't read is ignored.
-        let dune: Vec<&Book> = cat.books.iter().filter(|b| b.title == "Dune").collect();
         assert_eq!(pick_format(kobo.kind, dune[0], lib.root(), Some("AZW3")).unwrap().format, "PDF");
+    }
+
+    /// Dune's AZW3 made a real one, DRM-protected or not.
+    fn real_azw3(lib: &Library, dune: &Book, encrypted: bool) {
+        let azw3 = dune.formats.iter().find(|f| f.format == "AZW3").unwrap();
+        let mut data = fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test.azw3")).unwrap();
+        if encrypted {
+            // Record 0's encryption field.
+            let r0 = u32::from_be_bytes(data[78..82].try_into().unwrap()) as usize;
+            data[r0 + 12..r0 + 14].copy_from_slice(&2u16.to_be_bytes());
+        }
+        fs::write(dune.format_path(lib.root(), azw3), data).unwrap();
+    }
+
+    #[test]
+    fn a_drm_protected_kindle_book_sends_another_format() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lib = setup(tmp.path());
+        let cat = lib.load_catalog().unwrap();
+        let dune: Vec<&Book> = cat.books.iter().filter(|b| b.title == "Dune").collect();
+        real_azw3(&lib, dune[0], true);
+        let root = tmp.path().join("KOBOeReader");
+        fs::create_dir_all(root.join(".kobo")).unwrap();
+        let kobo = detect(&root).unwrap();
+
+        let r = send(&kobo, &dune, read_only(lib.root()), None, Some("EPUB"), &Converter::default(), |_| {});
+        assert_eq!((r.sent, r.converted), (1, 0), "{r:?}");
+        assert!(r.failed.is_empty(), "{r:?}");
+        assert!(root.join("Frank Herbert/Dune - Frank Herbert.pdf").is_file(), "the PDF, not a failed conversion");
+    }
+
+    #[test]
+    fn a_kindle_book_converted_on_the_way_keeps_the_librarys_details() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut lib = setup(tmp.path());
+        let root = lib.root().to_path_buf();
+        let cat = lib.load_catalog().unwrap();
+        let dune: Vec<&Book> = cat.books.iter().filter(|b| b.title == "Dune").collect();
+        let id = dune[0].id;
+        real_azw3(&lib, dune[0], false);
+        // The AZW3 itself says "Test Book: A Story".
+        let mut e = lib.book_edit(id).unwrap();
+        e.series = Some("Dune Chronicles".into());
+        e.series_index = 1.0;
+        lib.update_book(id, &e).unwrap();
+        let cat = lib.load_catalog().unwrap();
+        let dune: Vec<&Book> = cat.books.iter().filter(|b| b.title == "Dune").collect();
+        let lib = Mutex::new(lib);
+        let origin = Origin { root: &root, keep_in: Some(&lib) };
+        let kobo_root = tmp.path().join("KOBOeReader");
+        fs::create_dir_all(kobo_root.join(".kobo")).unwrap();
+        let kobo = detect(&kobo_root).unwrap();
+
+        let r = send(&kobo, &dune, origin, None, Some("EPUB"), &Converter::default(), |_| {});
+        assert_eq!((r.sent, r.converted, r.kept), (1, 1, 1), "{r:?}");
+        let cat = lib.lock().unwrap().load_catalog().unwrap();
+        let book = cat.get(id).unwrap();
+        let kept = book.formats.iter().find(|f| f.format == "EPUB").expect("kept in the library");
+        let meta = epub::read(&book.format_path(&root, kept)).unwrap();
+        assert_eq!(meta.title.as_deref(), Some("Dune"), "the library's title, not the file's");
+        assert_eq!(meta.authors[0].name, "Frank Herbert");
+        assert_eq!(meta.series, Some(("Dune Chronicles".to_owned(), 1.0)));
     }
 
     #[test]

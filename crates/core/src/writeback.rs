@@ -276,6 +276,16 @@ impl Library {
         Ok((targets, other))
     }
 
+    /// A book's details as the library has them, for writing into a file,
+    /// and its title sort. The cover is left out unless it's a JPEG.
+    pub(crate) fn file_metadata(&self, id: BookId) -> Result<(BookMetadata, String)> {
+        let mut w = self.wanted(id)?;
+        if w.meta.cover.as_deref().is_some_and(|c| !c.starts_with(&[0xFF, 0xD8])) {
+            w.meta.cover = None;
+        }
+        Ok((w.meta, w.title_sort))
+    }
+
     fn wanted(&self, id: BookId) -> Result<Wanted> {
         let b = self.book(id)?;
         let mut stmt = self.conn.prepare_cached(

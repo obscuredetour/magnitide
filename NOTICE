@@ -31,6 +31,11 @@ They are:
   tables).
 - crates/core/src/convert/azw3/: the EPUB to AZW3 converter, ported from
   calibre's KF8 writer (src/calibre/ebooks/mobi/writer8/).
+- crates/core/src/convert/mobi/: the MOBI, AZW and AZW3 to EPUB converter.
+  book.rs, huffcdic.rs, index.rs, kf8.rs, mobi6.rs and mod.rs are ported
+  from calibre's MOBI reader (src/calibre/ebooks/mobi/reader/, huffcdic.py
+  and parts of utils.py); the HUFF/CDIC decoder there credits darkninja and
+  igorsk.
 
 calibre/utils/titlecase.py in the compat package derives from calibre's,
 which is by Stuart Colville (after John Gruber's original) with changes by

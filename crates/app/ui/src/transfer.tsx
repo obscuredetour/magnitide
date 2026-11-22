@@ -499,7 +499,8 @@ export function convertBooks(ids: number[], to: string): Promise<void> {
       const parts = [`Converted ${plural(r.converted, 'book', 'books')} to ${to}`];
       if (r.already) parts.push(`${r.already} already had it`);
       if (r.failed.length) parts.push(r.failed.length === 1 ? r.failed[0]! : `${r.failed.length} failed`);
-      job.finish(parts.join(' · '), { error: r.failed.length > 0, details: r.failed });
+      if (r.warnings.length) parts.push(plural(r.warnings.length, 'note', 'notes'));
+      job.finish(parts.join(' · '), { error: r.failed.length > 0, details: [...r.failed, ...r.warnings] });
     } finally {
       unlisten();
     }
