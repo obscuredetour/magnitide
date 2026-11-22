@@ -1,12 +1,12 @@
 //! Converting books between formats.
 //!
-//! EPUB → KEPUB ([`kepub`]), EPUB → AZW3 ([`azw3`]) and CBR or CB7 → CBZ
-//! ([`cbz`], a RAR with a tool on the computer) are done natively.
-//! Everything else goes through calibre's `ebook-convert` command when
-//! calibre is installed (detected, never bundled): MOBI, EPUB from other
-//! formats, and so on. calibre also stands in if a native AZW3 conversion
-//! fails. Conversions read a book file and write a new one; the source is
-//! never changed.
+//! EPUB → KEPUB ([`kepub`]), EPUB → AZW3 ([`azw3`]), MOBI, AZW and AZW3 →
+//! EPUB or KEPUB ([`mobi`]) and CBR or CB7 → CBZ ([`cbz`], a RAR with a tool
+//! on the computer) are done natively. Everything else goes through
+//! calibre's `ebook-convert` command when calibre is installed (detected,
+//! never bundled): MOBI output, EPUB from other formats, and so on. calibre
+//! also stands in if a native AZW3 or EPUB conversion fails. Conversions
+//! read a book file and write a new one; the source is never changed.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -17,10 +17,12 @@ use serde::Serialize;
 use crate::error::{Error, Result};
 use crate::import::store::add_formats;
 use crate::library::{BookId, Library};
+use crate::metadata::BookMetadata;
 
 pub mod azw3;
 pub mod cbz;
 pub mod kepub;
+pub mod mobi;
 
 /// Formats calibre's `ebook-convert` reads (KEPUB as EPUB). KFX isn't one.
 const CALIBRE_INPUTS: &[&str] = &[
@@ -29,6 +31,8 @@ const CALIBRE_INPUTS: &[&str] = &[
 ];
 /// Formats it writes that are worth offering.
 const CALIBRE_OUTPUTS: &[&str] = &["EPUB", "AZW3", "MOBI", "PDF", "DOCX", "FB2", "TXT"];
+/// Kindle formats read natively (the KF8 part when a file has one).
+const KINDLE_INPUTS: &[&str] = &["AZW3", "MOBI", "AZW", "PRC"];
 /// Which of a book's files to convert from, best first (PDF is a last resort:
 /// its layout rarely survives).
 const SOURCE_PREFERENCE: &[&str] = &[
@@ -64,6 +68,7 @@ impl Converter {
         }
         let ok = |from: &str| match (from, to) {
             ("EPUB", "KEPUB") | ("EPUB" | "KEPUB", "AZW3") => true,
+            (f, "EPUB" | "KEPUB") if KINDLE_INPUTS.contains(&f) => true,
             // Repacked natively (a RAR needs a tool, which converting says if it's missing).
             ("CBR" | "CB7", "CBZ") => true,
             // calibre to EPUB, then native.
@@ -80,27 +85,90 @@ impl Converter {
         all.into_iter().filter(|t| self.source_for(have, t).is_some()).map(str::to_owned).collect()
     }
 
-    /// Convert `src` (in format `from`) to `to`, writing `dest` (must not exist).
-    pub fn convert(&self, src: &Path, from: &str, to: &str, dest: &Path) -> std::result::Result<(), String> {
+    /// The format to convert from, of a book's `files` (format, path), to get
+    /// `to`: as [`Self::source_for`], passing over Kindle files that can't be
+    /// read (DRM-protected, or not really MOBI) for the next best format.
+    pub fn source_from_files<'a>(&self, files: &'a [(String, PathBuf)], to: &str) -> Option<&'a str> {
+        if files.iter().any(|(f, _)| f == to) {
+            return None;
+        }
+        let readable: Vec<String> = files
+            .iter()
+            .filter(|(f, path)| !KINDLE_INPUTS.contains(&f.as_str()) || mobi::check(path).is_ok())
+            .map(|(f, _)| f.clone())
+            .collect();
+        let from = self.source_for(&readable, to)?;
+        files.iter().find(|(f, _)| f == from).map(|(f, _)| f.as_str())
+    }
+
+    /// Convert `src` (in format `from`) to `to`, writing `dest` (must not
+    /// exist). Returns what converting noticed but didn't stop for.
+    pub fn convert(&self, src: &Path, from: &str, to: &str, dest: &Path) -> std::result::Result<Vec<String>, String> {
         match (from, to) {
-            ("EPUB", "KEPUB") => kepub::convert(src, dest).map(|_| ()).map_err(|e| e.to_string()),
-            ("CBR" | "CB7", "CBZ") => cbz::convert(src, dest),
-            ("EPUB" | "KEPUB", "AZW3") => match azw3::convert(src, dest) {
-                Ok(_) => Ok(()),
-                // calibre is more forgiving of unusual books, if it's here.
-                Err(e) if self.calibre.is_some() => {
-                    let _ = std::fs::remove_file(dest);
-                    self.calibre_convert(src, from, dest).map_err(|c| format!("{e}; calibre too: {c}"))
-                }
-                Err(e) => Err(e.to_string()),
-            },
+            ("EPUB", "KEPUB") => kepub::convert(src, dest).map(|_| vec![]).map_err(|e| e.to_string()),
+            ("CBR" | "CB7", "CBZ") => cbz::convert(src, dest).map(|()| vec![]),
+            ("EPUB" | "KEPUB", "AZW3") => {
+                self.or_calibre(src, from, dest, azw3::convert(src, dest).map(|r| r.warnings))
+            }
+            (f, "EPUB") if KINDLE_INPUTS.contains(&f) => {
+                self.or_calibre(src, from, dest, mobi::convert(src, dest).map(|r| r.warnings))
+            }
+            (f, "KEPUB") if KINDLE_INPUTS.contains(&f) => {
+                let work = TempDir::new()?;
+                let epub = work.0.join("book.epub");
+                let warnings = self.convert(src, from, "EPUB", &epub)?;
+                kepub::convert(&epub, dest).map(|_| warnings).map_err(|e| e.to_string())
+            }
             (_, "KEPUB") => {
                 let work = TempDir::new()?;
                 let epub = work.0.join("book.epub");
                 self.calibre_convert(src, from, &epub)?;
-                kepub::convert(&epub, dest).map(|_| ()).map_err(|e| e.to_string())
+                kepub::convert(&epub, dest).map(|_| vec![]).map_err(|e| e.to_string())
             }
-            _ => self.calibre_convert(src, from, dest),
+            _ => self.calibre_convert(src, from, dest).map(|()| vec![]),
+        }
+    }
+
+    /// Convert a library book's file, as [`Self::convert`]. A Kindle book's
+    /// EPUB or KEPUB then gets the library's details in place of Amazon's:
+    /// `details` gives them (metadata and title sort) when they're needed.
+    pub fn convert_book_file(
+        &self,
+        src: &Path,
+        from: &str,
+        to: &str,
+        dest: &Path,
+        details: impl FnOnce() -> Option<(BookMetadata, Option<String>)>,
+    ) -> std::result::Result<Vec<String>, String> {
+        let mut warnings = self.convert(src, from, to, dest)?;
+        if KINDLE_INPUTS.contains(&from)
+            && matches!(to, "EPUB" | "KEPUB")
+            && let Some((meta, title_sort)) = details()
+            && let Err(e) = crate::metadata::epub_write::write(dest, &meta, title_sort.as_deref())
+        {
+            // The book still converted, with the Kindle file's own details.
+            warnings.push(format!("the library's details couldn't be written into it ({e})"));
+        }
+        Ok(warnings)
+    }
+
+    /// A native conversion's result; if it failed, calibre's try instead
+    /// (it's more forgiving of unusual books), if it's here and could do better.
+    fn or_calibre(
+        &self,
+        src: &Path,
+        from: &str,
+        dest: &Path,
+        native: crate::metadata::epub::Res<Vec<String>>,
+    ) -> std::result::Result<Vec<String>, String> {
+        match native {
+            Ok(warnings) => Ok(warnings),
+            Err(e) if self.calibre.is_some() && !e.is::<mobi::Unconvertible>() => {
+                let _ = std::fs::remove_file(dest);
+                self.calibre_convert(src, from, dest).map_err(|c| format!("{e}; calibre too: {c}"))?;
+                Ok(vec![format!("converted by calibre: the built-in converter couldn't ({e})")])
+            }
+            Err(e) => Err(e.to_string()),
         }
     }
 
@@ -191,6 +259,10 @@ pub struct ConvertReport {
     pub already: usize,
     /// Books that couldn't be converted, with the reason.
     pub failed: Vec<String>,
+    /// What converting noticed but didn't stop for, by book (content left
+    /// out, calibre used instead).
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 impl Library {
@@ -206,12 +278,13 @@ impl Library {
         for (done, id) in ids.iter().enumerate() {
             let book = self.book(*id)?;
             progress(done, ids.len(), &book.title);
-            match self.convert_book(*id, to, converter) {
-                Ok(true) => {
+            match self.convert_book_noting(*id, to, converter) {
+                Ok(Some(warnings)) => {
                     report.converted += 1;
                     report.converted_ids.push(*id);
+                    report.warnings.extend(warnings.into_iter().map(|w| format!("“{}”: {w}", book.title)));
                 }
-                Ok(false) => report.already += 1,
+                Ok(None) => report.already += 1,
                 Err(e) => report.failed.push(format!("“{}”: {e}", book.title)),
             }
         }
@@ -222,28 +295,41 @@ impl Library {
     /// Add format `to` to a book by converting one of its files. False if it
     /// already has that format.
     pub fn convert_book(&mut self, id: BookId, to: &str, converter: &Converter) -> Result<bool> {
+        self.convert_book_noting(id, to, converter).map(|w| w.is_some())
+    }
+
+    /// As [`Self::convert_book`]: None if the book already has `to`, else
+    /// what converting noticed but didn't stop for.
+    fn convert_book_noting(&mut self, id: BookId, to: &str, converter: &Converter) -> Result<Option<Vec<String>>> {
         let book = self.book(id)?;
         let files: Vec<(String, String)> = {
             let mut stmt = self.conn.prepare("SELECT format, filename FROM files WHERE book_id = ?")?;
             let rows = stmt.query_map([id], |r| Ok((r.get(0)?, r.get(1)?)))?;
             rows.collect::<rusqlite::Result<_>>()?
         };
-        let have: Vec<String> = files.iter().map(|(f, _)| f.clone()).collect();
-        if have.iter().any(|f| f == to) {
-            return Ok(false);
+        if files.iter().any(|(f, _)| f == to) {
+            return Ok(None);
         }
-        let from = converter
-            .source_for(&have, to)
-            .ok_or_else(|| Error::InvalidBook(format!("can't be converted to {to} from {}", have.join(", "))))?
-            .to_owned();
-        let filename = &files.iter().find(|(f, _)| *f == from).expect("from is one of the book's formats").1;
-        let src = crate::edit::dir_for(&self.root, &book.path).join(filename);
+        let dir = crate::edit::dir_for(&self.root, &book.path);
+        let paths: Vec<(String, PathBuf)> = files.iter().map(|(f, name)| (f.clone(), dir.join(name))).collect();
+        let (from, src) = converter
+            .source_from_files(&paths, to)
+            .and_then(|from| paths.iter().find(|(f, _)| f == from))
+            .cloned()
+            .ok_or_else(|| {
+                let have: Vec<&str> = files.iter().map(|(f, _)| f.as_str()).collect();
+                Error::InvalidBook(format!("can't be converted to {to} from {}", have.join(", ")))
+            })?;
 
         let work = TempDir::new().map_err(Error::Import)?;
         let out = work.0.join(format!("converted.{}", to.to_ascii_lowercase()));
-        converter.convert(&src, &from, to, &out).map_err(Error::Import)?;
+        let warnings = converter
+            .convert_book_file(&src, &from, to, &out, || {
+                self.file_metadata(id).ok().map(|(meta, title_sort)| (meta, Some(title_sort)))
+            })
+            .map_err(Error::Import)?;
         add_formats(self, id, &[(to.to_owned(), out)])?;
-        Ok(true)
+        Ok(Some(warnings))
     }
 }
 
@@ -256,6 +342,37 @@ mod tests {
     }
 
     #[test]
+    fn kindle_books_convert_with_the_librarys_details() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("book.azw3");
+        std::fs::copy(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test.azw3"), &src).unwrap();
+        let mut lib = Library::create(tmp.path().join("lib"), "Test").unwrap();
+        let id = crate::import::add_files(&mut lib, &[src], |_| {}).unwrap().added[0];
+        let mut e = lib.book_edit(id).unwrap();
+        e.title = "The Library's Title".into();
+        e.authors = vec!["Ann Other".into()];
+        e.series = Some("Kindle Classics".into());
+        e.series_index = 2.0;
+        lib.update_book(id, &e).unwrap();
+
+        let native = Converter::with_calibre(None);
+        assert!(lib.convert_book(id, "EPUB", &native).unwrap());
+        let book = lib.book(id).unwrap();
+        let dir = crate::edit::dir_for(lib.root(), &book.path);
+        let epub = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .find(|p| p.extension().is_some_and(|x| x == "epub"))
+            .unwrap();
+        let meta = crate::metadata::epub::read(&epub).unwrap();
+        assert_eq!(meta.title.as_deref(), Some("The Library's Title"));
+        assert_eq!(meta.authors[0].name, "Ann Other");
+        assert_eq!(meta.series, Some(("Kindle Classics".to_owned(), 2.0)));
+        assert!(lib.convert_book(id, "KEPUB", &native).unwrap(), "and on to KEPUB");
+    }
+
+    #[test]
     fn routes_conversions() {
         let native = Converter::with_calibre(None);
         assert_eq!(native.source_for(&s(&["PDF", "EPUB"]), "KEPUB"), Some("EPUB"));
@@ -263,6 +380,14 @@ mod tests {
         assert_eq!(native.source_for(&s(&["EPUB"]), "AZW3"), Some("EPUB"), "built in");
         assert_eq!(native.source_for(&s(&["EPUB"]), "MOBI"), None, "needs calibre");
         assert_eq!(native.targets(&s(&["EPUB"])), ["KEPUB", "AZW3"]);
+        // Kindle books become EPUB (and KEPUB) without calibre; MOBI output still needs it.
+        for kindle in ["AZW3", "MOBI", "AZW", "PRC"] {
+            assert_eq!(native.source_for(&s(&[kindle]), "EPUB"), Some(kindle));
+            assert_eq!(native.targets(&s(&[kindle])), ["KEPUB", "EPUB"], "{kindle}");
+        }
+        assert_eq!(native.source_for(&s(&["MOBI", "AZW3"]), "EPUB"), Some("AZW3"), "KF8 is better");
+        assert_eq!(native.source_for(&s(&["AZW3"]), "MOBI"), None, "needs calibre");
+        assert_eq!(native.source_for(&s(&["KFX"]), "EPUB"), None);
 
         let calibre = Converter::with_calibre(Some("/x/ebook-convert".into()));
         assert_eq!(calibre.source_for(&s(&["PDF", "MOBI"]), "EPUB"), Some("MOBI"), "PDF is a last resort");

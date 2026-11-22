@@ -44,27 +44,83 @@ pub fn read(path: &Path) -> Option<BookMetadata> {
     parse(&std::fs::read(path).ok()?)
 }
 
-fn u16_at(d: &[u8], at: usize) -> Option<usize> {
+pub(crate) fn u16_at(d: &[u8], at: usize) -> Option<usize> {
     Some(u16::from_be_bytes(d.get(at..at + 2)?.try_into().ok()?).into())
 }
 
-fn u32_at(d: &[u8], at: usize) -> Option<u32> {
+pub(crate) fn u32_at(d: &[u8], at: usize) -> Option<u32> {
     Some(u32::from_be_bytes(d.get(at..at + 4)?.try_into().ok()?))
+}
+
+/// The records of a PalmDB file: a MOBI book ("BOOKMOBI") or a plain
+/// PalmDOC one ("TEXtREAd").
+pub(crate) struct Records<'a> {
+    data: &'a [u8],
+    offsets: Vec<usize>,
+    /// "TEXtREAd" rather than "BOOKMOBI".
+    pub textread: bool,
+}
+
+impl<'a> Records<'a> {
+    pub fn parse(d: &'a [u8]) -> Option<Self> {
+        let ident = d.get(60..68)?.to_ascii_uppercase();
+        if ident != b"BOOKMOBI" && ident != b"TEXTREAD" {
+            return None;
+        }
+        let count = u16_at(d, 76)?;
+        let offsets = (0..count).map(|i| u32_at(d, 78 + 8 * i).map(|o| o as usize)).collect::<Option<_>>()?;
+        Some(Self { data: d, offsets, textread: ident == b"TEXTREAD" })
+    }
+
+    pub fn len(&self) -> usize {
+        self.offsets.len()
+    }
+
+    /// Where each record starts in the file.
+    pub fn offsets(&self) -> &[usize] {
+        &self.offsets
+    }
+
+    /// Record `i`, if it's there.
+    pub fn get(&self, i: usize) -> Option<&'a [u8]> {
+        let start = *self.offsets.get(i)?;
+        let end = self.offsets.get(i + 1).copied().unwrap_or(self.data.len()).min(self.data.len());
+        self.data.get(start..end.max(start))
+    }
+
+    /// Record `i`, empty if it's missing or its offsets are broken.
+    pub fn record(&self, i: usize) -> &'a [u8] {
+        self.get(i).unwrap_or(&[])
+    }
+}
+
+/// The EXTH records of a MOBI header (a record 0), as (type, value).
+pub(crate) fn exth_records(r0: &[u8]) -> Vec<(u32, &[u8])> {
+    let mut out = Vec::new();
+    if !u32_at(r0, 128).is_some_and(|f| f & 0x40 != 0) {
+        return out;
+    }
+    let Some(header_len) = u32_at(r0, 20) else { return out };
+    let e = 16 + header_len as usize;
+    if r0.get(e..e + 4) != Some(b"EXTH") {
+        return out;
+    }
+    let Some(n) = u32_at(r0, e + 8) else { return out };
+    let mut at = e + 12;
+    for _ in 0..n {
+        let (Some(kind), Some(len)) = (u32_at(r0, at), u32_at(r0, at + 4)) else { break };
+        let len = (len as usize).max(8);
+        let Some(value) = r0.get(at + 8..at + len) else { break };
+        at += len;
+        out.push((kind, value));
+    }
+    out
 }
 
 pub(crate) fn parse(d: &[u8]) -> Option<BookMetadata> {
     // PalmDB header: name, then type and creator ("BOOK" "MOBI") at 60.
-    if d.get(60..68)? != b"BOOKMOBI" {
-        return None;
-    }
-    let count = u16_at(d, 76)?;
-    let offsets: Vec<usize> = (0..count).map(|i| u32_at(d, 78 + 8 * i).map(|o| o as usize)).collect::<Option<_>>()?;
-    let record = |i: usize| -> Option<&[u8]> {
-        let start = *offsets.get(i)?;
-        let end = offsets.get(i + 1).copied().unwrap_or(d.len());
-        d.get(start..end.max(start))
-    };
-    let r0 = record(0)?;
+    let records = Records::parse(d).filter(|r| !r.textread)?;
+    let r0 = records.get(0)?;
     if r0.get(16..20)? != b"MOBI" {
         return None;
     }
@@ -132,32 +188,11 @@ pub(crate) fn parse(d: &[u8]) -> Option<BookMetadata> {
             .into_iter()
             .flatten()
             .filter(|o| *o != u32::MAX)
-            .filter_map(|o| record(first_image as usize + o as usize))
+            .filter_map(|o| records.get(first_image as usize + o as usize))
             .find(|img| is_image(img))
             .map(<[u8]>::to_vec);
     }
     Some(out)
-}
-
-/// The EXTH metadata records (type, value) in record 0, when it has them:
-/// flagged in the MOBI header, and following it.
-fn exth_records(r0: &[u8]) -> Vec<(u32, &[u8])> {
-    let mut out = Vec::new();
-    let (Some(header_len), Some(flags)) = (u32_at(r0, 20), u32_at(r0, 128)) else { return out };
-    let e = 16 + header_len as usize;
-    if flags & 0x40 == 0 || r0.get(e..e + 4) != Some(b"EXTH") {
-        return out;
-    }
-    let Some(n) = u32_at(r0, e + 8) else { return out };
-    let mut at = e + 12;
-    for _ in 0..n {
-        let (Some(kind), Some(len)) = (u32_at(r0, at), u32_at(r0, at + 4)) else { break };
-        let len = (len as usize).max(8);
-        let Some(value) = r0.get(at + 8..at + len) else { break };
-        at += len;
-        out.push((kind, value));
-    }
-    out
 }
 
 /// What a Kindle keys a book's cover thumbnail on, as the file itself says:
@@ -212,7 +247,7 @@ fn is_image(b: &[u8]) -> bool {
 }
 
 /// Windows-1252, the older MOBI text encoding.
-fn cp1252(b: &[u8]) -> String {
+pub(crate) fn cp1252(b: &[u8]) -> String {
     const HIGH: [char; 32] = [
         '€', '\u{81}', '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ', '\u{8d}', 'Ž', '\u{8f}', '\u{90}', '‘',
         '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ', '\u{9d}', 'ž', 'Ÿ',
