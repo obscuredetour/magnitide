@@ -176,53 +176,179 @@ impl El {
 
 /// Parse a document: as XML if it's well formed, else as HTML. The result is
 /// an `html` element with a `head` and a `body`.
-pub(super) fn parse_document(src: &str) -> El {
-    let root = parse_xml(src).filter(|r| r.is("html")).unwrap_or_else(|| parse_html(src));
-    with_head_and_body(root)
+pub(super) fn parse_document(src: &str) -> Result<El, String> {
+    let root = match read_xml(&xml_entities(src.trim_start_matches('\u{feff}'))) {
+        // Refused here: an HTML parser would take a long time to say the same.
+        Xml::TooDeep => return Err(too_deep()),
+        Xml::Fine(root) => Some(root).filter(|r| r.is("html")),
+        Xml::Malformed => None,
+    };
+    let root = match root {
+        Some(r) => r,
+        None => parse_html(src)?,
+    };
+    Ok(with_head_and_body(root))
+}
+
+/// Deeper nesting than this is refused: no book needs it, and the tree is
+/// walked recursively (on a thread with a small stack).
+pub(super) const MAX_DEPTH: usize = 256;
+
+fn too_deep() -> String {
+    "its markup is nested too deeply to read".into()
 }
 
 /// Parse well-formed XML (HTML named entities allowed) into its root.
 pub(super) fn parse_xml(src: &str) -> Option<El> {
-    let src = xml_entities(src.trim_start_matches('\u{feff}'));
-    let opts = roxmltree::ParsingOptions { allow_dtd: true, ..Default::default() };
-    let doc = roxmltree::Document::parse_with_options(&src, opts).ok()?;
-    Some(from_xml(doc.root_element()))
+    match read_xml(&xml_entities(src.trim_start_matches('\u{feff}'))) {
+        Xml::Fine(root) => Some(root),
+        Xml::TooDeep | Xml::Malformed => None,
+    }
 }
 
-fn from_xml(n: roxmltree::Node<'_, '_>) -> El {
-    let ns = match n.tag_name().namespace() {
-        None | Some(XHTML_NS) => Ns::Html,
-        Some(SVG_NS) => Ns::Svg,
-        Some(MATHML_NS) => Ns::Math,
-        Some(_) => Ns::Other,
-    };
-    let name = if ns == Ns::Html { n.tag_name().name().to_ascii_lowercase() } else { n.tag_name().name().to_owned() };
-    let attrs = n
-        .attributes()
-        .filter_map(|a| {
-            let key = match a.namespace() {
-                None => a.name().to_owned(),
-                Some(XLINK_NS) => format!("xlink:{}", a.name()),
-                Some(XML_NS) => format!("xml:{}", a.name()),
-                Some(OPS_NS) => format!("epub:{}", a.name()),
-                Some(_) => return None,
-            };
-            Some((key, a.value().to_owned()))
-        })
-        .collect();
-    let children = n
-        .children()
-        .filter_map(|c| {
-            if c.is_element() {
-                Some(Node::El(from_xml(c)))
-            } else if c.is_text() {
-                c.text().map(|t| Node::Text(t.to_owned()))
-            } else {
-                None
+enum Xml {
+    /// Well formed, and no deeper than [`MAX_DEPTH`].
+    Fine(El),
+    /// Well formed, but deeper.
+    TooDeep,
+    /// Not XML (HTML, perhaps), so how deep it is isn't known.
+    Malformed,
+}
+
+/// Whether XML with `depth` elements open closes them all, and nothing more,
+/// by its end: well formed as far as nesting goes (names aren't matched).
+fn closes(rest: &str, open: usize) -> bool {
+    use quick_xml::events::Event;
+    // The reader refuses end tags it didn't see start: it sees these.
+    let src = "<a>".repeat(open) + rest;
+    let mut reader = quick_xml::Reader::from_str(&src);
+    reader.config_mut().check_end_names = false;
+    let mut depth = 0usize;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(_)) => depth += 1,
+            Ok(Event::End(_)) if depth == 0 => return false,
+            Ok(Event::End(_)) => depth -= 1,
+            Ok(Event::Eof) => return depth == 0,
+            Ok(_) => {}
+            Err(_) => return false,
+        }
+    }
+}
+
+/// Read XML (HTML entities already numeric) into a tree, as a stream with
+/// its own stack, so any depth is safe to read.
+fn read_xml(src: &str) -> Xml {
+    use quick_xml::events::{BytesStart, Event};
+    use quick_xml::name::ResolveResult;
+    let mut reader = quick_xml::NsReader::from_str(src);
+    let mut stack: Vec<El> = vec![El::new("#document")];
+    let mut depth = 0usize;
+    let text = |stack: &mut Vec<El>, t: &str| {
+        if !t.is_empty() {
+            let parent = stack.last_mut().expect("document");
+            match parent.children.last_mut() {
+                Some(Node::Text(prev)) => prev.push_str(t),
+                _ => parent.children.push(Node::Text(t.to_owned())),
             }
-        })
-        .collect();
-    El { name, ns, attrs, children }
+        }
+    };
+    // An element and its attributes, namespaces resolved.
+    let element = |reader: &quick_xml::NsReader<&[u8]>, ns: Ns, e: &BytesStart<'_>| -> Option<El> {
+        let local_name = e.local_name();
+        let local: &str = local_name.as_ref();
+        let name = if ns == Ns::Html { local.to_ascii_lowercase() } else { local.to_owned() };
+        let mut attrs = Vec::new();
+        for a in e.attributes() {
+            let a = a.ok()?;
+            let (res, local) = reader.resolver().resolve_attribute(a.key);
+            let local: &str = local.as_ref();
+            let key = match res {
+                ResolveResult::Unbound => local.to_owned(),
+                ResolveResult::Bound(n) => match n.as_ref() {
+                    XLINK_NS => format!("xlink:{local}"),
+                    XML_NS => format!("xml:{local}"),
+                    OPS_NS => format!("epub:{local}"),
+                    _ => continue, // xmlns declarations, other namespaces
+                },
+                ResolveResult::Unknown(_) => continue,
+            };
+            attrs.push((key, a.normalized_value(quick_xml::XmlVersion::Implicit1_0).ok()?.into_owned()));
+        }
+        Some(El { name, ns, attrs, children: vec![] })
+    };
+    loop {
+        let (res, event) = match reader.read_resolved_event() {
+            Ok(r) => r,
+            Err(_) => return Xml::Malformed,
+        };
+        let ns = match &res {
+            ResolveResult::Unbound => Ns::Html,
+            ResolveResult::Bound(n) => match n.as_ref() {
+                XHTML_NS => Ns::Html,
+                SVG_NS => Ns::Svg,
+                MATHML_NS => Ns::Math,
+                _ => Ns::Other,
+            },
+            // An undeclared prefix ("mbp:"): not namespace-well-formed.
+            ResolveResult::Unknown(_) => return Xml::Malformed,
+        };
+        match event {
+            Event::Start(e) => {
+                depth += 1;
+                if depth > MAX_DEPTH {
+                    // Namespaces get slow to resolve this deep: the rest is
+                    // only checked for balance.
+                    let rest = src.get(reader.buffer_position() as usize..).unwrap_or_default();
+                    return if closes(rest, depth) { Xml::TooDeep } else { Xml::Malformed };
+                }
+                let Some(el) = element(&reader, ns, &e) else { return Xml::Malformed };
+                stack.push(el);
+            }
+            Event::Empty(e) => {
+                let Some(el) = element(&reader, ns, &e) else { return Xml::Malformed };
+                stack.last_mut().expect("document").children.push(Node::El(el));
+            }
+            Event::End(_) => {
+                if depth == 0 {
+                    return Xml::Malformed;
+                }
+                let done = stack.pop().expect("an open element");
+                stack.last_mut().expect("document").children.push(Node::El(done));
+                depth -= 1;
+            }
+            Event::Text(t) => text(&mut stack, &t.xml10_content()),
+            Event::CData(c) => text(&mut stack, &c.into_inner()),
+            Event::GeneralRef(r) => {
+                let ch = match r.resolve_char_ref() {
+                    Ok(Some(c)) => c,
+                    Ok(None) => match &*r {
+                        "amp" => '&',
+                        "lt" => '<',
+                        "gt" => '>',
+                        "quot" => '"',
+                        "apos" => '\'',
+                        _ => return Xml::Malformed, // an entity from a DTD
+                    },
+                    Err(_) => return Xml::Malformed,
+                };
+                text(&mut stack, ch.encode_utf8(&mut [0; 4]));
+            }
+            Event::Eof => break,
+            _ => {} // comments, processing instructions, the doctype
+        }
+    }
+    if depth != 0 {
+        return Xml::Malformed;
+    }
+    let doc = stack.pop().expect("document");
+    match doc.children.into_iter().find_map(|c| match c {
+        Node::El(e) => Some(e),
+        Node::Text(_) => None,
+    }) {
+        Some(root) => Xml::Fine(root),
+        None => Xml::Malformed,
+    }
 }
 
 /// HTML named entities as numeric references, so an XML parser takes them.
@@ -254,20 +380,26 @@ fn xml_entities(src: &str) -> Cow<'_, str> {
 }
 
 /// Parse HTML as a browser would, whatever state it's in.
-pub(super) fn parse_html(src: &str) -> El {
+pub(super) fn parse_html(src: &str) -> Result<El, String> {
     use html5ever::tendril::TendrilSink;
     let dom = html5ever::parse_document(markup5ever_rcdom::RcDom::default(), Default::default()).one(src);
     let doc = dom.document.clone();
-    let root = doc.children.borrow().iter().find_map(|c| match from_html(c) {
-        Some(Node::El(e)) if e.is("html") => Some(e),
-        _ => None,
-    });
-    root.unwrap_or_else(|| El::new("html"))
+    for c in doc.children.borrow().iter() {
+        if let Some(Node::El(e)) = from_html(c, 0)?
+            && e.is("html")
+        {
+            return Ok(e);
+        }
+    }
+    Ok(El::new("html"))
 }
 
-fn from_html(h: &markup5ever_rcdom::Handle) -> Option<Node> {
+fn from_html(h: &markup5ever_rcdom::Handle, depth: usize) -> Result<Option<Node>, String> {
     use markup5ever_rcdom::NodeData;
-    match &h.data {
+    if depth > MAX_DEPTH {
+        return Err(too_deep());
+    }
+    Ok(match &h.data {
         NodeData::Text { contents } => Some(Node::Text(contents.borrow().to_string())),
         NodeData::Element { name, attrs, .. } => {
             let ns = match &*name.ns {
@@ -289,11 +421,14 @@ fn from_html(h: &markup5ever_rcdom::Handle) -> Option<Node> {
                     Some((key, a.value.to_string()))
                 })
                 .collect();
-            let children = h.children.borrow().iter().filter_map(from_html).collect();
+            let mut children = Vec::new();
+            for c in h.children.borrow().iter() {
+                children.extend(from_html(c, depth + 1)?);
+            }
             Some(Node::El(El { name: name.local.to_string(), ns, attrs, children }))
         }
         _ => None,
-    }
+    })
 }
 
 /// An `html` element with exactly a `head` and a `body`.
@@ -1014,7 +1149,7 @@ mod tests {
     use super::*;
 
     fn tidy_html(src: &str) -> String {
-        let mut doc = parse_document(src);
+        let mut doc = parse_document(src).unwrap();
         tidy(&mut doc, "T");
         to_xhtml(&doc)
     }
@@ -1056,10 +1191,80 @@ mod tests {
     }
 
     #[test]
+    fn deep_nesting_is_refused_without_overflowing_the_stack() {
+        // Everything a page goes through, on a stack the size the app's
+        // conversion threads get (in a debug build, where frames are biggest).
+        let run = |src: String| {
+            std::thread::Builder::new()
+                .stack_size(2 << 20)
+                .spawn(move || {
+                    let mut doc = parse_document(&src)?;
+                    tidy(&mut doc, "T");
+                    let body = doc.child("body").unwrap().clone();
+                    let mut body = body;
+                    mark_long(&mut body, 1000);
+                    let parts = split(body);
+                    Ok::<usize, String>(parts.len() + to_xhtml(&doc).len())
+                })
+                .unwrap()
+                .join()
+                .unwrap()
+        };
+        let deep = |n: usize| format!("<html><body>{}x{}</body></html>", "<div>".repeat(n), "</div>".repeat(n));
+        assert!(run(deep(100_000)).is_err(), "well formed XML");
+        // (Not as deep: an HTML parser is slow with so many open inline elements.)
+        assert!(run(format!("<body>{}x", "<span>".repeat(2_000))).is_err(), "HTML soup");
+        // Up to the limit is fine, as XML or as HTML.
+        assert!(run(deep(MAX_DEPTH - 6)).is_ok());
+        assert!(run(format!("<body>{}x", "<span>".repeat(MAX_DEPTH - 6))).is_ok());
+        // Unclosed paragraphs aren't nesting: an HTML parser closes them.
+        assert!(run(format!("<body>{}", "<p>text".repeat(300))).is_ok());
+
+        // An inline SVG (as deep as allowed) put into a page (as deep as
+        // allowed): the passes after parsing still have room.
+        let tree = std::thread::Builder::new()
+            .stack_size(2 << 20)
+            .spawn(|| {
+                let mut el = El::with("p", &[("id", "deepest")], vec![Node::Text("x".into())]);
+                for _ in 0..2 * MAX_DEPTH {
+                    el = El::with("div", &[("class", "c")], vec![Node::El(el)]);
+                }
+                let mut doc = El::with(
+                    "html",
+                    &[],
+                    vec![Node::El(El::new("head")), Node::El(El::with("body", &[], vec![Node::El(el)]))],
+                );
+                tidy(&mut doc, "T");
+                let mut body = doc.child("body").unwrap().clone();
+                mark_long(&mut body, 100);
+                split(body).len() + to_xhtml(&doc).len()
+            })
+            .unwrap()
+            .join();
+        assert!(tree.is_ok());
+    }
+
+    #[test]
+    fn reads_namespaced_xml() {
+        let svg = parse_xml(
+            r#"<?xml version="1.0"?><!DOCTYPE svg><svg:svg xmlns:svg="http://www.w3.org/2000/svg" xmlns:xl="http://www.w3.org/1999/xlink" viewBox="0 0 1 1"><svg:image xl:href="a.jpg"/><![CDATA[a<b]]>&amp;&#65;&nbsp;</svg:svg>"#,
+        )
+        .unwrap();
+        assert_eq!((svg.ns, svg.name.as_str()), (Ns::Svg, "svg"));
+        assert_eq!(svg.attrs, [("viewBox".to_owned(), "0 0 1 1".to_owned())]);
+        let Node::El(image) = &svg.children[0] else { panic!() };
+        assert_eq!(image.attr("xlink:href"), Some("a.jpg"));
+        assert_eq!(svg.children[1], Node::Text("a<b&A\u{a0}".into()));
+        assert!(parse_xml("<a><b></a>").is_none(), "unbalanced");
+        assert!(parse_xml("<mbp:pagebreak/>").is_none(), "an undeclared prefix");
+    }
+
+    #[test]
     fn splits_at_marks() {
         let doc = parse_html(&format!(
             "<body><div class=w id=w><p>one</p><{SPLIT} id=f9></{SPLIT}><p>two</p></div><{SPLIT}></{SPLIT}><{SPLIT}></{SPLIT}><p>three</p></body>"
-        ));
+        ))
+        .unwrap();
         let body = doc.child("body").unwrap().clone();
         let parts = split(body);
         assert_eq!(parts.len(), 3);
@@ -1079,7 +1284,7 @@ mod tests {
     #[test]
     fn long_bodies_are_cut_between_blocks() {
         let paras: String = (0..100).map(|i| format!("<p>Paragraph {i} with some words.</p>")).collect();
-        let mut body = parse_html(&format!("<body><div>{paras}</div></body>")).child("body").unwrap().clone();
+        let mut body = parse_html(&format!("<body><div>{paras}</div></body>")).unwrap().child("body").unwrap().clone();
         mark_long(&mut body, 1000);
         let parts = split(body);
         assert!(parts.len() >= 3, "{}", parts.len());

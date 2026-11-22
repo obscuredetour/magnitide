@@ -77,7 +77,7 @@ pub(super) fn read(
     // The flow table: the text, then stylesheets and SVG images.
     let mut flow_table = vec![(0, text.len())];
     if header.fdst != NULL {
-        let fdst = records.get(rec(header.fdst));
+        let fdst = records.record(rec(header.fdst));
         if !fdst.starts_with(b"FDST") {
             return Err("the book's flow table is missing".into());
         }
@@ -123,7 +123,7 @@ pub(super) fn read(
         return Err("the book's file index is missing".into());
     }
 
-    let parts = build_parts(main, &skels, &frags, warnings);
+    let parts = build_parts(main, &skels, &frags, warnings)?;
     let flows = classify_flows(&raw_flows, header);
     let (resources, files) = extract_resources(records, resource_ranges, warnings);
     let mut kf8 = Kf8 { frags, parts, flows, resources, linked_aids: HashSet::new(), header };
@@ -137,8 +137,8 @@ pub(super) fn read(
 
     let mut pages: Vec<Page> = Vec::new();
     for (part, raw) in kf8.parts.iter().zip(raw_parts) {
-        let mut root = html::parse_document(&header.decode(&raw));
-        kf8.inline_flows(&mut root);
+        let mut root = html::parse_document(&header.decode(&raw)).map_err(|e| format!("{}: {e}", part.name))?;
+        kf8.inline_flows(&mut root, &part.name, warnings);
         kf8.rewrite(&mut root);
         pages.push(Page { origin: part.name.clone(), root });
     }
@@ -157,7 +157,7 @@ pub(super) fn read(
                 data: html::to_xml(&svg).into_bytes(),
             });
         } else {
-            warnings.push(format!("flow {i}: an SVG image couldn't be read"));
+            warnings.push(format!("an SVG image (flow {i}) couldn't be read and was left out"));
         }
     }
 
@@ -204,12 +204,13 @@ fn rfind(hay: &[u8], needle: u8) -> i64 {
 }
 
 /// Rebuild each file: its skeleton, with its fragments put back in.
-fn build_parts(text: &[u8], skels: &[Skel], frags: &[Frag], warnings: &mut Vec<String>) -> Vec<Part> {
+fn build_parts(text: &[u8], skels: &[Skel], frags: &[Frag], warnings: &mut Vec<String>) -> Result<Vec<Part>, String> {
     let get = |a: usize, b: usize| text.get(a.min(text.len())..b.min(text.len())).unwrap_or(&[]).to_vec();
+    let past_end = || "the book's file index points past the end of its text".to_owned();
     let mut parts = Vec::new();
     let mut fragptr = 0;
     for (n, s) in skels.iter().enumerate() {
-        let mut baseptr = s.start + s.len;
+        let mut baseptr = s.start.checked_add(s.len).ok_or_else(past_end)?;
         let mut skeleton = get(s.start, baseptr);
         let mut aid = String::new();
         let mut warned = false;
@@ -219,7 +220,8 @@ fn build_parts(text: &[u8], skels: &[Skel], frags: &[Frag], warnings: &mut Vec<S
                 // "P-//*[@aid='0']" names where the first fragment goes.
                 aid = f.selector.get(12..f.selector.len().saturating_sub(2)).unwrap_or_default().to_owned();
             }
-            let piece = get(baseptr, baseptr + f.len);
+            let piece_end = baseptr.checked_add(f.len).ok_or_else(past_end)?;
+            let piece = get(baseptr, piece_end);
             let mut insert = f.insert_pos.saturating_sub(s.start).min(skeleton.len());
             let (head, tail) = skeleton.split_at(insert);
             if find(tail, b'>') < find(tail, b'<') || rfind(head, b'>') < rfind(head, b'<') {
@@ -231,22 +233,23 @@ fn build_parts(text: &[u8], skels: &[Skel], frags: &[Frag], warnings: &mut Vec<S
                 if let Some((bp, ep)) = tag_with_aid(&skeleton, &aid)
                     && bp != ep
                 {
-                    insert = (ep + 1 + f.start).min(skeleton.len());
+                    insert = ep.saturating_add(1).saturating_add(f.start).min(skeleton.len());
                 }
             }
             skeleton.splice(insert..insert, piece);
-            baseptr += f.len;
+            baseptr = piece_end;
             fragptr += 1;
         }
         parts.push(Part { name: format!("part{n:04}.xhtml"), start: s.start, end: baseptr, data: skeleton });
     }
-    parts
+    Ok(parts)
 }
 
 /// Where the tag with this aid starts and ends.
 fn tag_with_aid(ml: &[u8], aid: &str) -> Option<(usize, usize)> {
-    let re = BytesRegex::new(&format!(r#"(?i)<[^>]*\said\s*=\s*['"]{}['"][^>]*>"#, regex::escape(aid))).ok()?;
-    let m = re.find(ml)?;
+    static AID_TAG: LazyLock<BytesRegex> =
+        LazyLock::new(|| BytesRegex::new(r#"(?i)<[^>]*\said\s*=\s*['"]([^'"]*)['"][^>]*>"#).expect("regex"));
+    let m = AID_TAG.captures_iter(ml).find(|c| &c[1] == aid.as_bytes())?.get(0)?;
     let gt = ml[m.start() + 1..].iter().position(|&b| b == b'>')? + m.start() + 1;
     Some((m.start(), gt))
 }
@@ -291,7 +294,7 @@ fn extract_resources(
     let mut files = Vec::new();
     for &(start, end) in ranges {
         for i in start..end.min(records.len()) {
-            let data = records.get(i);
+            let data = records.record(i);
             let n = map.len() + 1;
             let href = match data.get(..4).unwrap_or(&[]) {
                 b"FLIS" | b"FCIS" | b"SRCS" | b"\xe9\x8e\r\n" | b"BOUN" | b"FDST" | b"DATP" | b"AUDI" | b"VIDE"
@@ -332,6 +335,9 @@ pub(super) fn image_type(data: &[u8]) -> Option<(&'static str, &'static str)> {
     }
 }
 
+/// No real font is near this; a bigger size is a broken record.
+const MAX_FONT: usize = 64 << 20;
+
 /// A FONT record: maybe obfuscated (XOR over its first 1040 bytes), maybe
 /// zlib-compressed.
 fn read_font(data: &[u8]) -> Result<(Vec<u8>, &'static str, &'static str), String> {
@@ -339,16 +345,22 @@ fn read_font(data: &[u8]) -> Result<(Vec<u8>, &'static str, &'static str), Strin
     let (size, flags, start, xor_len, xor_start) = (field(4)?, field(8)?, field(12)?, field(16)?, field(20)?);
     let mut font = data.get(start..).ok_or("its data is missing")?.to_vec();
     if flags & 0b10 != 0 {
-        let key = data.get(xor_start..xor_start + xor_len).filter(|k| !k.is_empty()).ok_or("its key is missing")?;
+        let key = data
+            .get(xor_start..xor_start.saturating_add(xor_len))
+            .filter(|k| !k.is_empty())
+            .ok_or("its key is missing")?;
         let n = font.len().min(1040);
         for (i, b) in font[..n].iter_mut().enumerate() {
             *b ^= key[i % key.len()];
         }
     }
     if flags & 1 != 0 {
-        let mut out = Vec::with_capacity(size);
+        if size > MAX_FONT {
+            return Err("it's too big".into());
+        }
+        let mut out = Vec::with_capacity(size.min(font.len().saturating_mul(4)));
         flate2::read::ZlibDecoder::new(&font[..])
-            .take(64 << 20)
+            .take(MAX_FONT as u64 + 1)
             .read_to_end(&mut out)
             .map_err(|e| format!("it couldn't be decompressed ({e})"))?;
         if out.len() != size {
@@ -370,6 +382,11 @@ static NAME_RE: LazyLock<BytesRegex> =
 static AID_RE: LazyLock<BytesRegex> =
     LazyLock::new(|| BytesRegex::new(r#"^<[^>]+\s(?:aid|AID)\s*=\s*['"]([^'"]+)['"]"#).expect("regex"));
 
+/// A link to a file, at an id if there is one.
+fn file_href(file: String, id: &str) -> String {
+    if id.is_empty() { file } else { format!("{file}#{id}") }
+}
+
 /// The id a link to an aid becomes.
 fn aid_id(aid: &str) -> String {
     format!("aid-{aid}")
@@ -382,8 +399,8 @@ impl Kf8<'_> {
 
     /// A `kindle:pos:fid` position as (file, id).
     fn pos_fid(&mut self, fid: u64, off: u64) -> Option<(String, String)> {
-        let f = self.frags.get(fid as usize)?;
-        let pos = f.insert_pos + off as usize;
+        let f = self.frags.get(usize::try_from(fid).ok()?)?;
+        let pos = f.insert_pos.checked_add(usize::try_from(off).ok()?)?;
         let part = self.part_at(pos)?;
         Some((self.parts[part].name.clone(), self.id_before(pos)?))
     }
@@ -421,7 +438,7 @@ impl Kf8<'_> {
 
     fn href(&mut self, fid: u64, off: u64) -> Option<String> {
         let (file, id) = self.pos_fid(fid, off)?;
-        Some(if id.is_empty() { file } else { format!("{file}#{id}") })
+        Some(file_href(file, &id))
     }
 
     /// `kindle:pos:fid` links in a part as file#id.
@@ -485,7 +502,7 @@ impl Kf8<'_> {
         let part = self.part_at(pos)?;
         let file = self.parts[part].name.clone();
         let id = self.id_before(pos)?;
-        Some(if id.is_empty() { file } else { format!("{file}#{id}") })
+        Some(file_href(file, &id))
     }
 
     /// The table of contents from the NCX index.
@@ -509,7 +526,7 @@ impl Kf8<'_> {
                     let part = self.part_at(pos)?;
                     let file = self.parts[part].name.clone();
                     let id = self.id_before(pos)?;
-                    Some(if id.is_empty() { file } else { format!("{file}#{id}") })
+                    Some(file_href(file, &id))
                 }),
             };
             let Some(href) = href else {
@@ -553,7 +570,7 @@ impl Kf8<'_> {
 
     /// Elements that pull in an inline flow (an SVG, a `<style>`) are
     /// replaced by it.
-    fn inline_flows(&self, root: &mut El) {
+    fn inline_flows(&self, root: &mut El, page: &str, warnings: &mut Vec<String>) {
         root.rebuild(&mut |e| {
             let flow = ["src", "href", "xlink:href", "data"]
                 .iter()
@@ -563,7 +580,14 @@ impl Kf8<'_> {
                 return vec![Node::El(e)];
             };
             if text.trim_start().to_ascii_lowercase().starts_with("<svg") {
-                html::parse_xml(text).map(|svg| vec![Node::El(svg)]).unwrap_or_default()
+                match html::parse_xml(text) {
+                    Some(svg) => vec![Node::El(svg)],
+                    None => {
+                        let n = flow.unwrap_or_default();
+                        warnings.push(format!("{page}: an SVG image (flow {n}) couldn't be read and was left out"));
+                        vec![]
+                    }
+                }
             } else {
                 vec![Node::El(El::with("style", &[("type", "text/css")], vec![Node::Text(text.clone())]))]
             }
@@ -734,7 +758,7 @@ mod tests {
             Frag { insert_pos: 12, selector: "P-//*[@aid='0']".into(), start: 0, len: 10 },
             Frag { insert_pos: 48, selector: "P-//*[@aid='1']".into(), start: 0, len: 10 },
         ];
-        let parts = build_parts(text, &skels, &frags, &mut vec![]);
+        let parts = build_parts(text, &skels, &frags, &mut vec![]).unwrap();
         assert_eq!(parts[0].data, b"<html><body><p>One</p></body></html>");
         assert_eq!(parts[1].data, b"<html><body><p>Two</p></body></html>");
         assert_eq!((parts[1].start, parts[1].end), (36, 72));

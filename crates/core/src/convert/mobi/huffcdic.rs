@@ -59,7 +59,8 @@ impl Huff {
                 return Err(bad());
             }
             let (phrases, bits) = (u32_at(cdic, 8).ok_or_else(bad)? as usize, u32_at(cdic, 12).ok_or_else(bad)?);
-            let n = (1usize << bits.min(31)).min(phrases.saturating_sub(dictionary.len()));
+            // Each phrase has a two-byte offset: no more than the record holds.
+            let n = (1usize << bits.min(31)).min(phrases.saturating_sub(dictionary.len())).min(cdic.len() / 2);
             for i in 0..n {
                 let off = usize::from(super::book::u16_at(cdic, 16 + 2 * i).ok_or_else(bad)?);
                 let blen = usize::from(super::book::u16_at(cdic, 16 + off).ok_or_else(bad)?);

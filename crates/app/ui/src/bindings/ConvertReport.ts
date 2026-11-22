@@ -16,4 +16,9 @@ already: number,
 /**
  * Books that couldn't be converted, with the reason.
  */
-failed: Array<string>, };
+failed: Array<string>, 
+/**
+ * What converting noticed but didn't stop for, by book (content left
+ * out, calibre used instead).
+ */
+warnings: Array<string>, };

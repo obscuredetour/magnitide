@@ -33,7 +33,7 @@ mod index;
 mod kf8;
 mod mobi6;
 
-use book::{Header, NULL, Records};
+use book::{Header, NULL};
 
 /// Bigger files aren't read (the biggest real books are around 100 MB).
 const MAX_FILE: u64 = 512 << 20;
@@ -67,14 +67,9 @@ pub fn convert(src: &Path, dest: &Path) -> Res<MobiReport> {
         return Err("the file is too big to convert".into());
     }
     let data = std::fs::read(src)?;
-    if data.starts_with(b"TPZ") {
-        return Err(Unconvertible("it's a Topaz book (an old Amazon format), which can't be converted".into()).into());
-    }
-    if data.starts_with(b"\xeaDRMION\xee") {
-        return Err(Unconvertible("it's a DRM-protected KFX book, which can't be converted".into()).into());
-    }
-    let records = Records::parse(&data)?;
-    let r0 = Header::parse(records.get(0), records.textread)?;
+    refuse_by_magic(&data)?;
+    let records = book::records(&data)?;
+    let r0 = Header::parse(records.record(0), records.textread)?;
     let mut report = MobiReport::default();
     let meta = crate::metadata::mobi::parse(&data).unwrap_or_default();
 
@@ -83,14 +78,9 @@ pub fn convert(src: &Path, dest: &Path) -> Res<MobiReport> {
         .exth
         .kf8_boundary
         .map(|k| k as usize)
-        .filter(|&k| k > 0 && k < records.len() && records.get(k - 1) == b"BOUNDARY")
-        .and_then(|k| Some((k, Header::parse(records.get(k), false).ok()?)));
-    for h in std::iter::once(&r0).chain(joint.as_ref().map(|(_, h)| h)) {
-        if h.encryption != 0 {
-            let msg = "it's protected by DRM, so it can't be converted (Magnitide doesn't remove DRM)";
-            return Err(Unconvertible(msg.into()).into());
-        }
-    }
+        .filter(|&k| k > 0 && k < records.len() && records.record(k - 1) == b"BOUNDARY")
+        .and_then(|k| Some((k, Header::parse(records.record(k), false).ok()?)));
+    refuse_encrypted(&r0, joint.as_ref().map(|(_, h)| h))?;
 
     let book = if r0.is_kf8() {
         let first = first_resource(r0.first_image, r0.text_records, 1);
@@ -127,6 +117,61 @@ pub fn convert(src: &Path, dest: &Path) -> Res<MobiReport> {
     }
     epub::write(book, &meta, dest)?;
     Ok(report)
+}
+
+/// Whether the book at `path` can be converted, reading only its headers:
+/// an error says why not (an [`Unconvertible`] for DRM, Topaz and KFX).
+pub fn check(path: &Path) -> Res<()> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path)?;
+    let len = file.metadata()?.len();
+    let mut read_at = |at: u64, n: u64| -> Res<Vec<u8>> {
+        let mut buf = Vec::new();
+        file.seek(SeekFrom::Start(at))?;
+        (&mut file).take(n).read_to_end(&mut buf)?;
+        Ok(buf)
+    };
+    let head = read_at(0, 78)?;
+    refuse_by_magic(&head)?;
+    let count = book::u16_at(&head, 76).ok_or("not a MOBI book")?;
+    let mut head = head;
+    head.extend(read_at(78, 8 * u64::from(count))?);
+    let records = book::records(&head)?;
+    // A record's bytes, by its offsets in the file (headers are small).
+    let offsets = records.offsets();
+    let mut record = |i: usize| -> Res<Vec<u8>> {
+        let start = *offsets.get(i).ok_or("not a MOBI book")? as u64;
+        let end = offsets.get(i + 1).map_or(len, |o| *o as u64).max(start);
+        read_at(start, (end - start).min(1 << 20))
+    };
+    let r0 = Header::parse(&record(0)?, records.textread)?;
+    let mut kf8 = None;
+    if let Some(k) = r0.exth.kf8_boundary.map(|k| k as usize).filter(|&k| k > 0 && k < records.len())
+        && record(k - 1)? == b"BOUNDARY"
+    {
+        kf8 = Header::parse(&record(k)?, false).ok();
+    }
+    refuse_encrypted(&r0, kf8.as_ref())
+}
+
+/// Topaz and KFX books, by their first bytes.
+fn refuse_by_magic(data: &[u8]) -> Res<()> {
+    if data.starts_with(b"TPZ") {
+        return Err(Unconvertible("it's a Topaz book (an old Amazon format), which can't be converted".into()).into());
+    }
+    if data.starts_with(b"\xeaDRMION\xee") {
+        return Err(Unconvertible("it's a DRM-protected KFX book, which can't be converted".into()).into());
+    }
+    Ok(())
+}
+
+/// DRM-protected books, by either header of a joint file.
+fn refuse_encrypted(r0: &Header, kf8: Option<&Header>) -> Res<()> {
+    if std::iter::once(r0).chain(kf8).any(|h| h.encryption != 0) {
+        let msg = "it's protected by DRM, so it can't be converted (Magnitide doesn't remove DRM)";
+        return Err(Unconvertible(msg.into()).into());
+    }
+    Ok(())
 }
 
 /// Where a book's images start: its header says, or right after its text.

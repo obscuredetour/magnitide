@@ -9,52 +9,24 @@
 use super::huffcdic::Huff;
 use crate::convert::azw3::palmdoc;
 
+pub(super) use crate::metadata::mobi::Records;
+
 pub(super) const NULL: u32 = 0xFFFF_FFFF;
 
-/// The records of a PalmDB file.
-pub(super) struct Records<'a> {
-    data: &'a [u8],
-    offsets: Vec<usize>,
-    /// "BOOKMOBI" or "TEXTREAD".
-    pub textread: bool,
-}
-
-impl<'a> Records<'a> {
-    pub fn parse(data: &'a [u8]) -> Result<Self, String> {
-        let ident = data.get(60..68).ok_or("not a MOBI book")?.to_ascii_uppercase();
-        if ident != b"BOOKMOBI" && ident != b"TEXTREAD" {
-            return Err("not a MOBI book".into());
-        }
-        let count = u16_at(data, 76).ok_or("not a MOBI book")? as usize;
-        let offsets: Vec<usize> = (0..count)
-            .map(|i| u32_at(data, 78 + 8 * i).map(|o| o as usize))
-            .collect::<Option<_>>()
-            .ok_or("the book's record list is cut short")?;
-        if offsets.len() < 2 {
-            return Err("the book has no text".into());
-        }
-        Ok(Self { data, offsets, textread: ident == b"TEXTREAD" })
+/// Records of a MOBI book, or why it can't be read.
+pub(super) fn records(data: &[u8]) -> Result<Records<'_>, String> {
+    let records = Records::parse(data).ok_or("not a MOBI book")?;
+    if records.len() < 2 {
+        return Err("the book has no text".into());
     }
-
-    pub fn len(&self) -> usize {
-        self.offsets.len()
-    }
-
-    /// Record `i`, empty if it's missing or its offsets are broken.
-    pub fn get(&self, i: usize) -> &'a [u8] {
-        let Some(&start) = self.offsets.get(i) else { return &[] };
-        let end = self.offsets.get(i + 1).copied().unwrap_or(self.data.len()).min(self.data.len());
-        self.data.get(start..end.max(start)).unwrap_or(&[])
-    }
+    Ok(records)
 }
 
 pub(super) fn u16_at(d: &[u8], at: usize) -> Option<u16> {
-    Some(u16::from_be_bytes(d.get(at..at + 2)?.try_into().ok()?))
+    crate::metadata::mobi::u16_at(d, at).map(|v| v as u16)
 }
 
-pub(super) fn u32_at(d: &[u8], at: usize) -> Option<u32> {
-    Some(u32::from_be_bytes(d.get(at..at + 4)?.try_into().ok()?))
-}
+pub(super) use crate::metadata::mobi::u32_at;
 
 /// What the EXTH block says that converting needs (metadata itself is read
 /// by [`crate::metadata::mobi`]).
@@ -130,9 +102,7 @@ impl Header {
         .unwrap_or_default();
         let version = u32_at(raw, 0x68).unwrap_or(1);
         let first_image = u32_at(raw, 0x6C).unwrap_or(NULL);
-        let exth_flag = u32_at(raw, 0x80).unwrap_or(0);
-        let exth =
-            if exth_flag & 0x40 != 0 { parse_exth(raw.get(16 + length as usize..).unwrap_or(&[]), utf8) } else { None };
+        let exth = parse_exth(raw, utf8);
         let ncx = if raw.len() >= 0xF8 { u32_at(raw, 0xF4).unwrap_or(NULL) } else { NULL };
         let (mut frag, mut skel, mut guide, mut fdst) = (NULL, NULL, NULL, NULL);
         // Ancient PRC files can have anything as a version: be careful.
@@ -162,7 +132,7 @@ impl Header {
             guide,
             ancient: false,
             title,
-            exth: exth.unwrap_or_default(),
+            exth,
         })
     }
 
@@ -181,17 +151,9 @@ pub(super) fn decode(b: &[u8], utf8: bool) -> String {
     if utf8 { String::from_utf8_lossy(b).into_owned() } else { crate::metadata::mobi::cp1252(b) }
 }
 
-fn parse_exth(raw: &[u8], utf8: bool) -> Option<Exth> {
-    if !raw.starts_with(b"EXTH") {
-        return None;
-    }
-    let count = u32_at(raw, 8)?;
+fn parse_exth(r0: &[u8], utf8: bool) -> Exth {
     let mut out = Exth::default();
-    let mut at = 12;
-    for _ in 0..count {
-        let (kind, len) = (u32_at(raw, at)?, u32_at(raw, at + 4)? as usize);
-        let Some(value) = raw.get(at + 8..at + len.max(8)) else { break };
-        at += len.max(8);
+    for (kind, value) in crate::metadata::mobi::exth_records(r0) {
         let text = || decode(value, utf8).trim_matches('\0').trim().to_owned();
         match kind {
             116 => out.start_offset = u32_at(value, 0).filter(|v| *v != NULL),
@@ -202,7 +164,7 @@ fn parse_exth(raw: &[u8], utf8: bool) -> Option<Exth> {
             _ => {}
         }
     }
-    Some(out)
+    out
 }
 
 /// The decompressed text of the book (or of its KF8 half, whose header is
@@ -214,21 +176,24 @@ pub(super) fn text(records: &Records<'_>, header: &Header, base: usize) -> Resul
     match header.compression {
         1 => {
             for i in first..=last {
-                out.extend_from_slice(text_record(records.get(i), header.extra_flags));
+                out.extend_from_slice(text_record(records.record(i), header.extra_flags));
             }
         }
         2 => {
             for i in first..=last {
-                out.extend(palmdoc::decompress(text_record(records.get(i), header.extra_flags)));
+                out.extend(palmdoc::decompress(text_record(records.record(i), header.extra_flags)));
             }
         }
         0x4448 => {
             let (start, count) = header.huff.ok_or("the book's HUFF records are missing")?;
-            let start = base + start as usize;
-            let tables: Vec<&[u8]> = (start..start + count as usize).map(|i| records.get(i)).collect();
+            // The HUFF record, then its CDIC records: all must be in the file.
+            let start = base.checked_add(start as usize).ok_or("the book's HUFF records are missing")?;
+            let end = start.checked_add(count as usize).filter(|e| count > 0 && *e <= records.len());
+            let end = end.ok_or("the book's HUFF records are missing")?;
+            let tables: Vec<&[u8]> = (start..end).map(|i| records.record(i)).collect();
             let mut huff = Huff::new(&tables)?;
             for i in first..=last {
-                out.extend(huff.unpack(text_record(records.get(i), header.extra_flags))?);
+                out.extend(huff.unpack(text_record(records.record(i), header.extra_flags))?);
             }
         }
         c => return Err(format!("unknown compression ({c})")),

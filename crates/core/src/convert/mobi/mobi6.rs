@@ -50,7 +50,7 @@ pub(super) fn read(records: &Records<'_>, header: &Header, warnings: &mut Vec<St
     text = cleanup(&text, plain);
 
     let (images, by_index) = extract_images(records, header, warnings);
-    let mut root = html::parse_document(&text);
+    let mut root = html::parse_document(&text)?;
 
     // The guide's table of contents and start, before the guide goes.
     let mut guide: Vec<(String, String, String)> = Vec::new();
@@ -218,7 +218,7 @@ fn extract_images(
             continue;
         }
         index += 1;
-        let data = records.get(i);
+        let data = records.record(i);
         let Some((ext, media_type)) = image_type(data) else {
             if data.starts_with(b"BM") {
                 warnings.push(format!("image {index} is a BMP, which EPUB can't hold; left out"));

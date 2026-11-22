@@ -54,11 +54,16 @@ fn indx_header(data: &[u8]) -> Result<IndxHeader, String> {
 
 /// Read the index whose header is record `idx`.
 pub(super) fn read(records: &Records<'_>, idx: usize, utf8: bool) -> Result<Index, String> {
-    let data = records.get(idx);
+    let data = records.record(idx);
     let header = indx_header(data)?;
+    // The index's records, then its string records, must all be in the file.
+    let cncx_start = idx + header.count + 1;
+    if header.count > records.len() || header.ncncx > records.len() || cncx_start + header.ncncx > records.len() {
+        return Err("an index points past the end of the book".into());
+    }
     let mut cncx = HashMap::new();
-    for (n, i) in (idx + header.count + 1..idx + header.count + 1 + header.ncncx).enumerate() {
-        read_cncx(records.get(i), n as u64 * 0x10000, utf8, &mut cncx);
+    for (n, i) in (cncx_start..cncx_start + header.ncncx).enumerate() {
+        read_cncx(records.record(i), n as u64 * 0x10000, utf8, &mut cncx);
     }
 
     // ORDT: some Amazon samples encode entry names through a table.
@@ -70,7 +75,7 @@ pub(super) fn read(records: &Records<'_>, idx: usize, utf8: bool) -> Result<Inde
                 .map(|p| p.get(1).filter(|b| (0x21..0x7F).contains(*b)).map_or('?', |b| char::from(*b)))
                 .collect()
         } else {
-            vec!['?'; header.oentries]
+            vec!['?'; raw.len() / 2]
         };
     }
 
@@ -82,11 +87,12 @@ pub(super) fn read(records: &Records<'_>, idx: usize, utf8: bool) -> Result<Inde
     let tagx = &data[tagx_at..];
     let first_entry = u32_at(tagx, 4).ok_or("an index's tag table is cut short")? as usize;
     let control_bytes = u32_at(tagx, 8).ok_or("an index's tag table is cut short")? as usize;
-    let tags: Vec<[u8; 4]> = (12..first_entry).step_by(4).filter_map(|i| tagx.get(i..i + 4)?.try_into().ok()).collect();
+    let tags: Vec<[u8; 4]> =
+        (12..first_entry.min(tagx.len())).step_by(4).filter_map(|i| tagx.get(i..i + 4)?.try_into().ok()).collect();
 
     let mut entries = Vec::new();
     for i in idx + 1..=idx + header.count {
-        let data = records.get(i);
+        let data = records.record(i);
         let h = indx_header(data)?;
         let mut positions: Vec<usize> = (0..h.count)
             .map(|j| u16_at(data, h.start + 4 + 2 * j).map(usize::from))
